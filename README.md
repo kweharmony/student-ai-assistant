@@ -9,7 +9,7 @@
 Изменение политики не «навсегда», а только для текущего активного сеанса PowerShell команда:
 
 ```bash
-    Set-ExecutionPolicy Unrestricted -Scope Process
+Set-ExecutionPolicy Unrestricted -Scope Process
 ```
 
 1. Установите зависимости:
@@ -25,6 +25,8 @@ npm start
 ```
 
 3. Откройте http://localhost:3000 в браузере
+
+4. Ctrl + C для остановки работы сервера
 
 Для возврата политики (после окончания работы) к значениям по умолчанию (обычно — Restricted) используется команда:
 
