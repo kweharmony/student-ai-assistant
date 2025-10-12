@@ -44,7 +44,7 @@ const Hero: React.FC = () => {
         <form encType="multipart/form-data" className="inline">
           <label 
             htmlFor="cta-audio-upload" 
-            className={`inline-block px-8 py-4 sm:px-12 sm:py-5 text-base sm:text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider font-serif cursor-pointer hover:opacity-100 hover:bg-hover hover:-translate-y-0.5 rounded-lg ${
+            className={`inline-block px-8 py-4 sm:px-12 sm:py-5 text-base sm:text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider font-serif cursor-pointer hover:opacity-100 hover:border-primary hover:bg-hover rounded-lg custom-upload-btn
               isUploading ? 'opacity-50 cursor-not-allowed' : 'opacity-90'
             }`}
             style={{ 
