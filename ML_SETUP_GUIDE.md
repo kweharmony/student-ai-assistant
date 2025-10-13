@@ -23,7 +23,20 @@ DEEPSEEK_MODEL=deepseek-chat
 Запусти тесты, чтобы убедиться, что все работает:
 
 ```powershell
+# Полное тестирование всех режимов
 python scripts/test_api.py
+
+# Быстрый тест основных функций
+python scripts/quick_test.py
+
+# Тест расширенного конспекта
+python scripts/test_detailed_notes.py
+
+# Интерактивный тестер
+python scripts/interactive_test.py
+
+# Тест обработки больших текстов
+python scripts/test_large_text.py
 ```
 
 ## 📁 Структура ML модуля
@@ -67,10 +80,28 @@ explanation = processor.expand_topic(
 questions = processor.generate_questions(lecture_text)
 ```
 
-### 5. Создание mind map
+### 5. 🆕 Создание расширенного конспекта
 ```python
-mindmap = processor.create_mindmap(lecture_text)
+# Максимально подробное описание всех терминов
+detailed_notes = processor.create_detailed_notes(lecture_text)
+
+# Этот режим создает:
+# - Детальное объяснение каждого термина (3-5 абзацев)
+# - Определения, контекст, примеры
+# - Взаимосвязи между понятиями
+# - Практическое применение
 ```
+
+**Когда использовать расширенный конспект:**
+- ✅ Глубокое изучение сложной темы
+- ✅ Подготовка к экзамену
+- ✅ Создание справочника терминов
+- ✅ Тексты с большим количеством технических понятий
+
+**Сравнение режимов:**
+- `summarize` - краткий обзор (~30% текста, быстро)
+- `detailed_notes` - глубокий анализ (2-3x больше, детально)
+- `extract_terms` - список + краткие определения
 
 ## 🌐 API эндпоинты
 
@@ -165,7 +196,25 @@ if processor.health_check():
 - `EXTRACT_TERMS_PROMPT` - для извлечения терминов
 - `EXPAND_TOPIC_PROMPT` - для расширения тем
 - `GENERATE_QUESTIONS_PROMPT` - для генерации вопросов
-- `MINDMAP_PROMPT` - для создания карт памяти
+- `DETAILED_NOTES_PROMPT` - для расширенных конспектов с детальным описанием терминов
+
+### Настройки обработки (PROCESSING_CONFIGS):
+
+```python
+"detailed_notes": {
+    "max_tokens": 4096,      # Большой лимит для детального описания
+    "temperature": 0.3,      # Баланс между точностью и детальностью
+    "top_p": 0.9
+}
+
+"summarize": {
+    "max_tokens": 2048,      # Стандартный лимит
+    "temperature": 0.3,
+    "top_p": 0.9
+}
+```
+
+> **Примечание:** Режим `mindmap` был заменен на `detailed_notes` для более глубокого анализа терминов.
 
 ## 🚨 Обработка ошибок
 
