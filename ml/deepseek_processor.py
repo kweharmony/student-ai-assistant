@@ -126,9 +126,9 @@ class DeepSeekProcessor:
         """Генерация вопросов для самопроверки"""
         return self.process_text(text, "generate_questions")
     
-    def create_mindmap(self, text: str) -> str:
-        """Создание mind map (карты памяти)"""
-        return self.process_text(text, "mindmap")
+    def create_detailed_notes(self, text: str) -> str:
+        """Создание расширенного конспекта с подробным описанием всех терминов"""
+        return self.process_text(text, "detailed_notes")
     
     def batch_process(self, text: str, modes: List[str]) -> Dict[str, str]:
         """
