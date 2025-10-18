@@ -1,14 +1,25 @@
 import React from 'react';
 import { useFileUpload } from '../hooks/useFileUpload';
+// @ts-ignore
+import { useNavigate } from 'react-router-dom';
 
 const UploadDemo: React.FC = () => {
   const { isUploading, uploadProgress, error, success, uploadFile } = useFileUpload();
+  const navigate = useNavigate();
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       uploadFile(file);
     }
+  };
+
+  const handleUploadClick = () => {
+    navigate('/account');
+    // Прокрутка к началу страницы после навигации
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
   };
 
   return (
@@ -55,7 +66,8 @@ const UploadDemo: React.FC = () => {
         Загрузите аудиофайл и получите транскрипцию бесплатно
       </p>
       
-      <label 
+      <button
+        onClick={handleUploadClick}
         className={`inline-block px-12 py-5 text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg custom-upload-btn ${
           isUploading ? 'opacity-50 cursor-not-allowed' : ''
         }`}
@@ -66,14 +78,7 @@ const UploadDemo: React.FC = () => {
         }}
       >
         {isUploading ? `Загрузка... ${uploadProgress}%` : success ? 'Файл загружен!' : 'Выбрать файл'}
-        <input 
-          type="file" 
-          accept="audio/*" 
-          className="hidden"
-          onChange={handleFileUpload}
-          disabled={isUploading}
-        />
-      </label>
+      </button>
       
       <style>
         {`

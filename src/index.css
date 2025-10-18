@@ -108,9 +108,9 @@ body::before {
 }
 
 .record-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-  border-color: var(--text-secondary);
+  transform: none;
+  box-shadow: none;
+  border-color: var(--border-color);
 }
 
 .profile-avatar {
@@ -140,7 +140,7 @@ body::before {
   }
   
   .record-card:hover {
-    transform: translateY(-1px);
+    transform: none;
   }
 }
 
@@ -180,8 +180,8 @@ body::before {
   }
   
   .record-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    transform: none;
+    box-shadow: none;
   }
   
   .profile-avatar {
@@ -206,7 +206,7 @@ body::before {
   }
   
   .record-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+    transform: none;
+    box-shadow: none;
   }
 }

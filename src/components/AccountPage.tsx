@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-// @ts-ignore
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 interface AccountPageProps {
   onToggleTheme: () => void;
@@ -26,6 +25,7 @@ interface ScheduleItem {
 }
 
 const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }) => {
+  const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [records, setRecords] = useState<Record[]>([]);
@@ -34,6 +34,9 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const [showButtons, setShowButtons] = useState(false);
   const [activeView, setActiveView] = useState<'records' | 'schedule'>('records');
   const [expandedTexts, setExpandedTexts] = useState<{[key: string]: 'original' | 'processed' | null}>({});
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<'profile' | 'calendar' | 'transcriber' | 'text-processing'>('profile');
 
   // Моковые данные для демонстрации
   const mockRecords: Record[] = [
@@ -112,6 +115,18 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   useEffect(() => {
     setRecords(mockRecords);
     setSchedule(mockSchedule);
+  }, []);
+
+  // Закрытие мобильного меню при изменении размера экрана
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const today = new Date();
@@ -202,7 +217,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
     // Пустые ячейки для начала месяца
     for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-8 w-8 md:h-12 md:w-12 lg:h-16 lg:w-16 xl:h-16 xl:w-16"></div>);
+      days.push(<div key={`empty-${i}`} className="h-6 w-6 sm:h-8 sm:w-8 md:h-12 md:w-12 lg:h-16 lg:w-16 xl:h-16 xl:w-16"></div>);
     }
 
     // Дни месяца
@@ -217,7 +232,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         <button
           key={day}
           onClick={() => handleDateClick(date)}
-          className={`calendar-day h-8 w-8 md:h-12 md:w-12 lg:h-16 lg:w-16 xl:h-16 xl:w-16 flex items-center justify-center relative rounded-lg text-sm md:text-base lg:text-lg xl:text-lg text-center transition-all duration-300 hover:scale-105 ${
+          className={`calendar-day h-6 w-6 sm:h-8 sm:w-8 md:h-12 md:w-12 lg:h-16 lg:w-16 xl:h-16 xl:w-16 flex items-center justify-center relative rounded-lg text-xs sm:text-sm md:text-base lg:text-lg xl:text-lg text-center transition-all duration-300 hover:scale-105 ${
             isCurrentDay 
               ? 'today' 
               : isSelectedDay
@@ -227,10 +242,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         >
           {day}
           {hasRecordsForDay && (
-            <div className="absolute top-0.5 right-0.5 md:top-1 md:right-1 lg:top-2 lg:right-2 xl:top-2 xl:right-2 w-1.5 h-1.5 md:w-2 md:h-2 lg:w-3 lg:h-3 xl:w-3 xl:h-3 bg-red-500 rounded-full shadow-lg"></div>
+            <div className="absolute top-0.5 right-0.5 sm:top-0.5 sm:right-0.5 md:top-1 md:right-1 lg:top-2 lg:right-2 xl:top-2 xl:right-2 w-1 h-1 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 lg:w-3 lg:h-3 xl:w-3 xl:h-3 bg-red-500 rounded-full shadow-lg"></div>
           )}
           {hasScheduleForDay && (
-            <div className="absolute top-0.5 left-0.5 md:top-1 md:left-1 lg:top-2 lg:left-2 xl:top-2 xl:left-2 w-1.5 h-1.5 md:w-2 md:h-2 lg:w-3 lg:h-3 xl:w-3 xl:h-3 bg-green-500 rounded-full shadow-lg"></div>
+            <div className="absolute top-0.5 left-0.5 sm:top-0.5 sm:left-0.5 md:top-1 md:left-1 lg:top-2 lg:left-2 xl:top-2 xl:left-2 w-1 h-1 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 lg:w-3 lg:h-3 xl:w-3 xl:h-3 bg-green-500 rounded-full shadow-lg"></div>
           )}
         </button>
       );
@@ -246,8 +261,174 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
   const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
+  const renderSidebar = () => (
+    <>
+      {/* Мобильное меню - оверлей */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+      
+      {/* Боковая панель */}
+       <div 
+         className={`fixed left-0 top-0 h-full border-r transition-all duration-700 ease-in-out z-50 ${
+           sidebarCollapsed ? 'w-24' : 'w-70'
+         } ${
+           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+         }`}
+        style={{ 
+          borderColor: 'var(--border-color)',
+          background: 'var(--bg-primary)',
+          backdropFilter: 'blur(10px)'
+        }}
+        onMouseEnter={() => !mobileMenuOpen && setSidebarCollapsed(false)}
+        onMouseLeave={() => !mobileMenuOpen && setSidebarCollapsed(true)}
+      >
+      <div className="flex flex-col h-full">
+        {/* Заголовок */}
+        <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-color)' }}>
+          <div 
+            className="text-3xl font-normal text-primary no-underline tracking-wider transition-all duration-700 ease-in-out hover:opacity-60 bg-transparent border-none cursor-pointer relative block pb-10"
+            style={{ 
+              color: 'var(--text-primary)',
+              fontFamily: 'Georgia, serif'
+            }}
+          >
+            <span className={`absolute transition-opacity duration-500 delay-200 ${sidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
+              MindeSync
+            </span>
+            <span className={`absolute transition-opacity duration-500 delay-200 ${sidebarCollapsed ? 'opacity-100' : 'opacity-0'}`}>
+              MS
+            </span>
+          </div>
+          
+        </div>
+
+        {/* Навигационные элементы */}
+        <div className="flex-1 p-4 space-y-3">
+          {/* Профиль */}
+          <button
+            onClick={() => {
+              setActiveSection('profile');
+              setMobileMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-4 p-4 rounded-lg transition-all duration-700 ease-in-out h-16 ${
+              activeSection === 'profile' ? 'bg-blue-500 text-white' : 'hover:bg-hover'
+            }`}
+            style={{ 
+              background: activeSection === 'profile' ? '#3b82f6' : 'var(--hover-bg)',
+              color: activeSection === 'profile' ? 'white' : 'var(--text-secondary)'
+            }}
+            title={sidebarCollapsed ? 'Профиль' : ''}
+          >
+            <span className="text-2xl">👤</span>
+            <span className={`text-lg font-medium transition-all duration-500 delay-200 ${
+              sidebarCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
+            }`}>
+              Профиль
+            </span>
+          </button>
+
+          {/* Календарь */}
+          <button
+            onClick={() => {
+              setActiveSection('calendar');
+              setMobileMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-4 p-4 rounded-lg transition-all duration-700 ease-in-out h-16 ${
+              activeSection === 'calendar' ? 'bg-blue-500 text-white' : 'hover:bg-hover'
+            }`}
+            style={{ 
+              background: activeSection === 'calendar' ? '#3b82f6' : 'var(--hover-bg)',
+              color: activeSection === 'calendar' ? 'white' : 'var(--text-secondary)'
+            }}
+            title={sidebarCollapsed ? 'Календарь' : ''}
+          >
+            <span className="text-2xl">📅</span>
+            <span className={`text-lg font-medium transition-all duration-500 delay-200 ${
+              sidebarCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
+            }`}>
+              Календарь
+            </span>
+          </button>
+
+          {/* Транскрибатор */}
+          <button
+            onClick={() => {
+              setActiveSection('transcriber');
+              setMobileMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-4 p-4 rounded-lg transition-all duration-700 ease-in-out h-16 ${
+              activeSection === 'transcriber' ? 'bg-blue-500 text-white' : 'hover:bg-hover'
+            }`}
+            style={{ 
+              background: activeSection === 'transcriber' ? '#3b82f6' : 'var(--hover-bg)',
+              color: activeSection === 'transcriber' ? 'white' : 'var(--text-secondary)'
+            }}
+            title={sidebarCollapsed ? 'Транскрибатор' : ''}
+          >
+            <span className="text-2xl">🎤</span>
+            <span className={`text-lg font-medium transition-all duration-500 delay-200 ${
+              sidebarCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
+            }`}>
+              Транскрибатор
+            </span>
+          </button>
+
+          {/* Обработка текста */}
+          <button
+            onClick={() => {
+              setActiveSection('text-processing');
+              setMobileMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-4 p-4 rounded-lg transition-all duration-700 ease-in-out h-16 ${
+              activeSection === 'text-processing' ? 'bg-blue-500 text-white' : 'hover:bg-hover'
+            }`}
+            style={{ 
+              background: activeSection === 'text-processing' ? '#3b82f6' : 'var(--hover-bg)',
+              color: activeSection === 'text-processing' ? 'white' : 'var(--text-secondary)'
+            }}
+            title={sidebarCollapsed ? 'Обработка текста' : ''}
+          >
+            <span className="text-2xl">📝</span>
+            <span className={`text-lg font-medium transition-all duration-500 delay-200 ${
+              sidebarCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
+            }`}>
+              Обработка текста
+            </span>
+          </button>
+        </div>
+
+        {/* Переключатель темы */}
+        <div className="p-4 border-t" style={{ borderColor: 'var(--border-color)' }}>
+          <button 
+            onClick={onToggleTheme}
+            className={`w-full flex items-center p-4 hover:bg-hover rounded-lg transition-all duration-300 h-16 ${
+              sidebarCollapsed ? 'justify-center' : 'gap-4'
+            }`}
+            style={{ 
+              color: 'var(--text-secondary)',
+              background: 'var(--hover-bg)'
+            }}
+            title={sidebarCollapsed ? 'Тема' : ''}
+          >
+            <span className="text-2xl">{isLightTheme ? '☾' : '☀︎'}</span>
+            <span className={`text-lg font-medium transition-all duration-500 delay-200 ${
+              sidebarCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
+            }`}>
+              Тема
+            </span>
+          </button>
+        </div>
+      </div>
+      </div>
+    </>
+  );
+
   return (
-    <div className={`min-h-screen flex flex-col overflow-x-hidden relative transition-all duration-500 ${
+    <div className={`min-h-screen overflow-x-hidden relative transition-all duration-500 ${
       isLightTheme ? 'light-theme' : ''
     }`} style={{
       fontFamily: 'Georgia, Times New Roman, serif',
@@ -255,100 +436,149 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       color: 'var(--text-primary)',
       background: 'var(--bg-primary)'
     }}>
+      {renderSidebar()}
       
-      <header 
-        className="bg-transparent px-15 sticky top-0 z-50 border-b"
-        style={{ 
-          borderColor: 'var(--border-color)',
-          backdropFilter: 'blur(10px)'
-        }}
-      >
-        <div className="max-w-7xl mx-auto flex items-center justify-between h-25 relative z-10">
-          <Link 
-            to="/"
-            className="text-3xl font-normal text-primary no-underline tracking-wider transition-opacity duration-500 hover:opacity-60 bg-transparent border-none cursor-pointer"
-            style={{ 
-              color: 'var(--text-primary)',
-              fontFamily: 'Georgia, serif'
-            }}
-            aria-label="На главную"
-          >
-            MindeSync
-          </Link>
-          
-          <div className="flex items-center gap-5 md:gap-15">
-            <button 
-              onClick={onToggleTheme}
-              className="bg-transparent border text-secondary px-3 py-3 md:px-5 cursor-pointer text-base transition-all duration-500 opacity-60 hover:opacity-100 hover:bg-hover rounded-lg"
-              style={{ 
-                color: 'var(--text-secondary)',
-                borderColor: 'var(--border-color)',
-                background: 'var(--hover-bg)'
-              }}
-            >
-              {isLightTheme ? '☾' : '☀︎'}
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* Мобильная кнопка меню */}
+      {!mobileMenuOpen && (
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className="fixed top-4 left-4 z-50 lg:hidden p-3 bg-transparent border rounded-lg hover:bg-hover transition-all duration-300"
+          style={{ 
+            borderColor: 'var(--border-color)',
+            color: 'var(--text-primary)',
+            background: 'var(--hover-bg)'
+          }}
+          aria-label="Открыть меню"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
       
-      <main className="flex-1 px-4 md:px-8 lg:px-15 py-8 md:py-30 lg:py-40 max-w-7xl mx-auto w-full relative z-10">
-        {/* Заголовочный блок */}
-        <div className="text-center mb-8 md:mb-16 px-4">
-          <h1 
-            className="text-3xl md:text-5xl lg:text-6xl xl:text-6xl 2xl:text-7xl font-light mb-4 md:mb-8 lg:mb-12 tracking-wide"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            Система записей
-          </h1>
-          <p 
-            className="text-base md:text-xl lg:text-2xl xl:text-2xl 2xl:text-3xl opacity-70 max-w-3xl mx-auto leading-relaxed"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            Управляйте своими лекциями и записями с помощью удобного календаря
-          </p>
-        </div>
+      <main className="w-full px-4 md:px-8 lg:px-15 py-8 md:py-20 lg:py-20 relative z-10 lg:ml-0">
+        <div className="max-w-7xl mx-auto">
+        {/* Контент в зависимости от выбранной секции */}
+        {activeSection === 'profile' && (
+          <>
+            {/* Заголовочный блок */}
+            <div className="text-center mb-6 md:mb-10 lg:mb-12 px-4">
+              <h1 
+                className="text-3xl md:text-5xl lg:text-6xl xl:text-6xl 2xl:text-7xl font-light mb-3 md:mb-5 lg:mb-7 tracking-wide"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                Профиль
+              </h1>
+              <p 
+                className="text-base md:text-xl lg:text-2xl xl:text-2xl 2xl:text-3xl opacity-70 max-w-3xl mx-auto leading-relaxed"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Управляйте своим профилем и настройками
+              </p>
+            </div>
 
         {/* Секция профиля */}
-        <div className="bg-transparent border rounded-2xl p-4 md:p-8 lg:p-12 xl:p-16 mb-8 md:mb-16" style={{ borderColor: 'var(--border-color)' }}>
-          <div className="flex flex-col md:flex-row items-center md:items-start gap-4 md:gap-8 lg:gap-12 xl:gap-16">
-            <div className="w-16 h-16 md:w-20 md:h-20 lg:w-24 lg:h-24 xl:w-24 xl:h-24 profile-avatar rounded-full flex items-center justify-center text-white text-xl md:text-2xl lg:text-3xl xl:text-3xl font-semibold">
-              ИИ
-            </div>
-            <div className="flex-1 text-center md:text-left">
-              <h3 className="text-xl md:text-2xl lg:text-3xl xl:text-3xl font-semibold mb-2 lg:mb-4" style={{ color: 'var(--text-primary)' }}>
-                Иван Иванов
-              </h3>
-              <p className="text-base md:text-lg lg:text-xl xl:text-xl mb-2 lg:mb-4" style={{ color: 'var(--text-secondary)' }}>
-                ivan.ivanov@example.com
-              </p>
-              <p className="text-sm md:text-base lg:text-lg xl:text-lg opacity-70 mb-4 lg:mb-6" style={{ color: 'var(--text-secondary)' }}>
-                Зарегистрирован: 15 января 2025
-              </p>
-              <button 
-                className="w-full md:w-auto px-4 md:px-6 lg:px-8 xl:px-8 py-2 md:py-3 lg:py-4 xl:py-4 bg-transparent border rounded-lg transition-all duration-300 hover:bg-hover text-sm md:text-base lg:text-lg xl:text-lg hover:scale-105"
-                style={{ 
-                  color: 'var(--text-secondary)',
-                  borderColor: 'var(--border-color)',
-                  background: 'var(--hover-bg)'
-                }}
+         <div className="bg-transparent border rounded-2xl p-6 md:p-10 lg:p-14 xl:p-18 mb-10 md:mb-20" style={{ borderColor: 'var(--border-color)' }}>
+           
+           {/* Информация о пользователе сверху */}
+           <div className="text-center mb-8 lg:mb-12">
+             <div className="w-20 h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 xl:w-32 xl:h-32 profile-avatar rounded-full flex items-center justify-center text-white text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-semibold mx-auto mb-6 relative">
+               <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full"></div>
+               <span className="relative z-10">ИИ</span>
+             </div>
+             <h3 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-semibold mb-4 lg:mb-6" style={{ color: 'var(--text-primary)' }}>
+               Иван Иванов
+             </h3>
+             <p className="text-lg md:text-xl lg:text-2xl xl:text-2xl mb-3 lg:mb-5" style={{ color: 'var(--text-secondary)' }}>
+               ivan.ivanov@example.com
+             </p>
+             <p className="text-sm md:text-base lg:text-lg xl:text-lg opacity-70" style={{ color: 'var(--text-secondary)' }}>
+               Зарегистрирован: 15 января 2025
+             </p>
+           </div>
+
+           {/* Остальная информация */}
+           <div className="space-y-6 lg:space-y-8">
+
+             {/* Информация о подписке */}
+             <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-xl p-8">
+               <div className="flex items-center justify-between mb-4">
+                 <div className="flex items-center gap-3">
+                   <div className="w-3 h-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
+                   <h4 className="text-lg md:text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Премиум подписка</h4>
+                 </div>
+                 <div className="px-3 py-1 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-medium rounded-full">
+                   Активна
+                 </div>
+               </div>
+               <div className="space-y-3">
+                 <div className="flex justify-between items-center">
+                   <span className="text-sm md:text-base opacity-70" style={{ color: 'var(--text-secondary)' }}>Действует до:</span>
+                   <span className="text-sm md:text-base font-medium" style={{ color: 'var(--text-primary)' }}>15 марта 2025</span>
+                 </div>
+                 <div className="flex justify-between items-center">
+                   <span className="text-sm md:text-base opacity-70" style={{ color: 'var(--text-secondary)' }}>Осталось:</span>
+                   <span className="text-sm md:text-base font-medium" style={{ color: 'var(--text-primary)' }}>47 дней</span>
+                 </div>
+               </div>
+             </div>
+
+
+             {/* Кнопки действий */}
+             <div className="flex flex-col sm:flex-row gap-6 justify-center">
+               <button 
+                 className="px-8 md:px-10 lg:px-12 xl:px-14 py-4 md:py-5 lg:py-6 xl:py-7 bg-transparent border rounded-lg transition-all duration-300 hover:bg-hover text-base md:text-lg lg:text-xl xl:text-xl hover:scale-105 hover:shadow-lg"
+                 style={{ 
+                   color: 'var(--text-secondary)',
+                   borderColor: 'var(--border-color)',
+                   background: 'var(--hover-bg)'
+                 }}
+               >
+                 Изменить пароль
+               </button>
+               <button 
+                 onClick={() => {
+                   navigate('/');
+                   window.scrollTo(0, 0);
+                 }}
+                 className="px-8 md:px-10 lg:px-12 xl:px-14 py-4 md:py-5 lg:py-6 xl:py-7 bg-gradient-to-r from-red-500 to-red-600 text-white border-0 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg text-base md:text-lg lg:text-xl xl:text-xl"
+               >
+                 Выйти из профиля
+               </button>
+             </div>
+           </div>
+         </div>
+          </>
+        )}
+
+        {activeSection === 'calendar' && (
+          <>
+            {/* Заголовочный блок */}
+            <div className="text-center mb-6 md:mb-10 lg:mb-12 px-4">
+              <h1 
+                className="text-3xl md:text-5xl lg:text-6xl xl:text-6xl 2xl:text-7xl font-light mb-3 md:mb-5 lg:mb-7 tracking-wide"
+                style={{ color: 'var(--text-primary)' }}
               >
-                Изменить пароль
-              </button>
+                Календарь
+              </h1>
+              <p 
+                className="text-base md:text-xl lg:text-2xl xl:text-2xl 2xl:text-3xl opacity-70 max-w-3xl mx-auto leading-relaxed"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Управляйте своими записями и расписанием
+              </p>
             </div>
-          </div>
-        </div>
 
         {/* Календарная секция */}
-        <div className="bg-transparent border rounded-2xl p-4 md:p-8 lg:p-12 xl:p-16 mb-8 md:mb-16" style={{ borderColor: 'var(--border-color)' }}>
-          <div className="flex flex-col sm:flex-row items-center justify-between mb-6 md:mb-8 lg:mb-12 gap-4">
+        <div className="bg-transparent border rounded-2xl p-6 md:p-10 lg:p-14 xl:p-18 mb-10 md:mb-20" style={{ borderColor: 'var(--border-color)' }}>
+          <div className="flex flex-col sm:flex-row items-center justify-between mb-8 md:mb-10 lg:mb-14 gap-4">
             <h2 className="text-2xl md:text-3xl lg:text-4xl xl:text-4xl font-semibold" style={{ color: 'var(--text-primary)' }}>
               Календарь
             </h2>
             <div className="flex items-center justify-center w-80 md:w-96 lg:w-112 xl:w-112">
               <button 
                 onClick={() => navigateMonth('prev')}
-                className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 xl:w-12 xl:h-12 flex items-center justify-center bg-transparent border rounded-lg hover:bg-hover transition-all duration-300 hover:scale-105 group flex-shrink-0"
+                className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 xl:w-12 xl:h-12 flex items-center justify-center bg-transparent border rounded-lg hover:bg-hover transition-all duration-300 hover:scale-105 group flex-shrink-0 hover:shadow-lg"
                 style={{ 
                   borderColor: 'var(--border-color)',
                   color: 'var(--text-secondary)',
@@ -362,7 +592,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
               </span>
               <button 
                 onClick={() => navigateMonth('next')}
-                className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 xl:w-12 xl:h-12 flex items-center justify-center bg-transparent border rounded-lg hover:bg-hover transition-all duration-300 hover:scale-105 group flex-shrink-0"
+                className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 xl:w-12 xl:h-12 flex items-center justify-center bg-transparent border rounded-lg hover:bg-hover transition-all duration-300 hover:scale-105 group flex-shrink-0 hover:shadow-lg"
                 style={{ 
                   borderColor: 'var(--border-color)',
                   color: 'var(--text-secondary)',
@@ -379,7 +609,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             {dayNames.map(day => (
               <div 
                 key={day} 
-                className="h-8 w-8 md:h-12 md:w-12 lg:h-16 lg:w-16 xl:h-16 xl:w-16 flex items-center justify-center text-xs md:text-sm lg:text-base xl:text-base font-medium opacity-70"
+                className="h-6 w-6 sm:h-8 sm:w-8 md:h-12 md:w-12 lg:h-16 lg:w-16 xl:h-16 xl:w-16 flex items-center justify-center text-xs sm:text-xs md:text-sm lg:text-base xl:text-base font-medium opacity-70"
                 style={{ color: 'var(--text-secondary)' }}
               >
                 {day}
@@ -453,7 +683,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                   {getRecordsForSelectedDate().map(record => (
                     <div 
                       key={record.id} 
-                      className="bg-transparent border rounded-xl p-4 md:p-6 lg:p-8 xl:p-10 record-card hover:shadow-2xl"
+                      className="bg-transparent border rounded-xl p-4 md:p-6 lg:p-8 xl:p-10 record-card"
                       style={{ borderColor: 'var(--border-color)' }}
                     >
                       <h3 className="text-lg md:text-xl lg:text-2xl xl:text-2xl font-semibold mb-3 md:mb-4 lg:mb-6" style={{ color: 'var(--text-primary)' }}>
@@ -521,7 +751,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                   {getScheduleForSelectedDate().map(item => (
                     <div 
                       key={item.id} 
-                      className="bg-transparent border rounded-xl p-4 md:p-6 lg:p-8 xl:p-10 record-card hover:shadow-2xl"
+                      className="bg-transparent border rounded-xl p-4 md:p-6 lg:p-8 xl:p-10 record-card"
                       style={{ borderColor: 'var(--border-color)' }}
                     >
                       <div className="flex flex-col md:flex-row md:items-center justify-between mb-3 md:mb-4 lg:mb-6 gap-2">
@@ -577,106 +807,154 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             </div>
           </div>
         )}
-      </main>
-      
-      <footer 
-        className="bg-transparent text-secondary py-10 px-15 mt-auto relative z-10 border-t"
-        style={{ 
-          color: 'var(--text-secondary)',
-          borderColor: 'var(--border-color)'
-        }}
-      >
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-30 mb-20">
-          <div className="md:col-span-2">
-            <h3 
-              className="text-sm mb-8 text-primary font-normal tracking-widest uppercase opacity-50"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              MindeSync
-            </h3>
-            <p 
-              className="text-secondary mb-10 leading-8 opacity-50 text-lg max-w-lg font-light"
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              Мы создаём инструменты для преобразования звука в текст. Делаем информацию доступной, понятной и удобной для работы.
-            </p>
-            <div className="flex gap-4 mt-10">
-              {['✈️', '⚡', '◆'].map((icon, index) => (
-                <a 
-                  key={index}
-                  href="#" 
-                  className="w-11 h-11 bg-transparent flex items-center justify-center text-secondary no-underline transition-all duration-500 border text-lg opacity-80 hover:opacity-100 hover:border-secondary hover:-translate-y-0.5 rounded-lg"
-                  style={{ 
-                    color: 'var(--text-secondary)',
-                    borderColor: 'var(--border-color)'
-                  }}
-                  aria-label={`Social link ${index + 1}`}
-                >
-                  {icon}
-                </a>
-              ))}
-            </div>
-          </div>
-          
-          {[
-            {
-              title: 'Продукт',
-              links: ['Как работает', 'Цены', 'API', 'Документация', 'Интеграции']
-            },
-            {
-              title: 'Компания',
-              links: ['О нас', 'Блог', 'Карьера', 'Контакты', 'Пресса']
-            },
-            {
-              title: 'Поддержка',
-              links: ['Справка', 'Статус', 'Безопасность', 'Конфиденциальность', 'Сообщество']
-            }
-          ].map((section, index) => (
-            <div key={index}>
-              <h3 
-                className="text-sm mb-8 text-primary font-normal tracking-widest uppercase opacity-50"
+          </>
+        )}
+
+        {activeSection === 'transcriber' && (
+          <>
+            {/* Заголовочный блок */}
+            <div className="text-center mb-4 md:mb-8 px-4">
+              <h1 
+                className="text-3xl md:text-5xl lg:text-6xl xl:text-6xl 2xl:text-7xl font-light mb-2 md:mb-4 lg:mb-6 tracking-wide"
                 style={{ color: 'var(--text-primary)' }}
               >
-                {section.title}
-              </h3>
-              <div className="flex flex-col gap-4">
-                {section.links.map((link, linkIndex) => (
-                  <a 
-                    key={linkIndex}
-                    href="#" 
-                    className="text-secondary no-underline transition-all duration-500 text-base opacity-50 font-light tracking-wide hover:opacity-80 hover:pl-2"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {link}
-                  </a>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-        
-        <div 
-          className="max-w-7xl mx-auto pt-15 border-t flex flex-col md:flex-row justify-between items-center text-secondary text-sm opacity-40 tracking-wide gap-6"
-          style={{ 
-            color: 'var(--text-secondary)',
-            borderColor: 'var(--border-color)'
-          }}
-        >
-          <div>© 2025 MindeSync.</div>
-          <div className="flex flex-col md:flex-row gap-4 md:gap-10 text-center md:text-left">
-            {['Условия использования', 'Конфиденциальность', 'Cookies'].map((link, index) => (
-              <a 
-                key={index}
-                href="#" 
-                className="text-secondary no-underline transition-all duration-500 opacity-50 hover:opacity-80"
+                Транскрибатор
+              </h1>
+              <p 
+                className="text-base md:text-xl lg:text-2xl xl:text-2xl 2xl:text-3xl opacity-70 max-w-3xl mx-auto leading-relaxed"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                {link}
-              </a>
-            ))}
-          </div>
+                Загружайте аудиофайлы для транскрибации
+              </p>
+            </div>
+
+            {/* Секция транскрибатора */}
+            <div className="bg-transparent border rounded-2xl p-4 md:p-8 lg:p-12 xl:p-16 mb-8 md:mb-16" style={{ borderColor: 'var(--border-color)' }}>
+              <div className="text-center">
+                <div className="mb-8">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 48 48"
+                    strokeWidth="2"
+                    stroke="currentColor"
+                    className="w-16 h-16 mx-auto mb-4 transition-colors duration-300"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 33v4.5A4.5 4.5 0 0 0 10.5 42h27A4.5 4.5 0 0 0 42 37.5V33M33 24l-9 9m0 0-9-9m9 9V6"
+                    />
+                  </svg>
+                  <h3 
+                    className="text-2xl font-normal mb-4"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    Загрузите аудиофайл
+                  </h3>
+                  <p 
+                    className="text-lg opacity-80 mb-8"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    Выберите аудиофайл для транскрибации
+                  </p>
+                </div>
+                
+                <button 
+                  className="inline-block px-12 py-5 text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg hover:scale-105 hover:shadow-lg"
+                  style={{ 
+                    color: 'var(--text-primary)',
+                    borderColor: 'var(--border-color)',
+                    background: 'var(--hover-bg)'
+                  }}
+                >
+                  Выбрать файл
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeSection === 'text-processing' && (
+          <>
+            {/* Заголовочный блок */}
+            <div className="text-center mb-4 md:mb-8 px-4">
+              <h1 
+                className="text-3xl md:text-5xl lg:text-6xl xl:text-6xl 2xl:text-7xl font-light mb-2 md:mb-4 lg:mb-6 tracking-wide"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                Обработка текста
+              </h1>
+              <p 
+                className="text-base md:text-xl lg:text-2xl xl:text-2xl 2xl:text-3xl opacity-70 max-w-3xl mx-auto leading-relaxed"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Улучшайте и анализируйте ваши тексты
+              </p>
+            </div>
+
+            {/* Секция обработки текста */}
+            <div className="bg-transparent border rounded-2xl p-4 md:p-8 lg:p-12 xl:p-16 mb-8 md:mb-16" style={{ borderColor: 'var(--border-color)' }}>
+              <div className="text-center">
+                <div className="mb-8">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 48 48"
+                    strokeWidth="2"
+                    stroke="currentColor"
+                    className="w-16 h-16 mx-auto mb-4 transition-colors duration-300"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <h3 
+                    className="text-2xl font-normal mb-4"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    Загрузите текст для обработки
+                  </h3>
+                  <p 
+                    className="text-lg opacity-80 mb-8"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    Вставьте или загрузите текстовый файл для анализа и улучшения
+                  </p>
+                </div>
+                
+                <div className="space-y-4">
+                  <button 
+                    className="inline-block px-12 py-5 text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg mr-4 hover:scale-105 hover:shadow-lg"
+                    style={{ 
+                      color: 'var(--text-primary)',
+                      borderColor: 'var(--border-color)',
+                      background: 'var(--hover-bg)'
+                    }}
+                  >
+                    Вставить текст
+                  </button>
+                  <button 
+                    className="inline-block px-12 py-5 text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg hover:scale-105 hover:shadow-lg"
+                    style={{ 
+                      color: 'var(--text-primary)',
+                      borderColor: 'var(--border-color)',
+                      background: 'var(--hover-bg)'
+                    }}
+                  >
+                    Загрузить файл
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
         </div>
-      </footer>
+      </main>
     </div>
   );
 };
