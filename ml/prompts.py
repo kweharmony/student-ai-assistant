@@ -471,51 +471,6 @@ DETAILED_NOTES_PROMPT = """Создай расширенный конспект 
 
 Расширенный конспект:"""
 
-# Словарь всех промптов для удобного доступа
-PROMPTS = {
-    "system": SYSTEM_PROMPT,
-    "summarize": SUMMARIZE_PROMPT,
-    "extract_terms": EXTRACT_TERMS_PROMPT,
-    "expand_topic": EXPAND_TOPIC_PROMPT,
-    "generate_questions": GENERATE_QUESTIONS_PROMPT,
-    "detailed_notes": DETAILED_NOTES_PROMPT,
-    "cheat_sheet": None  # placeholder, real value appended below
-}
-
-# Настройки для разных типов обработки
-PROCESSING_CONFIGS = {
-    "summarize": {
-        "max_tokens": 4000,
-        "temperature": 0.3,
-        "top_p": 0.9
-    },
-    "extract_terms": {
-        "max_tokens": 3000,
-        "temperature": 0.2,
-        "top_p": 0.85
-    },
-    "expand_topic": {
-        "max_tokens": 3500,
-        "temperature": 0.5,
-        "top_p": 0.9
-    },
-    "generate_questions": {
-        "max_tokens": 3500,
-        "temperature": 0.4,
-        "top_p": 0.9
-    },
-    "detailed_notes": {
-        "max_tokens": 8150,
-        "temperature": 0.35,
-        "top_p": 0.9
-    },
-    "cheat_sheet": {
-        "max_tokens": 3000,
-        "temperature": 0.3,
-        "top_p": 0.9
-    }
-}
-
 # Промпт для шпаргалки (сжатая выжимка для быстрого повторения)
 CHEAT_SHEET_PROMPT = """Составь сжатую, но максимально полезную шпаргалку по тексту лекции ниже.
 
@@ -570,3 +525,49 @@ CHEAT_SHEET_PROMPT = """Составь сжатую, но максимально
 
 # Вставляем промпт шпаргалки в общий словарь после определения
 PROMPTS["cheat_sheet"] = CHEAT_SHEET_PROMPT
+
+# Словарь всех промптов для удобного доступа
+PROMPTS = {
+    "system": SYSTEM_PROMPT,
+    "summarize": SUMMARIZE_PROMPT,
+    "extract_terms": EXTRACT_TERMS_PROMPT,
+    "expand_topic": EXPAND_TOPIC_PROMPT,
+    "generate_questions": GENERATE_QUESTIONS_PROMPT,
+    "detailed_notes": DETAILED_NOTES_PROMPT,
+    "cheat_sheet": None  # placeholder, real value appended below
+}
+
+# Настройки для разных типов обработки
+PROCESSING_CONFIGS = {
+    "summarize": {
+        "max_tokens": 4000,
+        "temperature": 0.3,
+        "top_p": 0.9
+    },
+    "extract_terms": {
+        "max_tokens": 3000,
+        "temperature": 0.2,
+        "top_p": 0.85
+    },
+    "expand_topic": {
+        "max_tokens": 3500,
+        "temperature": 0.5,
+        "top_p": 0.9
+    },
+    "generate_questions": {
+        "max_tokens": 3500,
+        "temperature": 0.4,
+        "top_p": 0.9
+    },
+    "detailed_notes": {
+        "max_tokens": 8150,
+        "temperature": 0.35,
+        "top_p": 0.9
+    },
+    "cheat_sheet": {
+        "max_tokens": 3000,
+        "temperature": 0.3,
+        "top_p": 0.9
+    }
+}
+
