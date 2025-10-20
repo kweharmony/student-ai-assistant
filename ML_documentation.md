@@ -15,7 +15,10 @@ student-ai-assistant/
 ├── scripts/
 │   ├── test_api.py            # Полные тесты всех функций
 │   ├── quick_test.py          # Быстрый тест с примером
-│   └── interactive_test.py    # Интерактивный тестер
+│   ├── interactive_test.py    # Интерактивный тестер
+│   ├── test_detailed_notes.py # Тест расширенного конспекта
+│   ├── test_cheat_sheet.py    # Тест режима шпаргалки
+│   └── test_large_text.py     # Тест обработки больших текстов (до 18K токенов)
 ├── ML_SETUP_GUIDE.md     # Руководство по установке
 ├── ML_documentation.md    # Этот файл
 │
@@ -67,6 +70,7 @@ class DeepSeekProcessor:
     def expand_topic(topic, context)      # Расширение темы
     def generate_questions(text)          # Вопросы для самопроверки
     def create_detailed_notes(text)       # Расширенный конспект с детальным описанием терминов
+    def create_cheat_sheet(text)          # Создание краткой шпаргалки
     def batch_process(text, modes)        # Пакетная обработка
     def health_check()                    # Проверка API
 ```
@@ -89,6 +93,7 @@ summary = processor.summarize("Текст лекции...")
 - `EXPAND_TOPIC_PROMPT` - Для расширения тем
 - `GENERATE_QUESTIONS_PROMPT` - Для генерации вопросов
 - `DETAILED_NOTES_PROMPT` - Для расширенных конспектов с детальным описанием терминов
+- `CHEAT_SHEET_PROMPT` - Для создания компактных шпаргалок
 
 **Как редактировать промпты**:
 ```python
@@ -127,6 +132,8 @@ from ml import DeepSeekProcessor  # Вместо длинного пути
 - ✅ Извлечение терминов
 - ✅ Расширение тем
 - ✅ Генерацию вопросов
+- ✅ Создание расширенных конспектов
+- ✅ Создание шпаргалок
 - ✅ Пакетную обработку
 - ✅ Производительность
 
@@ -164,6 +171,14 @@ python scripts/quick_test.py
 python scripts/interactive_test.py
 ```
 
+#### `scripts/test_cheat_sheet.py` - 🧾 Тест режима шпаргалки
+**Назначение**: Проверка создания компактной шпаргалки для быстрого повторения
+
+**Запуск**:
+```powershell
+python scripts/test_cheat_sheet.py
+```
+
 ---
 
 ### **4. API модуль (`api/` папка)**
@@ -172,11 +187,19 @@ python scripts/interactive_test.py
 **Назначение**: REST API для интеграции с веб-фронтендом (React)
 
 **Основные эндпоинты**:
-- `GET /api/ml/health` - Проверка работоспособности
-- `POST /api/ml/process` - Обработка текста
-- `POST /api/ml/batch-process` - Пакетная обработка
-- `GET /api/ml/modes` - Список доступных режимов
-- `POST /api/ml/quick-summary` - Быстрый конспект
+- `GET /api/ml/health` - Проверка работоспособности API
+- `POST /api/ml/process` - Обработка текста в одном режиме
+- `POST /api/ml/batch-process` - Пакетная обработка в нескольких режимах
+- `GET /api/ml/modes` - Список доступных режимов обработки с описаниями
+- `POST /api/ml/quick-summary` - Быстрый конспект (упрощенный эндпоинт)
+
+**Доступные режимы в API**:
+- `summarize` - Краткий конспект
+- `extract_terms` - Извлечение терминов
+- `expand_topic` - Расширение темы (требует параметр `topic`)
+- `generate_questions` - Вопросы для самопроверки
+- `detailed_notes` - Расширенный конспект с подробным разбором
+- `cheat_sheet` - Компактная шпаргалка
 
 ---
 
@@ -214,6 +237,24 @@ python scripts/interactive_test.py
 ```
 Результат: Меню для тестирования со своими текстами
 
+#### **Тест режима шпаргалки**:
+```powershell
+python scripts/test_cheat_sheet.py
+```
+Результат: Проверка создания компактной шпаргалки
+
+#### **Тест расширенного конспекта**:
+```powershell
+python scripts/test_detailed_notes.py
+```
+Результат: Проверка детального разбора терминов
+
+#### **Тест больших текстов** (до 18K токенов):
+```powershell
+python scripts/test_large_text.py
+```
+Результат: Проверка производительности на больших транскрипциях
+
 ### **Шаг 3: Использование в коде**
 
 #### **Базовое использование**:
@@ -239,6 +280,10 @@ print("📚 Термины:", terms)
 # Вопросы для самопроверки
 questions = processor.generate_questions(lecture_text)
 print("❓ Вопросы:", questions)
+
+# Создание шпаргалки
+cheat_sheet = processor.create_cheat_sheet(lecture_text)
+print("🧾 Шпаргалка:", cheat_sheet)
 ```
 
 #### **Расширение сложной темы**:
@@ -253,7 +298,7 @@ print("🔍 Объяснение:", explanation)
 #### **Пакетная обработка**:
 ```python
 # Обрабатываем в нескольких режимах сразу
-modes = ['summarize', 'extract_terms', 'generate_questions']
+modes = ['summarize', 'extract_terms', 'generate_questions', 'cheat_sheet']
 results = processor.batch_process(lecture_text, modes)
 
 for mode, result in results.items():
@@ -294,10 +339,21 @@ SUMMARIZE_PROMPT = """
 ```python
 PROCESSING_CONFIGS = {
     "summarize": {
-        "max_tokens": 2048,     # Максимум слов в ответе
+        "max_tokens": 4000,     # Максимум токенов в ответе
         "temperature": 0.3,     # Креативность (0.0-2.0)
         "top_p": 0.9           # Качество (0.0-1.0)
+    },
+    "cheat_sheet": {
+        "max_tokens": 3000,     # Компактный формат
+        "temperature": 0.3,     # Точность важнее креативности
+        "top_p": 0.9
+    },
+    "detailed_notes": {
+        "max_tokens": 8150,     # Большой лимит для детального описания
+        "temperature": 0.35,
+        "top_p": 0.9
     }
+    # ... другие режимы
 }
 ```
 
@@ -312,8 +368,84 @@ PROCESSING_CONFIGS = {
 | `expand_topic` | Подробное объяснение сложной темы | `processor.expand_topic("тема", text)` |
 | `generate_questions` | Вопросы для самопроверки | `processor.generate_questions(text)` |
 | `detailed_notes` | Расширенный конспект с максимально подробным описанием всех терминов (2-3x больше исходного текста) | `processor.create_detailed_notes(text)` |
+| `cheat_sheet` | Компактная шпаргалка для быстрого повторения перед экзаменом | `processor.create_cheat_sheet(text)` |
 
-### **🆕 Новый режим: Расширенный конспект (detailed_notes)**
+### **🆕 Новый режим: Шпаргалка (cheat_sheet)**
+
+**Что это?**  
+Режим создает **сжатую, компактную шпаргалку** по лекции — идеальный формат для быстрого повторения материала перед контрольной или экзаменом.
+
+**Когда использовать:**
+- ✅ Нужно **быстро повторить** материал перед экзаменом
+- ✅ Требуется **компактная выжимка** с ключевыми определениями и формулами
+- ✅ Готовишь **шпаргалку** для самопроверки
+- ✅ Нужен **справочник** по основным правилам и алгоритмам
+- ✅ Хочешь **структурированную памятку** без воды
+
+**Структура результата:**
+```markdown
+# 🧾 Шпаргалка по теме
+
+## 📌 Ключевые определения
+- Термин → краткое определение (1-2 строки)
+
+## 🧠 Основные идеи и правила
+- Правило/тезис → краткое пояснение
+
+## 🔢 Формулы (если были)
+- Название: `формула`
+- Обозначения: a — ..., b — ...
+
+## 🛠️ Процедуры/алгоритмы (шаги)
+1) Шаг → что сделать (1 фраза)
+
+## ⚠️ Типичные ошибки и ловушки
+- Ошибка → как избежать
+
+## 💡 Мнемоники/лайфхаки
+- Короткая мнемоника
+
+## ✅ Быстрая самопроверка
+- Вопрос → краткий ответ
+
+## 📚 Короткий глоссарий
+- Термин — 3–7 слов
+```
+
+**Пример использования:**
+```python
+# Создание шпаргалки
+cheat_sheet = processor.create_cheat_sheet(lecture_text)
+
+# Сохранение в файл
+with open('cheat_sheet.md', 'w', encoding='utf-8') as f:
+    f.write(cheat_sheet)
+```
+
+**Тестирование:**
+```powershell
+# Быстрый тест режима
+python scripts/test_cheat_sheet.py
+```
+
+**Настройки (в `ml/prompts.py`):**
+```python
+"cheat_sheet": {
+    "max_tokens": 3000,  # Компактный формат
+    "temperature": 0.3,   # Точность важнее креативности
+    "top_p": 0.9
+}
+```
+
+**Сравнение режимов:**
+- **summarize**: краткий конспект (~30% текста, 30-40 сек) — для общего понимания
+- **cheat_sheet**: сжатая шпаргалка (списки, формулы, 20-30 сек) — для быстрого повторения
+- **detailed_notes**: глубокое изучение (2-3x больше, 60-90 сек) — для детального разбора
+- **extract_terms**: список терминов + определения (30-40 сек) — справочник по терминологии
+
+---
+
+### **Расширенный конспект (detailed_notes)**
 
 **Что это?**  
 Режим создает максимально подробное описание **всех** ключевых терминов из лекции с детальными объяснениями (3-5 абзацев на каждый термин).
@@ -375,9 +507,10 @@ python scripts/test_detailed_notes.py
 ```
 
 **Сравнение с другими режимами:**
-- **summarize**: краткий обзор (~30% текста, 30-40 сек)
-- **detailed_notes**: глубокое изучение (2-3x больше, 60-90 сек)
-- **extract_terms**: список терминов + краткие определения (30-40 сек)
+- **summarize**: краткий обзор (~30% текста, 30-40 сек) — для общего понимания
+- **cheat_sheet**: сжатая шпаргалка (списки, формулы, 20-30 сек) — для быстрого повторения
+- **detailed_notes**: глубокое изучение (2-3x больше, 60-90 сек) — для детального разбора
+- **extract_terms**: список терминов + краткие определения (30-40 сек) — справочник по терминологии
 
 > **Примечание:** Режим `mindmap` был заменен на `detailed_notes`. Для визуализации структуры используй режим `summarize`.
 
@@ -478,20 +611,49 @@ NEW_MODE_PROMPT = """
 Твои инструкции...
 {text}
 Результат:"""
+
+# Добавь в словарь PROMPTS
+PROMPTS["new_mode"] = NEW_MODE_PROMPT
 ```
 
-2. **Добавь метод в `DeepSeekProcessor`**:
-```python
-def new_mode(self, text: str) -> str:
-    return self.process_text(text, "new_mode")
-```
-
-3. **Обнови конфиг**:
+2. **Добавь конфиг в `prompts.py`**:
 ```python
 PROCESSING_CONFIGS["new_mode"] = {
     "max_tokens": 1500,
-    "temperature": 0.4
+    "temperature": 0.4,
+    "top_p": 0.9
 }
+```
+
+3. **Добавь метод в `DeepSeekProcessor` (файл `ml/deepseek_processor.py`)**:
+```python
+def new_mode(self, text: str) -> str:
+    """Описание нового режима"""
+    return self.process_text(text, "new_mode")
+```
+
+4. **Обнови список режимов в API (файл `api/ml_endpoints.py`)**:
+```python
+# В функциях process_text и batch_process_text обнови valid_modes
+valid_modes = ['summarize', 'extract_terms', 'expand_topic', 
+               'generate_questions', 'detailed_notes', 'cheat_sheet', 'new_mode']
+
+# В функции get_available_modes добавь описание
+"new_mode": {
+    "name": "Название режима",
+    "description": "Описание режима",
+    "requires_topic": False
+}
+```
+
+5. **Создай тест в папке `scripts/`**:
+```python
+# scripts/test_new_mode.py
+from ml.deepseek_processor import DeepSeekProcessor
+
+processor = DeepSeekProcessor()
+result = processor.new_mode("Тестовый текст")
+print(result)
 ```
 
 ---
@@ -507,13 +669,29 @@ PROCESSING_CONFIGS["new_mode"] = {
 ## ✅ **Чек-лист готовности**
 
 - [ ] API ключ добавлен в `.env`
-- [ ] Зависимости установлены
+- [ ] Зависимости установлены (`pip install -r requirements.txt`)
 - [ ] `python scripts/test_api.py` проходит успешно
 - [ ] `python scripts/quick_test.py` работает с твоим текстом
-- [ ] Промпты настроены под твои нужды
+- [ ] `python scripts/test_cheat_sheet.py` создает шпаргалку
+- [ ] `python scripts/test_detailed_notes.py` работает корректно
+- [ ] Промпты настроены под твои нужды (при необходимости)
 - [ ] Интерактивный тестер запускается
+- [ ] API эндпоинты протестированы (если используешь FastAPI)
 - [ ] Документация изучена
 
 ---
 
 **🎯 ML модуль готов к использованию!**
+
+### **Быстрая справка по режимам**:
+
+| Что нужно | Какой режим использовать |
+|-----------|-------------------------|
+| Быстро повторить перед экзаменом | `cheat_sheet` 🧾 |
+| Понять общую суть лекции | `summarize` 📄 |
+| Глубоко разобраться в терминах | `detailed_notes` 📚 |
+| Найти определения | `extract_terms` 📖 |
+| Объяснить сложную тему | `expand_topic` 🔍 |
+| Проверить себя | `generate_questions` ❓ |
+
+**Совет**: Для комплексной подготовки используй `batch_process` с режимами: `['cheat_sheet', 'generate_questions', 'summarize']`
