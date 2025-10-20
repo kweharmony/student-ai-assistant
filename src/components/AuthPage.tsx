@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
+// @ts-ignore
+import { Link } from 'react-router-dom';
 import Header from './Header';
 import Footer from './Footer';
 
 interface AuthPageProps {
   onToggleTheme: () => void;
   isLightTheme: boolean;
-  onNavigateHome: () => void;
 }
 
-const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme, onNavigateHome }) => {
+const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -58,7 +59,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme, onNavi
       minHeight: '120vh'
     }}>
       
-      <Header onToggleTheme={onToggleTheme} isLightTheme={isLightTheme} isAuthPage={true} />
+      <Header onToggleTheme={onToggleTheme} isLightTheme={isLightTheme} />
       
       <main className="flex-1 flex items-center justify-center px-8 md:px-15 py-12 md:py-16 max-w-7xl mx-auto w-full relative z-10 min-h-screen">
         <div className="w-full max-w-md mb-32">

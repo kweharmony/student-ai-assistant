@@ -1,14 +1,25 @@
 import React from 'react';
 import { useFileUpload } from '../hooks/useFileUpload';
+// @ts-ignore
+import { useNavigate } from 'react-router-dom';
 
 const Hero: React.FC = () => {
   const { isUploading, uploadProgress, error, success, uploadFile } = useFileUpload();
+  const navigate = useNavigate();
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       uploadFile(file);
     }
+  };
+
+  const handleUploadClick = () => {
+    navigate('/account');
+    // Прокрутка к началу страницы после навигации
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
   };
 
   return (
@@ -41,30 +52,19 @@ const Hero: React.FC = () => {
       </p>
       
       <div className="flex flex-col sm:flex-row gap-6 items-center justify-center">
-        <form encType="multipart/form-data" className="inline">
-          <label 
-            htmlFor="cta-audio-upload" 
-            className={`inline-block px-8 py-4 sm:px-12 sm:py-5 text-base sm:text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider font-serif cursor-pointer hover:opacity-100 hover:border-primary hover:bg-hover rounded-lg custom-upload-btn
-              isUploading ? 'opacity-50 cursor-not-allowed' : 'opacity-90'
-            }`}
-            style={{ 
-              color: 'var(--text-primary)',
-              borderColor: 'var(--text-primary)',
-              background: 'var(--hover-bg)'
-            }}
-          >
-            {isUploading ? `Загрузка... ${uploadProgress}%` : success ? 'Файл загружен!' : 'Загрузить аудио'}
-            <input 
-              type="file" 
-              id="cta-audio-upload" 
-              name="audio" 
-              accept="audio/*" 
-              className="hidden"
-              onChange={handleFileUpload}
-              disabled={isUploading}
-            />
-          </label>
-        </form>
+        <button
+          onClick={handleUploadClick}
+          className={`inline-block px-8 py-4 sm:px-12 sm:py-5 text-base sm:text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider font-serif cursor-pointer hover:opacity-100 hover:border-primary hover:bg-hover rounded-lg custom-upload-btn
+            isUploading ? 'opacity-50 cursor-not-allowed' : 'opacity-90'
+          `}
+          style={{ 
+            color: 'var(--text-primary)',
+            borderColor: 'var(--text-primary)',
+            background: 'var(--hover-bg)'
+          }}
+        >
+          {isUploading ? `Загрузка... ${uploadProgress}%` : success ? 'Файл загружен!' : 'Загрузить аудио'}
+        </button>
         
         {error && (
           <div className="text-red-400 text-sm mt-2">

@@ -80,3 +80,133 @@ body::before {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }
+
+/* Calendar specific styles */
+.calendar-day {
+  transition: all 0.3s ease;
+}
+
+.calendar-day:hover {
+  transform: scale(1.05);
+}
+
+.calendar-day.selected {
+  background: linear-gradient(135deg, var(--text-secondary), var(--bg-secondary));
+  color: var(--bg-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.calendar-day.today {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.record-card {
+  transition: all 0.3s ease;
+  border: 1px solid var(--border-color);
+}
+
+.record-card:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--border-color);
+}
+
+.profile-avatar {
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+/* Smooth scrolling for records section */
+.records-section {
+  scroll-behavior: smooth;
+}
+
+/* Mobile calendar optimizations */
+@media (max-width: 768px) {
+  .calendar-day {
+    min-height: 32px;
+    min-width: 32px;
+    font-size: 14px;
+  }
+  
+  .calendar-day:hover {
+    transform: scale(1.02);
+  }
+  
+  .record-card {
+    margin-bottom: 1rem;
+  }
+  
+  .record-card:hover {
+    transform: none;
+  }
+}
+
+/* Touch-friendly buttons for mobile */
+@media (max-width: 640px) {
+  .calendar-day {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  .calendar-day:active {
+    transform: scale(0.95);
+  }
+}
+
+/* Desktop optimizations for large screens */
+@media (min-width: 1024px) {
+  .calendar-day {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .calendar-day:hover {
+    transform: scale(1.1);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  }
+  
+  .calendar-day.today {
+    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+  }
+  
+  .calendar-day.selected {
+    box-shadow: 0 8px 25px rgba(153, 181, 234, 0.4);
+  }
+  
+  .record-card {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .record-card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  
+  .profile-avatar {
+    transition: all 0.3s ease;
+  }
+  
+  .profile-avatar:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+  }
+}
+
+/* Ultra-wide screen optimizations */
+@media (min-width: 1536px) {
+  .calendar-day {
+    min-height: 80px;
+    min-width: 80px;
+  }
+  
+  .calendar-day:hover {
+    transform: scale(1.15);
+  }
+  
+  .record-card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+}
