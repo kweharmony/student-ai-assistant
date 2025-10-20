@@ -41,7 +41,7 @@ def get_processor():
 class ProcessRequest(BaseModel):
     """Запрос на обработку текста"""
     text: str = Field(..., min_length=10, max_length=50000, description="Текст лекции для обработки")
-    mode: str = Field(..., description="Режим обработки: summarize, extract_terms, expand_topic, generate_questions, mindmap")
+    mode: str = Field(..., description="Режим обработки: summarize, extract_terms, expand_topic, generate_questions, detailed_notes, cheat_sheet")
     topic: Optional[str] = Field(None, description="Тема для расширения (только для режима expand_topic)")
     context: Optional[str] = Field(None, description="Дополнительный контекст (для режима expand_topic)")
 
@@ -108,13 +108,14 @@ async def process_text(request: ProcessRequest):
     - extract_terms: извлечение терминов
     - expand_topic: расширение темы
     - generate_questions: вопросы для самопроверки
-    - mindmap: карта памяти
+    - detailed_notes: расширенный конспект с подробным разбором терминов
+    - cheat_sheet: сжатая шпаргалка по лекции
     """
     start_time = datetime.now()
     
     try:
         # Валидация режима
-        valid_modes = ['summarize', 'extract_terms', 'expand_topic', 'generate_questions', 'mindmap']
+        valid_modes = ['summarize', 'extract_terms', 'expand_topic', 'generate_questions', 'detailed_notes', 'cheat_sheet']
         if request.mode not in valid_modes:
             raise HTTPException(
                 status_code=400, 
@@ -178,7 +179,7 @@ async def batch_process_text(request: BatchProcessRequest):
     
     try:
         # Валидация режимов
-        valid_modes = ['summarize', 'extract_terms', 'expand_topic', 'generate_questions', 'mindmap']
+        valid_modes = ['summarize', 'extract_terms', 'expand_topic', 'generate_questions', 'detailed_notes', 'cheat_sheet']
         invalid_modes = [mode for mode in request.modes if mode not in valid_modes]
         
         if invalid_modes:
@@ -254,9 +255,14 @@ async def get_available_modes():
                 "description": "Генерация вопросов для закрепления материала",
                 "requires_topic": False
             },
-            "mindmap": {
-                "name": "Карта памяти",
-                "description": "Создание структурной схемы лекции",
+            "detailed_notes": {
+                "name": "Расширенный конспект",
+                "description": "Подробный разбор всех терминов и методов",
+                "requires_topic": False
+            },
+            "cheat_sheet": {
+                "name": "Шпаргалка",
+                "description": "Сжатая выжимка с формулами и ключевыми тезисами",
                 "requires_topic": False
             }
         }

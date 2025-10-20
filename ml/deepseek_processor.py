@@ -129,6 +129,10 @@ class DeepSeekProcessor:
     def create_detailed_notes(self, text: str) -> str:
         """Создание расширенного конспекта с подробным описанием всех терминов"""
         return self.process_text(text, "detailed_notes")
+
+    def create_cheat_sheet(self, text: str) -> str:
+        """Создание краткой шпаргалки по лекции"""
+        return self.process_text(text, "cheat_sheet")
     
     def batch_process(self, text: str, modes: List[str]) -> Dict[str, str]:
         """
