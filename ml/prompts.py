@@ -523,9 +523,6 @@ CHEAT_SHEET_PROMPT = """Составь сжатую, но максимально
 
 Шпаргалка:"""
 
-# Вставляем промпт шпаргалки в общий словарь после определения
-PROMPTS["cheat_sheet"] = CHEAT_SHEET_PROMPT
-
 # Словарь всех промптов для удобного доступа
 PROMPTS = {
     "system": SYSTEM_PROMPT,
@@ -534,7 +531,7 @@ PROMPTS = {
     "expand_topic": EXPAND_TOPIC_PROMPT,
     "generate_questions": GENERATE_QUESTIONS_PROMPT,
     "detailed_notes": DETAILED_NOTES_PROMPT,
-    "cheat_sheet": None  # placeholder, real value appended below
+    "cheat_sheet": CHEAT_SHEET_PROMPT
 }
 
 # Настройки для разных типов обработки
