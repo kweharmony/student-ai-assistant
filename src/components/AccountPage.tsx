@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import RichTextEditor from './RichTextEditor';
+import { useExport } from '../hooks/useExport';
 
 interface AccountPageProps {
   onToggleTheme: () => void;
@@ -37,6 +39,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<'profile' | 'calendar' | 'transcriber' | 'text-processing'>('profile');
+  const [showTextEditor, setShowTextEditor] = useState(false);
+  const [editorContent, setEditorContent] = useState('');
+  const [saveFormat, setSaveFormat] = useState('txt');
+  const [editorInstance, setEditorInstance] = useState<any>(null);
+  
+  // Хук для экспорта
+  const { exportToTxt, exportToMarkdown, exportToDocx, exportToPdf } = useExport(editorInstance);
 
   // Моковые данные для демонстрации
   const mockRecords: Record[] = [
@@ -464,13 +473,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             {/* Заголовочный блок */}
             <div className="text-center mb-6 md:mb-10 lg:mb-12 px-4">
               <h1 
-                className="text-3xl md:text-5xl lg:text-6xl xl:text-6xl 2xl:text-7xl font-light mb-3 md:mb-5 lg:mb-7 tracking-wide"
+                className="text-2xl md:text-3xl lg:text-4xl xl:text-4xl font-light mb-2 md:mb-3 lg:mb-4 tracking-wide"
                 style={{ color: 'var(--text-primary)' }}
               >
                 Профиль
               </h1>
               <p 
-                className="text-base md:text-xl lg:text-2xl xl:text-2xl 2xl:text-3xl opacity-70 max-w-3xl mx-auto leading-relaxed"
+                className="text-sm md:text-base lg:text-lg xl:text-lg opacity-70 max-w-3xl mx-auto leading-relaxed"
                 style={{ color: 'var(--text-secondary)' }}
               >
                 Управляйте своим профилем и настройками
@@ -486,13 +495,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full"></div>
                <span className="relative z-10">ИИ</span>
              </div>
-             <h3 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-semibold mb-4 lg:mb-6" style={{ color: 'var(--text-primary)' }}>
+             <h3 className="text-xl md:text-2xl lg:text-3xl xl:text-3xl font-semibold mb-3 lg:mb-4" style={{ color: 'var(--text-primary)' }}>
                Иван Иванов
              </h3>
-             <p className="text-lg md:text-xl lg:text-2xl xl:text-2xl mb-3 lg:mb-5" style={{ color: 'var(--text-secondary)' }}>
+             <p className="text-base md:text-lg lg:text-xl xl:text-xl mb-2 lg:mb-3" style={{ color: 'var(--text-secondary)' }}>
                ivan.ivanov@example.com
              </p>
-             <p className="text-sm md:text-base lg:text-lg xl:text-lg opacity-70" style={{ color: 'var(--text-secondary)' }}>
+             <p className="text-xs md:text-sm lg:text-base xl:text-base opacity-70" style={{ color: 'var(--text-secondary)' }}>
                Зарегистрирован: 15 января 2025
              </p>
            </div>
@@ -505,7 +514,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                <div className="flex items-center justify-between mb-4">
                  <div className="flex items-center gap-3">
                    <div className="w-3 h-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
-                   <h4 className="text-lg md:text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Премиум подписка</h4>
+                   <h4 className="text-base md:text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Премиум подписка</h4>
                  </div>
                  <div className="px-3 py-1 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-medium rounded-full">
                    Активна
@@ -513,12 +522,12 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                </div>
                <div className="space-y-3">
                  <div className="flex justify-between items-center">
-                   <span className="text-sm md:text-base opacity-70" style={{ color: 'var(--text-secondary)' }}>Действует до:</span>
-                   <span className="text-sm md:text-base font-medium" style={{ color: 'var(--text-primary)' }}>15 марта 2025</span>
+                   <span className="text-xs md:text-sm opacity-70" style={{ color: 'var(--text-secondary)' }}>Действует до:</span>
+                   <span className="text-xs md:text-sm font-medium" style={{ color: 'var(--text-primary)' }}>15 марта 2025</span>
                  </div>
                  <div className="flex justify-between items-center">
-                   <span className="text-sm md:text-base opacity-70" style={{ color: 'var(--text-secondary)' }}>Осталось:</span>
-                   <span className="text-sm md:text-base font-medium" style={{ color: 'var(--text-primary)' }}>47 дней</span>
+                   <span className="text-xs md:text-sm opacity-70" style={{ color: 'var(--text-secondary)' }}>Осталось:</span>
+                   <span className="text-xs md:text-sm font-medium" style={{ color: 'var(--text-primary)' }}>47 дней</span>
                  </div>
                </div>
              </div>
@@ -527,7 +536,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
              {/* Кнопки действий */}
              <div className="flex flex-col sm:flex-row gap-6 justify-center">
                <button 
-                 className="px-8 md:px-10 lg:px-12 xl:px-14 py-4 md:py-5 lg:py-6 xl:py-7 bg-transparent border rounded-lg transition-all duration-300 hover:bg-hover text-base md:text-lg lg:text-xl xl:text-xl hover:scale-105 hover:shadow-lg"
+                 className="px-6 md:px-8 lg:px-10 xl:px-10 py-3 md:py-4 lg:py-5 xl:py-5 bg-transparent border rounded-lg transition-all duration-300 hover:bg-hover text-sm md:text-base lg:text-lg xl:text-lg hover:scale-105 hover:shadow-lg"
                  style={{ 
                    color: 'var(--text-secondary)',
                    borderColor: 'var(--border-color)',
@@ -541,7 +550,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                    navigate('/');
                    window.scrollTo(0, 0);
                  }}
-                 className="px-8 md:px-10 lg:px-12 xl:px-14 py-4 md:py-5 lg:py-6 xl:py-7 bg-gradient-to-r from-red-500 to-red-600 text-white border-0 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg text-base md:text-lg lg:text-xl xl:text-xl"
+                 className="px-6 md:px-8 lg:px-10 xl:px-10 py-3 md:py-4 lg:py-5 xl:py-5 bg-gradient-to-r from-red-500 to-red-600 text-white border-0 rounded-lg transition-all duration-300 hover:scale-105 hover:shadow-lg text-sm md:text-base lg:text-lg xl:text-lg"
                >
                  Выйти из профиля
                </button>
@@ -556,13 +565,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             {/* Заголовочный блок */}
             <div className="text-center mb-6 md:mb-10 lg:mb-12 px-4">
               <h1 
-                className="text-3xl md:text-5xl lg:text-6xl xl:text-6xl 2xl:text-7xl font-light mb-3 md:mb-5 lg:mb-7 tracking-wide"
+                className="text-2xl md:text-3xl lg:text-4xl xl:text-4xl font-light mb-2 md:mb-3 lg:mb-4 tracking-wide"
                 style={{ color: 'var(--text-primary)' }}
               >
                 Календарь
               </h1>
               <p 
-                className="text-base md:text-xl lg:text-2xl xl:text-2xl 2xl:text-3xl opacity-70 max-w-3xl mx-auto leading-relaxed"
+                className="text-sm md:text-base lg:text-lg xl:text-lg opacity-70 max-w-3xl mx-auto leading-relaxed"
                 style={{ color: 'var(--text-secondary)' }}
               >
                 Управляйте своими записями и расписанием
@@ -572,7 +581,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         {/* Календарная секция */}
         <div className="bg-transparent border rounded-2xl p-6 md:p-10 lg:p-14 xl:p-18 mb-10 md:mb-20" style={{ borderColor: 'var(--border-color)' }}>
           <div className="flex flex-col sm:flex-row items-center justify-between mb-8 md:mb-10 lg:mb-14 gap-4">
-            <h2 className="text-2xl md:text-3xl lg:text-4xl xl:text-4xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <h2 className="text-xl md:text-2xl lg:text-3xl xl:text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
               Календарь
             </h2>
             <div className="flex items-center justify-center w-80 md:w-96 lg:w-112 xl:w-112">
@@ -587,7 +596,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
               >
                 <span className="text-lg md:text-xl lg:text-2xl xl:text-2xl group-hover:-translate-x-1 transition-transform duration-300">←</span>
               </button>
-              <span className="text-lg md:text-xl lg:text-2xl xl:text-2xl font-medium flex-1 text-center mx-4" style={{ color: 'var(--text-primary)' }}>
+              <span className="text-base md:text-lg lg:text-xl xl:text-xl font-medium flex-1 text-center mx-4" style={{ color: 'var(--text-primary)' }}>
                 {monthNames[currentMonthIndex]} {currentYear}
               </span>
               <button 
@@ -623,7 +632,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         {showButtons && selectedDate && (
           <div id="records-section" className="bg-transparent border rounded-2xl p-4 md:p-8 lg:p-12 xl:p-16" style={{ borderColor: 'var(--border-color)' }}>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 md:mb-8 lg:mb-12 gap-4">
-              <h2 className="text-xl md:text-3xl lg:text-4xl xl:text-4xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+              <h2 className="text-lg md:text-2xl lg:text-3xl xl:text-3xl font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {activeView === 'records' ? 'Записи' : 'Расписание'} за {selectedDate.toLocaleDateString('ru-RU', { 
                   day: 'numeric', 
                   month: 'long', 
@@ -686,7 +695,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                       className="bg-transparent border rounded-xl p-4 md:p-6 lg:p-8 xl:p-10 record-card"
                       style={{ borderColor: 'var(--border-color)' }}
                     >
-                      <h3 className="text-lg md:text-xl lg:text-2xl xl:text-2xl font-semibold mb-3 md:mb-4 lg:mb-6" style={{ color: 'var(--text-primary)' }}>
+                      <h3 className="text-base md:text-lg lg:text-xl xl:text-xl font-semibold mb-2 md:mb-3 lg:mb-4" style={{ color: 'var(--text-primary)' }}>
                         {record.title}
                       </h3>
                       <div className="space-y-4">
@@ -727,10 +736,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                         {/* Отображение выбранного текста */}
                         {expandedTexts[record.id] && (
                           <div className="bg-transparent border rounded-lg p-4 md:p-6 lg:p-8 xl:p-8" style={{ borderColor: 'var(--border-color)' }}>
-                            <h4 className="text-base md:text-lg lg:text-xl xl:text-xl font-medium mb-3 md:mb-4 lg:mb-6" style={{ color: 'var(--text-secondary)' }}>
+                            <h4 className="text-sm md:text-base lg:text-lg xl:text-lg font-medium mb-2 md:mb-3 lg:mb-4" style={{ color: 'var(--text-secondary)' }}>
                               {expandedTexts[record.id] === 'original' ? 'Оригинальный текст' : 'Обработанный текст'}
                             </h4>
-                            <p className="text-sm md:text-base lg:text-lg xl:text-lg leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                            <p className="text-xs md:text-sm lg:text-base xl:text-base leading-relaxed" style={{ color: 'var(--text-primary)' }}>
                               {expandedTexts[record.id] === 'original' ? record.originalText : record.processedText}
                             </p>
                           </div>
@@ -755,7 +764,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                       style={{ borderColor: 'var(--border-color)' }}
                     >
                       <div className="flex flex-col md:flex-row md:items-center justify-between mb-3 md:mb-4 lg:mb-6 gap-2">
-                        <h3 className="text-lg md:text-xl lg:text-2xl xl:text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        <h3 className="text-base md:text-lg lg:text-xl xl:text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
                           {item.subject}
                         </h3>
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -769,26 +778,26 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 lg:gap-8 xl:gap-8">
                         <div>
-                          <h4 className="text-base md:text-lg lg:text-xl xl:text-xl font-medium mb-2 md:mb-3 lg:mb-4" style={{ color: 'var(--text-secondary)' }}>
+                          <h4 className="text-sm md:text-base lg:text-lg xl:text-lg font-medium mb-1 md:mb-2 lg:mb-3" style={{ color: 'var(--text-secondary)' }}>
                             Время
                           </h4>
-                          <p className="text-sm md:text-base lg:text-lg xl:text-lg" style={{ color: 'var(--text-primary)' }}>
+                          <p className="text-xs md:text-sm lg:text-base xl:text-base" style={{ color: 'var(--text-primary)' }}>
                             {item.time}
                           </p>
                         </div>
                         <div>
-                          <h4 className="text-base md:text-lg lg:text-xl xl:text-xl font-medium mb-2 md:mb-3 lg:mb-4" style={{ color: 'var(--text-secondary)' }}>
+                          <h4 className="text-sm md:text-base lg:text-lg xl:text-lg font-medium mb-1 md:mb-2 lg:mb-3" style={{ color: 'var(--text-secondary)' }}>
                             Аудитория
                           </h4>
-                          <p className="text-sm md:text-base lg:text-lg xl:text-lg" style={{ color: 'var(--text-primary)' }}>
+                          <p className="text-xs md:text-sm lg:text-base xl:text-base" style={{ color: 'var(--text-primary)' }}>
                             {item.room}
                           </p>
                         </div>
                         <div>
-                          <h4 className="text-base md:text-lg lg:text-xl xl:text-xl font-medium mb-2 md:mb-3 lg:mb-4" style={{ color: 'var(--text-secondary)' }}>
+                          <h4 className="text-sm md:text-base lg:text-lg xl:text-lg font-medium mb-1 md:mb-2 lg:mb-3" style={{ color: 'var(--text-secondary)' }}>
                             Преподаватель
                           </h4>
-                          <p className="text-sm md:text-base lg:text-lg xl:text-lg" style={{ color: 'var(--text-primary)' }}>
+                          <p className="text-xs md:text-sm lg:text-base xl:text-base" style={{ color: 'var(--text-primary)' }}>
                             {item.teacher}
                           </p>
                         </div>
@@ -815,13 +824,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             {/* Заголовочный блок */}
             <div className="text-center mb-4 md:mb-8 px-4">
               <h1 
-                className="text-3xl md:text-5xl lg:text-6xl xl:text-6xl 2xl:text-7xl font-light mb-2 md:mb-4 lg:mb-6 tracking-wide"
+                className="text-2xl md:text-3xl lg:text-4xl xl:text-4xl font-light mb-2 md:mb-3 lg:mb-4 tracking-wide"
                 style={{ color: 'var(--text-primary)' }}
               >
                 Транскрибатор
               </h1>
               <p 
-                className="text-base md:text-xl lg:text-2xl xl:text-2xl 2xl:text-3xl opacity-70 max-w-3xl mx-auto leading-relaxed"
+                className="text-sm md:text-base lg:text-lg xl:text-lg opacity-70 max-w-3xl mx-auto leading-relaxed"
                 style={{ color: 'var(--text-secondary)' }}
               >
                 Загружайте аудиофайлы для транскрибации
@@ -848,29 +857,53 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                     />
                   </svg>
                   <h3 
-                    className="text-2xl font-normal mb-4"
+                    className="text-xl font-normal mb-3"
                     style={{ color: 'var(--text-primary)' }}
                   >
                     Загрузите аудиофайл
                   </h3>
                   <p 
-                    className="text-lg opacity-80 mb-8"
+                    className="text-base opacity-80 mb-6"
                     style={{ color: 'var(--text-secondary)' }}
                   >
-                    Выберите аудиофайл для транскрибации
+                    Выберите аудиофайл до 90 минутдля транскрибации
                   </p>
                 </div>
                 
-                <button 
-                  className="inline-block px-12 py-5 text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg hover:scale-105 hover:shadow-lg"
+                <label
+                  className="inline-block px-8 py-4 text-base font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg hover:scale-105 hover:shadow-lg"
                   style={{ 
                     color: 'var(--text-primary)',
                     borderColor: 'var(--border-color)',
                     background: 'var(--hover-bg)'
                   }}
                 >
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+
+                      // Проверка ограничения размера (например, 90 минут по ~1МБ/мин = 90МБ лимит, ориентировочно)
+                      const MAX_MINUTES = 90;
+                      const MAX_SIZE_MB = 100; // например, 100МБ с запасом
+                      const MB = 1024 * 1024;
+
+                      if (file.size > MAX_SIZE_MB * MB) {
+                        alert(
+                          `Файл слишком большой. Загрузите аудиофайл длительностью до ${MAX_MINUTES} минут (до ${MAX_SIZE_MB} МБ).`
+                        );
+                        return;
+                      }
+
+                      // Здесь будет логика загрузки файла (можно заменить/добавить)
+                      alert(`Файл "${file.name}" выбран для загрузки. (Загрузка не реализована)`);
+                    }}
+                  />
                   Выбрать файл
-                </button>
+                </label>
               </div>
             </div>
           </>
@@ -881,13 +914,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             {/* Заголовочный блок */}
             <div className="text-center mb-4 md:mb-8 px-4">
               <h1 
-                className="text-3xl md:text-5xl lg:text-6xl xl:text-6xl 2xl:text-7xl font-light mb-2 md:mb-4 lg:mb-6 tracking-wide"
+                className="text-2xl md:text-3xl lg:text-4xl xl:text-4xl font-light mb-2 md:mb-3 lg:mb-4 tracking-wide"
                 style={{ color: 'var(--text-primary)' }}
               >
                 Обработка текста
               </h1>
               <p 
-                className="text-base md:text-xl lg:text-2xl xl:text-2xl 2xl:text-3xl opacity-70 max-w-3xl mx-auto leading-relaxed"
+                className="text-sm md:text-base lg:text-lg xl:text-lg opacity-70 max-w-3xl mx-auto leading-relaxed"
                 style={{ color: 'var(--text-secondary)' }}
               >
                 Улучшайте и анализируйте ваши тексты
@@ -901,8 +934,8 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
-                    viewBox="0 0 48 48"
-                    strokeWidth="2"
+                    viewBox="0 0 22 22"
+                    strokeWidth="1"
                     stroke="currentColor"
                     className="w-16 h-16 mx-auto mb-4 transition-colors duration-300"
                     style={{ color: 'var(--text-primary)' }}
@@ -914,43 +947,224 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                     />
                   </svg>
                   <h3 
-                    className="text-2xl font-normal mb-4"
+                    className="text-xl font-normal mb-3"
                     style={{ color: 'var(--text-primary)' }}
                   >
-                    Загрузите текст для обработки
+                    Загрузите файл для обработки
                   </h3>
                   <p 
-                    className="text-lg opacity-80 mb-8"
+                    className="text-base opacity-80 mb-6"
                     style={{ color: 'var(--text-secondary)' }}
                   >
-                    Вставьте или загрузите текстовый файл для анализа и улучшения
+                    Вставьте транскрибированную лекцию, загрузите текстовый для анализа и улучшения
                   </p>
                 </div>
                 
                 <div className="space-y-4">
-                  <button 
-                    className="inline-block px-12 py-5 text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg mr-4 hover:scale-105 hover:shadow-lg"
+                  <label
+                    className="inline-block px-8 py-4 text-base font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg hover:scale-105 hover:shadow-lg"
                     style={{ 
                       color: 'var(--text-primary)',
                       borderColor: 'var(--border-color)',
                       background: 'var(--hover-bg)'
                     }}
                   >
-                    Вставить текст
-                  </button>
-                  <button 
-                    className="inline-block px-12 py-5 text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg hover:scale-105 hover:shadow-lg"
+                    <input
+                      type="file"
+                      accept=".txt,.md,.doc,.docx"
+                      style={{ display: 'none' }}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        // Ограничение размера файла
+                        const MAX_SIZE_MB = 10;
+                        const MB = 1024 * 1024;
+                        if (file.size > MAX_SIZE_MB * MB) {
+                          alert(`Файл слишком большой. Загрузите файл размером до ${MAX_SIZE_MB} МБ.`);
+                          return;
+                        }
+                        
+                        try {
+                          // Читаем содержимое файла
+                          const text = await file.text();
+                          
+                          // Конвертируем текст в HTML с сохранением переносов строк
+                          const htmlContent = text
+                            .split('\n')
+                            .map(line => line.trim() === '' ? '<br>' : `<p>${line}</p>`)
+                            .join('');
+                          
+                          // Показываем редактор с HTML содержимым
+                          setShowTextEditor(true);
+                          setEditorContent(htmlContent);
+                          
+                          // Сбрасываем input для возможности повторной загрузки того же файла
+                          e.target.value = '';
+                        } catch (error) {
+                          console.error('Ошибка при чтении файла:', error);
+                          alert('Ошибка при чтении файла. Убедитесь, что файл является текстовым.');
+                        }
+                      }}
+                    />
+                    Выбрать лекцию
+                  </label>
+                  <label
+                    className="inline-block px-8 py-4 text-base font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg hover:scale-105 hover:shadow-lg ml-4"
                     style={{ 
                       color: 'var(--text-primary)',
                       borderColor: 'var(--border-color)',
                       background: 'var(--hover-bg)'
                     }}
                   >
-                    Загрузить файл
-                  </button>
+                    <input
+                      type="file"
+                      accept=".txt,.pdf,.doc,.docx"
+                      style={{ display: 'none' }}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        // Ограничение размера файла, например 1 МБ
+                        const MAX_SIZE_MB = 1;
+                        const MB = 1024 * 1024;
+                        if (file.size > MAX_SIZE_MB * MB) {
+                          alert(`Файл слишком большой. Загрузите файл размером до ${MAX_SIZE_MB} МБ.`);
+                          return;
+                        }
+                        
+                        try {
+                          // Читаем содержимое файла
+                          const text = await file.text();
+                          
+                          // Конвертируем текст в HTML с сохранением переносов строк
+                          const htmlContent = text
+                            .split('\n')
+                            .map(line => line.trim() === '' ? '<br>' : `<p>${line}</p>`)
+                            .join('');
+                          
+                          // Показываем редактор с HTML содержимым
+                          setShowTextEditor(true);
+                          setEditorContent(htmlContent);
+                          
+                          // Сбрасываем input для возможности повторной загрузки того же файла
+                          e.target.value = '';
+                        } catch (error) {
+                          console.error('Ошибка при чтении файла:', error);
+                          alert('Ошибка при чтении файла. Убедитесь, что файл является текстовым.');
+                        }
+                      }}
+                    />
+                    Загрузить текстовый файл
+                  </label>
                 </div>
               </div>
             </div>
+
+            {/* Редактор текста */}
+            {showTextEditor && (
+              <div className="mt-8">
+                <div className="mb-4">
+                  <h3 
+                    className="text-lg font-semibold mb-2"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    Редактор текста
+                  </h3>
+                  <p 
+                    className="text-sm opacity-70"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    Используйте панель инструментов для форматирования текста
+                  </p>
+                </div>
+                
+                <RichTextEditor 
+                  initialContent={editorContent}
+                  onContentChange={(content) => {
+                    setEditorContent(content);
+                    console.log('Content updated:', content);
+                  }}
+                  onEditorReady={(editor) => {
+                    setEditorInstance(editor);
+                  }}
+                />
+                
+                {/* Панель экспорта справа снизу */}
+                <div className="mt-6 flex flex-col items-end gap-4">
+                  {/* Выбор формата экспорта */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                    <label className="text-sm font-medium whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                      Формат экспорта:
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: 'txt', label: 'TXT' },
+                        { value: 'md', label: 'Markdown' },
+                        { value: 'docx', label: 'DOCX' },
+                        { value: 'pdf', label: 'PDF' }
+                      ].map((format) => (
+                        <button
+                          key={format.value}
+                          onClick={() => setSaveFormat(format.value)}
+                          className={`px-3 py-2 rounded-lg border transition-all duration-200 hover:scale-105 text-sm ${
+                            saveFormat === format.value
+                              ? 'bg-blue-500 text-white border-blue-500'
+                              : 'bg-transparent border-gray-300 hover:bg-gray-100'
+                          }`}
+                          style={{
+                            color: saveFormat === format.value ? 'white' : 'var(--text-secondary)',
+                            borderColor: saveFormat === format.value ? '#3b82f6' : 'var(--border-color)',
+                            background: saveFormat === format.value ? '#3b82f6' : 'var(--hover-bg)'
+                          }}
+                        >
+                          {format.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Кнопки действий */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={async () => {
+                        const filename = `document_${new Date().toISOString().split('T')[0]}`;
+                        
+                        try {
+                          switch (saveFormat) {
+                            case 'txt':
+                              exportToTxt({ filename: `${filename}.txt` });
+                              break;
+                            case 'md':
+                              exportToMarkdown({ filename: `${filename}.md` });
+                              break;
+                            case 'docx':
+                              await exportToDocx({ filename: `${filename}.docx` });
+                              break;
+                            case 'pdf':
+                              await exportToPdf({ filename: `${filename}.pdf` });
+                              break;
+                            default:
+                              exportToTxt({ filename: `${filename}.txt` });
+                          }
+                        } catch (error) {
+                          console.error('Ошибка при экспорте:', error);
+                          alert('Ошибка при сохранении файла');
+                        }
+                      }}
+                      className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 hover:scale-105"
+                    >
+                      Скачать файл
+                    </button>
+                    <button
+                      onClick={() => setShowTextEditor(false)}
+                      className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors duration-200 hover:scale-105"
+                    >
+                      Закрыть редактор
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
         </div>
