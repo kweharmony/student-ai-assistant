@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import RichTextEditor from './RichTextEditor';
 import { useExport } from '../hooks/useExport';
+import { useMLProcessor } from '../hooks/useMLProcessor';
+import { MLMode, MLModeInfo } from '../types/ml';
+import { marked } from 'marked';
 
 interface AccountPageProps {
   onToggleTheme: () => void;
@@ -46,6 +49,63 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   
   // Хук для экспорта
   const { exportToTxt, exportToMarkdown, exportToDocx, exportToPdf } = useExport(editorInstance);
+  
+  // Хук для ML обработки
+  const { 
+    isProcessing, 
+    result: mlResult, 
+    error: mlError, 
+    processText, 
+    checkHealth,
+    reset: resetML 
+  } = useMLProcessor();
+  
+  // Состояние ML обработки
+  const [selectedMLMode, setSelectedMLMode] = useState<MLMode>('summarize');
+  const [topicInput, setTopicInput] = useState<string>('');
+  const [showMLResult, setShowMLResult] = useState<boolean>(false);
+  const [mlApiHealthy, setMlApiHealthy] = useState<boolean | null>(null);
+  
+  // Описания режимов ML для UI
+  const mlModes: MLModeInfo[] = [
+    {
+      id: 'summarize',
+      name: 'Краткий конспект',
+      description: 'Создаёт структурированный конспект (30% от исходного объёма)',
+      icon: '📝'
+    },
+    {
+      id: 'extract_terms',
+      name: 'Ключевые термины',
+      description: 'Извлекает термины с определениями',
+      icon: '📚'
+    },
+    {
+      id: 'expand_topic',
+      name: 'Расширение темы',
+      description: 'Подробное объяснение выбранной темы',
+      icon: '🔍',
+      requiresTopic: true
+    },
+    {
+      id: 'generate_questions',
+      name: 'Вопросы для самопроверки',
+      description: 'Генерирует 8-12 вопросов по материалу',
+      icon: '❓'
+    },
+    {
+      id: 'detailed_notes',
+      name: 'Расширенный конспект',
+      description: 'Максимально подробное описание всех терминов',
+      icon: '📖'
+    },
+    {
+      id: 'cheat_sheet',
+      name: 'Шпаргалка',
+      description: 'Сжатая выжимка с формулами и ключевыми тезисами',
+      icon: '📄'
+    }
+  ];
 
   // Моковые данные для демонстрации
   const mockRecords: Record[] = [
@@ -138,6 +198,18 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Проверка здоровья ML API при монтировании
+  useEffect(() => {
+    const checkMLHealth = async () => {
+      const healthy = await checkHealth();
+      setMlApiHealthy(healthy);
+      if (!healthy) {
+        console.warn('⚠️ ML API недоступен. Убедитесь, что бэкенд запущен на http://localhost:8000');
+      }
+    };
+    checkMLHealth();
+  }, [checkHealth]);
+
   const today = new Date();
   const currentYear = currentMonth.getFullYear();
   const currentMonthIndex = currentMonth.getMonth();
@@ -217,6 +289,88 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       ...prev,
       [recordId]: prev[recordId] === textType ? null : textType
     }));
+  };
+
+  // Функция обработки текста через ML API
+  const handleMLProcess = async () => {
+    // Проверяем наличие редактора
+    if (!editorInstance) {
+      alert('❌ Редактор не инициализирован. Пожалуйста, перезагрузите страницу.');
+      return;
+    }
+
+    // Получаем текст из редактора
+    const text = editorInstance.getText();
+
+    if (!text.trim()) {
+      alert('⚠️ Введите текст для обработки в редактор');
+      return;
+    }
+
+    // Проверка темы для expand_topic
+    if (selectedMLMode === 'expand_topic' && !topicInput.trim()) {
+      alert('⚠️ Для режима "Расширение темы" нужно указать тему');
+      return;
+    }
+
+    // Проверка здоровья API
+    if (mlApiHealthy === false) {
+      const confirmProcess = window.confirm(
+        '⚠️ ML API недоступен. Убедитесь, что бэкенд запущен на http://localhost:8000\n\n' +
+        'Запустите бэкенд командой:\nuvicorn api.app:app --reload\n\n' +
+        'Продолжить попытку обработки?'
+      );
+      if (!confirmProcess) {
+        return;
+      }
+    }
+
+    console.log('🚀 Начало обработки текста:', {
+      mode: selectedMLMode,
+      textLength: text.length,
+      topic: selectedMLMode === 'expand_topic' ? topicInput : undefined
+    });
+
+    try {
+      // Вызов ML API
+      const processedText = await processText(
+        text,
+        selectedMLMode,
+        selectedMLMode === 'expand_topic' ? topicInput : undefined
+      );
+
+      if (processedText) {
+        setShowMLResult(true);
+        console.log('✅ Обработка успешна, результат получен');
+      }
+    } catch (error) {
+      console.error('❌ Ошибка обработки:', error);
+      alert(`❌ Ошибка обработки текста: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`);
+    }
+  };
+
+  // Конвертация Markdown в HTML с сохранением форматирования
+  const convertMarkdownToHTML = (markdown: string): string => {
+    if (!markdown) return '';
+    
+    // Настройка marked для корректного отображения
+    marked.setOptions({
+      breaks: true, // Преобразовать переносы строк в <br>
+      gfm: true, // GitHub Flavored Markdown
+    });
+    
+    return marked(markdown) as string;
+  };
+
+  // Вставка результата ML в редактор
+  const insertMLResultToEditor = () => {
+    if (editorInstance && mlResult) {
+      // Конвертируем Markdown в HTML перед вставкой
+      const htmlContent = convertMarkdownToHTML(mlResult);
+      editorInstance.commands.setContent(htmlContent);
+      setShowMLResult(false);
+      alert('✅ Результат вставлен в редактор');
+    }
   };
 
   const renderCalendar = () => {
@@ -917,17 +1071,83 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 className="text-2xl md:text-3xl lg:text-4xl xl:text-4xl font-light mb-2 md:mb-3 lg:mb-4 tracking-wide"
                 style={{ color: 'var(--text-primary)' }}
               >
-                Обработка текста
+                Обработка текста с помощью ИИ
               </h1>
               <p 
                 className="text-sm md:text-base lg:text-lg xl:text-lg opacity-70 max-w-3xl mx-auto leading-relaxed"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Улучшайте и анализируйте ваши тексты
+                Используйте DeepSeek AI для создания конспектов, терминов, вопросов и многого другого
               </p>
+              
+              {/* Индикатор статуса ML API */}
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${mlApiHealthy === true ? 'bg-green-500' : mlApiHealthy === false ? 'bg-red-500' : 'bg-yellow-500'}`}></div>
+                <span className="text-xs opacity-70" style={{ color: 'var(--text-secondary)' }}>
+                  {mlApiHealthy === true ? 'ML API подключен' : mlApiHealthy === false ? 'ML API недоступен (запустите бэкенд)' : 'Проверка ML API...'}
+                </span>
+              </div>
             </div>
 
-            {/* Секция обработки текста */}
+            {/* Выбор режима ML обработки */}
+            <div className="mb-8">
+              <label className="block text-sm font-medium mb-4" style={{ color: 'var(--text-primary)' }}>
+                Выберите режим обработки:
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {mlModes.map((mode) => (
+                  <button
+                    key={mode.id}
+                    onClick={() => setSelectedMLMode(mode.id)}
+                    className={`p-4 rounded-lg border-2 text-left transition-all duration-200 hover:scale-105 ${
+                      selectedMLMode === mode.id
+                        ? 'border-blue-500 shadow-lg'
+                        : 'border-gray-300 hover:border-blue-300'
+                    }`}
+                    style={{
+                      borderColor: selectedMLMode === mode.id ? '#3b82f6' : 'var(--border-color)',
+                      background: selectedMLMode === mode.id ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)'
+                    }}
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-2xl">{mode.icon}</span>
+                      <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {mode.name}
+                      </h3>
+                    </div>
+                    <p className="text-sm opacity-80" style={{ color: 'var(--text-secondary)' }}>
+                      {mode.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Поле для темы (только для expand_topic) */}
+            {selectedMLMode === 'expand_topic' && (
+              <div className="mb-8">
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+                  Тема для расширения: <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={topicInput}
+                  onChange={(e) => setTopicInput(e.target.value)}
+                  placeholder="Например: нейронные сети, квантовая физика, алгоритмы сортировки"
+                  className="w-full px-4 py-3 border rounded-lg transition-all duration-200"
+                  style={{
+                    borderColor: 'var(--border-color)',
+                    background: 'var(--hover-bg)',
+                    color: 'var(--text-primary)'
+                  }}
+                />
+                <p className="mt-2 text-xs opacity-70" style={{ color: 'var(--text-secondary)' }}>
+                  💡 Укажите конкретную тему из вашего текста, которую хотите подробно изучить
+                </p>
+              </div>
+            )}
+
+            {/* Секция загрузки файлов */}
             <div className="bg-transparent border rounded-2xl p-4 md:p-8 lg:p-12 xl:p-16 mb-8 md:mb-16" style={{ borderColor: 'var(--border-color)' }}>
               <div className="text-center">
                 <div className="mb-8">
@@ -950,13 +1170,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                     className="text-xl font-normal mb-3"
                     style={{ color: 'var(--text-primary)' }}
                   >
-                    Загрузите файл для обработки
+                    Загрузите файл или введите текст
                   </h3>
                   <p 
                     className="text-base opacity-80 mb-6"
                     style={{ color: 'var(--text-secondary)' }}
                   >
-                    Вставьте транскрибированную лекцию, загрузите текстовый для анализа и улучшения
+                    Загрузите транскрибированную лекцию или текстовый файл для обработки с помощью ИИ
                   </p>
                 </div>
                 
@@ -1089,6 +1309,103 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                   }}
                 />
                 
+                {/* Панель ML обработки */}
+                <div className="mt-6 flex flex-col gap-6">
+                  {/* Кнопка обработки */}
+                  <div className="flex gap-4 items-center">
+                    <button
+                      onClick={handleMLProcess}
+                      disabled={isProcessing || !editorInstance}
+                      className={`px-6 py-3 rounded-lg font-semibold text-white transition-all duration-200 flex items-center gap-2 ${
+                        isProcessing || !editorInstance
+                          ? 'bg-gray-400 cursor-not-allowed'
+                          : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-105'
+                      }`}
+                    >
+                      {isProcessing ? (
+                        <>
+                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                          </svg>
+                          Обработка...
+                        </>
+                      ) : (
+                        <>
+                          <span>🤖</span>
+                          Обработать с помощью ИИ
+                        </>
+                      )}
+                    </button>
+
+                    {mlResult && (
+                      <>
+                        <button
+                          onClick={() => setShowMLResult(!showMLResult)}
+                          className="px-6 py-3 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white transition-all duration-200 hover:scale-105"
+                        >
+                          {showMLResult ? 'Скрыть результат' : 'Показать результат'}
+                        </button>
+
+                        <button
+                          onClick={resetML}
+                          className="px-6 py-3 rounded-lg font-semibold bg-gray-600 hover:bg-gray-700 text-white transition-all duration-200 hover:scale-105"
+                        >
+                          Очистить
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Отображение ошибки */}
+                  {mlError && (
+                    <div className="p-4 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                      <p className="text-red-800 dark:text-red-300 flex items-center gap-2">
+                        <span>❌</span>
+                        <strong>Ошибка:</strong> {mlError}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Индикатор обработки */}
+                  {isProcessing && (
+                    <div className="p-4 border border-blue-500 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <p className="text-blue-800 dark:text-blue-300 flex items-center gap-2">
+                        <span>⏳</span>
+                        Обработка может занять 30-90 секунд в зависимости от объёма текста и выбранного режима...
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Отображение результата */}
+                  {showMLResult && mlResult && (
+                    <div className="border rounded-lg p-6" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                          Результат обработки ({mlModes.find(m => m.id === selectedMLMode)?.name})
+                        </h3>
+                        <button
+                          onClick={insertMLResultToEditor}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm transition-all duration-200 hover:scale-105"
+                        >
+                          📝 Вставить в редактор
+                        </button>
+                      </div>
+
+                      <div 
+                        className="prose prose-sm sm:prose lg:prose-lg dark:prose-invert max-w-none p-4 rounded-lg"
+                        style={{ 
+                          background: 'rgba(0, 0, 0, 0.05)',
+                          whiteSpace: 'pre-wrap',
+                          wordWrap: 'break-word',
+                          lineHeight: '1.6'
+                        }}
+                        dangerouslySetInnerHTML={{ __html: convertMarkdownToHTML(mlResult) }}
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {/* Панель экспорта справа снизу */}
                 <div className="mt-6 flex flex-col items-end gap-4">
                   {/* Выбор формата экспорта */}

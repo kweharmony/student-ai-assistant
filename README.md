@@ -1,67 +1,117 @@
-# MindeSync - React версия
+# Student AI Assistant
 
-Транскрибация аудио в текст - React приложение с TypeScript и Tailwind CSS.
+Веб-приложение для работы с конспектами лекций с интеграцией искусственного интеллекта.
 
-## Установка и запуск
+## 🚀 Возможности
 
-Если есть проблемы с запуском:
+- Транскрибация аудио в текст
+- WYSIWYG редактор текста
+- AI обработка текста (6 режимов через DeepSeek API)
+- Экспорт в PDF, DOCX, TXT
+- Темная/светлая тема
 
-Изменение политики не «навсегда», а только для текущего активного сеанса PowerShell команда:
+## �️ Технологии
+
+**Frontend:** React 18, TypeScript, TipTap, Tailwind CSS  
+**Backend:** FastAPI, Python 3.10+  
+**AI/ML:** DeepSeek API, Nexara API
+
+## 📋 Требования
+
+- Node.js 14+
+- Python 3.10+
+- DeepSeek API ключ
+- Nexara API ключ (опционально)
+
+## 🔧 Установка
+
+### 1. Клонирование и настройка
 
 ```bash
-Set-ExecutionPolicy Unrestricted -Scope Process
+git clone https://github.com/kweharmony/student-ai-assistant.git
+cd student-ai-assistant
 ```
 
-1. Установите зависимости:
+### 2. Backend (Python)
+
+```bash
+# Создать виртуальное окружение
+python -m venv .venv
+
+# Активировать (Windows PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Установить зависимости
+pip install -r requirements.txt
+```
+
+### 3. Frontend (React)
 
 ```bash
 npm install
 ```
 
-2. Запустите проект в режиме разработки:
+### 4. Переменные окружения
+
+Создайте файл `.env` в корневой директории:
+
+```env
+DEEPSEEK_API_KEY=your_key_here
+DEEPSEEK_MODEL=deepseek-chat
+NEXARA_API_KEY=your_key_here
+REACT_APP_API_URL=http://localhost:8000
+```
+
+**Получить ключи:**
+- DeepSeek: https://platform.deepseek.com/
+- Nexara: https://nexara.ai/
+
+## ▶️ Запуск
+
+Откройте **два терминала** в корневой директории:
+
+### Терминал 1 - Backend
+
+```bash
+.venv\Scripts\uvicorn.exe api.app:app --reload --host 127.0.0.1 --port 8000
+```
+
+Backend: http://127.0.0.1:8000
+
+### Терминал 2 - Frontend
 
 ```bash
 npm start
 ```
 
-3. Откройте http://localhost:3000 в браузере
+Frontend: http://localhost:3000
 
-4. Ctrl + C для остановки работы сервера
+##  Использование
 
-Для возврата политики (после окончания работы) к значениям по умолчанию (обычно — Restricted) используется команда:
+1. Откройте http://localhost:3000
+2. Войти → Личный кабинет
+3. Введите текст или загрузите аудио
+4. Выберите режим AI обработки
+5. Нажмите "Обработать с помощью ИИ"
+6. Вставьте результат в редактор
+7. Экспортируйте в нужный формат
 
+## � Дополнительная документация
+
+- **Полная техническая документация**: `student-ai-docs.md`
+- **ML модуль и DeepSeek**: `ML_documentation.md`
+- **Настройка ML**: `ML_SETUP_GUIDE.md`
+
+## � Troubleshooting
+
+**Backend ошибки:**
 ```bash
-Set-ExecutionPolicy Default
+pip install -r requirements.txt
 ```
 
-## Сборка для продакшена
-
-```bash
-npm run build
+**PowerShell политика:**
+```powershell
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-## Структура проекта
-
-```
-src/
-├── components/
-│   ├── Header.tsx             # Шапка сайта c навигацией и переключателем темы
-│   ├── Hero.tsx               # Главная секция (заголовок, описание, форма загрузки)
-│   ├── Features.tsx           # Блок с преимуществами платформы
-│   ├── Footer.tsx             # Подвал сайта с контактами и ссылками
-│   ├── CloudBackground.tsx    # Фоновые анимированные облака
-│   ├── HowItWorks.tsx         # Секция "Как это работает" с описанием шагов
-│   ├── UploadDemo.tsx         # Демо-блок загрузки аудиофайла
-├── hooks/
-│   └── useFileUpload.ts       # Кастомный хук для загрузки файлов, управляет прогрессом и статусом
-├── App.tsx                    # Главный компонент приложения, собирает все секции
-├── index.tsx                  # Точка входа, монтирование приложения
-└── index.css                  # Глобальный CSS и конфигурация Tailwind
-```
-
-## Технологии
-
-- React 18
-- TypeScript
-- Tailwind CSS
-- Create React App
+**Проверка API:** http://127.0.0.1:8000/docs

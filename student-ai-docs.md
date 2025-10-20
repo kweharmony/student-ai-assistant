@@ -42,6 +42,9 @@
 - `docx` 8.5.0 — создание Word документов программно
 - `html2canvas` 1.4.1 — рендеринг HTML в canvas (для PDF)
 
+**Библиотеки для ML интеграции:**
+- `marked` — парсинг Markdown в HTML для отображения результатов ML обработки
+
 ### Backend
 | Технология | Назначение |
 |-----------|-----------|
@@ -84,9 +87,11 @@ student-ai-assistant/
 │   │
 │   ├── hooks/                 # Custom React hooks
 │   │   ├── useExport.ts      # Логика экспорта (4 формата)
-│   │   └── useFileUpload.ts  # Логика загрузки файлов
+│   │   ├── useFileUpload.ts  # Логика загрузки файлов
+│   │   └── useMLProcessor.ts # Взаимодействие с ML API (НОВОЕ!)
 │   │
-│   ├── types/
+│   ├── types/                 # TypeScript типы
+│   │   ├── ml.ts             # Типы для ML интеграции (НОВОЕ!)
 │   │   └── modules.d.ts      # TypeScript декларации для модулей
 │   │
 │   ├── App.tsx               # Корневой компонент с роутингом
@@ -438,6 +443,391 @@ exportToTxt(html, 'document.txt');
 exportToMarkdown(html, 'document.md');
 exportToDocx(html, 'document.docx');
 await exportToPdf(html, 'document.pdf');
+```
+
+---
+
+### 3. `useMLProcessor.ts` - ML обработка текста
+
+**Описание:** Хук для взаимодействия с ML API backend. Предоставляет методы для обработки текста через DeepSeek AI с поддержкой 6 различных режимов.
+
+#### TypeScript типы
+
+```typescript
+// Доступные режимы ML обработки
+type MLMode = 
+  | 'summarize'           // Краткий конспект (30% сжатие)
+  | 'extract_terms'       // Ключевые термины с определениями
+  | 'expand_topic'        // Расширение темы (требует дополнительный параметр topic)
+  | 'generate_questions'  // 8-12 вопросов для самопроверки
+  | 'detailed_notes'      // Максимально подробный конспект
+  | 'cheat_sheet';        // Сжатая шпаргалка с формулами
+
+// Запрос к ML API
+interface MLProcessRequest {
+  text: string;           // Текст для обработки (10-50000 символов)
+  mode: MLMode;           // Режим обработки
+  topic?: string;         // Тема (обязательна для expand_topic)
+}
+
+// Ответ от ML API
+interface MLProcessResponse {
+  processed_text: string;  // Обработанный текст (Markdown формат)
+  mode: MLMode;
+  input_length: number;
+  output_length: number;
+  processing_time?: number;
+}
+
+// Состояние обработки
+interface MLProcessingState {
+  isProcessing: boolean;   // Идёт ли обработка
+  currentMode: MLMode | null;
+  result: string | null;   // Результат обработки
+  error: string | null;    // Ошибка, если есть
+}
+```
+
+#### API хука
+
+```typescript
+const {
+  isProcessing,     // boolean - идёт ли обработка
+  result,          // string | null - результат обработки (Markdown)
+  error,           // string | null - сообщение об ошибке
+  currentMode,     // MLMode | null - текущий режим обработки
+  processText,     // (text, mode, topic?) => Promise<void> - обработать текст
+  batchProcess,    // (text, modes[]) => Promise<void> - обработка в нескольких режимах
+  getModes,        // () => Promise<MLMode[]> - получить доступные режимы
+  checkHealth,     // () => Promise<boolean> - проверка доступности API
+  reset,           // () => void - сброс состояния
+} = useMLProcessor();
+```
+
+#### Основной метод: `processText()`
+
+```typescript
+/**
+ * Обработка текста в указанном режиме
+ * @param text - Текст для обработки (минимум 10 символов)
+ * @param mode - Режим обработки
+ * @param topic - Дополнительная тема (обязательна для expand_topic)
+ */
+await processText(text: string, mode: MLMode, topic?: string): Promise<void>
+```
+
+**Пример использования:**
+
+```typescript
+const { isProcessing, result, error, processText, checkHealth } = useMLProcessor();
+
+// Проверка доступности API
+const handleCheckHealth = async () => {
+  const isHealthy = await checkHealth();
+  if (!isHealthy) {
+    alert('ML API недоступен');
+  }
+};
+
+// Обработка текста
+const handleProcess = async () => {
+  const text = editorInstance.getText();
+  
+  // Валидация
+  if (text.length < 10) {
+    alert('Текст слишком короткий');
+    return;
+  }
+  
+  // Отправка на обработку
+  await processText(text, 'summarize');
+  
+  // Результат автоматически сохраняется в result
+  if (result) {
+    console.log('Обработанный текст:', result);
+  }
+};
+
+// Обработка с дополнительным параметром
+await processText(
+  'Текст лекции...', 
+  'expand_topic',
+  'Квантовая механика'  // topic обязателен для expand_topic
+);
+```
+
+#### Пакетная обработка: `batchProcess()`
+
+```typescript
+/**
+ * Обработка текста в нескольких режимах одновременно
+ * @param text - Текст для обработки
+ * @param modes - Массив режимов (1-5 режимов)
+ */
+await batchProcess(text: string, modes: MLMode[]): Promise<void>
+```
+
+**Пример:**
+
+```typescript
+const { batchProcess, result } = useMLProcessor();
+
+await batchProcess('Текст лекции...', [
+  'summarize',
+  'extract_terms',
+  'generate_questions'
+]);
+
+// result будет содержать объект с результатами для каждого режима
+console.log(result.summarize);
+console.log(result.extract_terms);
+```
+
+#### Получение доступных режимов: `getModes()`
+
+```typescript
+const { getModes } = useMLProcessor();
+
+const modes = await getModes();
+console.log(modes); 
+// ['summarize', 'extract_terms', 'expand_topic', ...]
+```
+
+#### Проверка здоровья API: `checkHealth()`
+
+```typescript
+const { checkHealth } = useMLProcessor();
+
+const isHealthy = await checkHealth();
+if (isHealthy) {
+  console.log('✅ ML API работает');
+} else {
+  console.log('❌ ML API недоступен');
+}
+```
+
+#### Внутренняя реализация
+
+```typescript
+export const useMLProcessor = (): UseMLProcessorReturn => {
+  const [state, setState] = useState<MLProcessingState>({
+    isProcessing: false,
+    currentMode: null,
+    result: null,
+    error: null
+  });
+
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+  const processText = async (text: string, mode: MLMode, topic?: string) => {
+    setState(prev => ({ ...prev, isProcessing: true, error: null }));
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/ml/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, mode, topic })
+      });
+
+      if (!response.ok) throw new Error('ML API request failed');
+
+      const data: MLProcessResponse = await response.json();
+      setState({
+        isProcessing: false,
+        currentMode: mode,
+        result: data.processed_text,
+        error: null
+      });
+    } catch (err) {
+      setState(prev => ({
+        ...prev,
+        isProcessing: false,
+        error: err instanceof Error ? err.message : 'Unknown error'
+      }));
+    }
+  };
+
+  // ... остальные методы
+};
+```
+
+#### Интеграция в компоненты
+
+**В `AccountPage.tsx`:**
+
+```typescript
+const AccountPage = () => {
+  // ML Hook
+  const { 
+    isProcessing, 
+    result: mlResult, 
+    error: mlError, 
+    processText,
+    checkHealth,
+    reset: resetML 
+  } = useMLProcessor();
+
+  // Состояние
+  const [selectedMLMode, setSelectedMLMode] = useState<MLMode>('summarize');
+  const [topicInput, setTopicInput] = useState<string>('');
+  const [showMLResult, setShowMLResult] = useState<boolean>(false);
+  const [mlApiHealthy, setMlApiHealthy] = useState<boolean | null>(null);
+
+  // Проверка здоровья при монтировании
+  useEffect(() => {
+    const checkMLHealth = async () => {
+      const healthy = await checkHealth();
+      setMlApiHealthy(healthy);
+      if (!healthy) {
+        console.warn('⚠️ ML API недоступен');
+      }
+    };
+    checkMLHealth();
+  }, [checkHealth]);
+
+  // Обработка текста
+  const handleMLProcess = async () => {
+    const text = editorInstance?.getText() || '';
+    
+    if (text.length < 10) {
+      alert('⚠️ Введите текст (минимум 10 символов)');
+      return;
+    }
+
+    if (selectedMLMode === 'expand_topic' && !topicInput.trim()) {
+      alert('⚠️ Укажите тему для расширения');
+      return;
+    }
+
+    await processText(text, selectedMLMode, topicInput || undefined);
+    
+    if (mlResult) {
+      setShowMLResult(true);
+    }
+  };
+
+  // Вставка результата в редактор
+  const insertMLResultToEditor = () => {
+    if (editorInstance && mlResult) {
+      const htmlContent = convertMarkdownToHTML(mlResult);
+      editorInstance.commands.setContent(htmlContent);
+      setShowMLResult(false);
+      alert('✅ Результат вставлен в редактор');
+    }
+  };
+
+  return (
+    <div>
+      {/* UI для выбора режима и обработки */}
+      <div>
+        <h3>
+          Обработка текста с помощью ИИ
+          {/* Индикатор здоровья API */}
+          <span className={`status-indicator ${mlApiHealthy ? 'healthy' : 'unhealthy'}`}>
+            {mlApiHealthy ? '🟢' : '🔴'}
+          </span>
+        </h3>
+
+        {/* Выбор режима */}
+        <select 
+          value={selectedMLMode} 
+          onChange={(e) => setSelectedMLMode(e.target.value as MLMode)}
+        >
+          <option value="summarize">📝 Краткий конспект</option>
+          <option value="extract_terms">📚 Ключевые термины</option>
+          <option value="expand_topic">🔍 Расширение темы</option>
+          <option value="generate_questions">❓ Вопросы для самопроверки</option>
+          <option value="detailed_notes">📖 Расширенный конспект</option>
+          <option value="cheat_sheet">📄 Шпаргалка</option>
+        </select>
+
+        {/* Условное поле для темы */}
+        {selectedMLMode === 'expand_topic' && (
+          <input
+            type="text"
+            placeholder="Введите тему для расширения..."
+            value={topicInput}
+            onChange={(e) => setTopicInput(e.target.value)}
+          />
+        )}
+
+        {/* Кнопка обработки */}
+        <button 
+          onClick={handleMLProcess}
+          disabled={isProcessing}
+        >
+          {isProcessing ? '⏳ Обработка...' : '🤖 Обработать с помощью ИИ'}
+        </button>
+
+        {/* Отображение ошибки */}
+        {mlError && (
+          <div className="error">{mlError}</div>
+        )}
+
+        {/* Отображение результата */}
+        {showMLResult && mlResult && (
+          <div className="ml-result">
+            <h4>Результат обработки</h4>
+            <button onClick={insertMLResultToEditor}>
+              📝 Вставить в редактор
+            </button>
+            <div 
+              className="prose"
+              dangerouslySetInnerHTML={{ __html: convertMarkdownToHTML(mlResult) }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+```
+
+#### Особенности реализации
+
+1. **Markdown рендеринг**: Результат от ML API приходит в Markdown формате. Используется библиотека `marked` для конвертации в HTML:
+
+```typescript
+import { marked } from 'marked';
+
+const convertMarkdownToHTML = (markdown: string): string => {
+  marked.setOptions({
+    breaks: true,  // Преобразовать переносы строк в <br>
+    gfm: true,     // GitHub Flavored Markdown
+  });
+  return marked(markdown) as string;
+};
+```
+
+2. **Обработка ошибок**: Все методы имеют try-catch блоки с логированием:
+
+```typescript
+try {
+  // API call
+} catch (error) {
+  console.error(`❌ ML processing failed:`, error);
+  setState(prev => ({ ...prev, error: error.message }));
+}
+```
+
+3. **Валидация**: Перед отправкой на сервер проверяются:
+   - Длина текста (минимум 10 символов)
+   - Наличие темы для режима `expand_topic`
+   - Доступность ML API
+
+4. **Состояние загрузки**: `isProcessing` используется для отключения UI во время обработки
+
+5. **CORS**: Backend настроен на прием запросов с `localhost:3000`
+
+```python
+# api/app.py
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 ```
 
 ---

@@ -270,11 +270,11 @@ async def get_available_modes():
 
 
 @router.post("/quick-summary")
-async def quick_summary(text: str = Field(..., min_length=10)):
+async def quick_summary(request: ProcessRequest):
     """Быстрое создание конспекта (упрощенный эндпоинт)"""
     try:
         proc = get_processor()
-        result = proc.summarize(text)
+        result = proc.summarize(request.text)
         
         return JSONResponse({
             "success": True,

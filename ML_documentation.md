@@ -695,3 +695,86 @@ print(result)
 | Проверить себя | `generate_questions` ❓ |
 
 **Совет**: Для комплексной подготовки используй `batch_process` с режимами: `['cheat_sheet', 'generate_questions', 'summarize']`
+
+---
+
+## 🌐 **Интеграция ML с веб-приложением**
+
+ML модуль интегрирован с React frontend через FastAPI backend. Пользователь работает с удобным веб-интерфейсом для обработки текстов.
+
+### **Архитектура**
+
+```
+React Frontend (TypeScript)
+    ↓ HTTP POST /api/ml/process
+FastAPI Backend (Python)
+    ↓ API Request
+DeepSeek API (Cloud)
+```
+
+### **Основные компоненты**
+
+#### **Frontend**
+- **Типы**: `src/types/ml.ts` - TypeScript интерфейсы для ML API
+- **Хук**: `src/hooks/useMLProcessor.ts` - React хук для взаимодействия с API
+- **UI**: `src/components/AccountPage.tsx` - интерфейс с выбором режимов и отображением результатов
+- **Рендеринг**: Markdown → HTML с помощью библиотеки `marked`
+
+#### **Backend**
+- **Endpoints**: `api/ml_endpoints.py` - 4 REST API endpoint'а:
+  - `POST /api/ml/process` - основная обработка текста
+  - `GET /api/ml/health` - проверка работоспособности
+  - `GET /api/ml/modes` - список доступных режимов
+  - `POST /api/ml/batch` - пакетная обработка
+- **CORS**: Настроен в `api/app.py` для localhost:3000
+
+### **Workflow**
+
+1. Пользователь вводит текст в TipTap редактор
+2. Выбирает один из 6 режимов обработки
+3. Frontend отправляет POST запрос на `/api/ml/process`
+4. Backend вызывает соответствующий метод `DeepSeekProcessor`
+5. DeepSeek API обрабатывает текст и возвращает результат
+6. Frontend отображает результат с Markdown форматированием
+7. Пользователь может вставить результат обратно в редактор
+
+### **Переменные окружения**
+
+**Backend (`.env`):**
+```bash
+DEEPSEEK_API_KEY=sk-your-key
+DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MAX_TOKENS=4000
+DEEPSEEK_TEMPERATURE=0.7
+```
+
+**Frontend (`.env`):**
+```bash
+REACT_APP_API_URL=http://localhost:8000
+```
+
+### **Запуск**
+
+1. Backend: `uvicorn api.app:app --reload --host 127.0.0.1 --port 8000`
+2. Frontend: `npm start`
+3. Открыть: http://localhost:3000/account
+
+### **API Документация**
+
+Swagger UI доступен по адресу: http://localhost:8000/docs
+
+### **Дополнительная информация**
+
+Подробная документация по интеграции находится в:
+- **Frontend/Backend**: `student-ai-docs.md` - полная техническая документация React компонентов, хуков, API endpoints
+- **Установка**: `README.md` - инструкции по запуску и troubleshooting
+- **ML Setup**: `ML_SETUP_GUIDE.md` - настройка DeepSeek API
+
+---
+
+**🎉 ML модуль полностью интегрирован с веб-приложением!**
+
+Пользователи могут:
+- ✅ Обрабатывать тексты в 6 режимах через удобный веб-интерфейс
+- ✅ Получать результаты с красивым Markdown форматированием
+- ✅ Вставлять результаты в редактор и экспортировать в различные форматы

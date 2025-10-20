@@ -50,3 +50,22 @@ declare module 'html-docx-js/dist/html-docx' {
   const htmlDocx: HtmlDocx;
   export default htmlDocx;
 }
+
+declare module 'marked' {
+  export interface MarkedOptions {
+    breaks?: boolean;
+    gfm?: boolean;
+    headerIds?: boolean;
+    mangle?: boolean;
+    pedantic?: boolean;
+    sanitize?: boolean;
+    smartLists?: boolean;
+    smartypants?: boolean;
+  }
+
+  export function marked(src: string, options?: MarkedOptions): string | Promise<string>;
+  
+  export namespace marked {
+    function setOptions(options: MarkedOptions): void;
+  }
+}
