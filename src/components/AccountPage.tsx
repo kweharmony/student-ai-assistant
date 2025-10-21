@@ -1077,7 +1077,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 className="text-sm md:text-base lg:text-lg xl:text-lg opacity-70 max-w-3xl mx-auto leading-relaxed"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Используйте DeepSeek AI для создания конспектов, терминов, вопросов и многого другого
+                Используйте AI для создания конспектов, терминов, вопросов и многого другого
               </p>
               
               {/* Индикатор статуса ML API */}
