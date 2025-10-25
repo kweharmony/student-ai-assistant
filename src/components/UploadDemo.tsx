@@ -68,31 +68,14 @@ const UploadDemo: React.FC = () => {
       
       <button
         onClick={handleUploadClick}
-        className={`inline-block px-12 py-5 text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider cursor-pointer hover:border-primary hover:bg-hover rounded-lg custom-upload-btn ${
+        className={`btn-upload btn-xl ${
           isUploading ? 'opacity-50 cursor-not-allowed' : ''
         }`}
-        style={{ 
-          color: 'var(--text-primary)',
-          borderColor: 'var(--border-color)',
-          background: 'var(--hover-bg)'
-        }}
+        disabled={isUploading}
       >
         {isUploading ? `Загрузка... ${uploadProgress}%` : success ? 'Файл загружен!' : 'Выбрать файл'}
       </button>
       
-      <style>
-        {`
-          .custom-upload-btn {
-            transition: transform 0.2s, filter 0.2s, opacity 0.2s;
-          }
-          .custom-upload-btn:hover, .custom-upload-btn:focus-visible {
-            transform: scale(1.05);
-            opacity: 1 !important;
-            filter: brightness(1.1);
-            z-index: 1;
-          }
-        `}
-      </style>
 
 
       {error && (

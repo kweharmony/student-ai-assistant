@@ -181,12 +181,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="flex-1 px-8 py-4 sm:px-12 sm:py-5 text-base sm:text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-300 tracking-wider font-serif cursor-pointer hover:opacity-100 hover:bg-hover hover:-translate-y-0.5 rounded-lg opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ 
-                  color: 'var(--text-primary)',
-                  borderColor: 'var(--text-primary)',
-                  background: 'var(--hover-bg)'
-                }}
+                className="btn btn-lg flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="flex items-center justify-center gap-2">
                   {isLoading && (
@@ -204,7 +199,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
               <button
                 type="button"
                 onClick={handleModeToggle}
-                className="text-secondary text-base font-normal transition-all duration-300 opacity-60 hover:opacity-100 tracking-wide relative group flex items-center justify-center gap-2 mx-auto"
+                className="text-secondary text-base font-normal transition-all duration-300 opacity-60 hover:opacity-100 tracking-wide relative group flex items-center justify-center gap-2 mx-auto bg-transparent border-none cursor-pointer"
                 style={{ color: 'var(--text-secondary)' }}
               >
                 <span className="text-sm">

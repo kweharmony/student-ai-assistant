@@ -48,6 +48,8 @@ pip install -r requirements.txt
 ### 3. Frontend (React)
 
 ```bash
+Set-ExecutionPolicy Unrestricted -Scope Process
+
 npm install
 ```
 
@@ -63,6 +65,7 @@ REACT_APP_API_URL=http://localhost:8000
 ```
 
 **Получить ключи:**
+
 - DeepSeek: https://platform.deepseek.com/
 - Nexara: https://nexara.ai/
 
@@ -86,7 +89,7 @@ npm start
 
 Frontend: http://localhost:3000
 
-##  Использование
+## Использование
 
 1. Откройте http://localhost:3000
 2. Войти → Личный кабинет
@@ -105,11 +108,13 @@ Frontend: http://localhost:3000
 ## � Troubleshooting
 
 **Backend ошибки:**
+
 ```bash
 pip install -r requirements.txt
 ```
 
 **PowerShell политика:**
+
 ```powershell
 Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
