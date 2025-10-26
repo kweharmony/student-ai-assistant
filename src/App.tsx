@@ -27,8 +27,8 @@ const HomePage = () => {
     }}>
       
       <Header onToggleTheme={toggleTheme} isLightTheme={isLightTheme} />
-      
-      <main className="flex-1 px-8 md:px-15 py-30 md:py-40 max-w-7xl mx-auto w-full relative z-10">
+
+      <main className="flex-1 px-8 md:px-15 py-20 md:py-30 max-w-7xl mx-auto w-full relative z-10">
         <Hero />
         <HowItWorks />
         <UploadDemo />

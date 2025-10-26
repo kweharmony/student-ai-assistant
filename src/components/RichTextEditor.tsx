@@ -160,7 +160,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <div className="mb-4 flex gap-2">
           <button
             onClick={() => onModeChange?.('original')}
-            className={`px-4 py-2 rounded-lg border-2 font-medium transition-all duration-200 hover:scale-105 ${
+            className={`px-4 py-2 rounded-lg border-2 font-medium transition-all duration-200 hover:-translate-y-1 ${
               currentMode === 'original'
                 ? 'shadow-lg'
                 : ''
@@ -178,8 +178,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             disabled={!processedText || isProcessing}
             className={`px-4 py-2 rounded-lg border-2 font-medium transition-all duration-200 ${
               currentMode === 'processed'
-                ? 'shadow-lg hover:scale-105'
-                : 'hover:scale-105'
+                ? 'shadow-lg hover:-translate-y-1'
+                : 'hover:-translate-y-1'
             } ${!processedText || isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             style={{
               borderColor: currentMode === 'processed' ? '#3b82f6' : 'var(--border-color)',
@@ -576,52 +576,76 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
            }
            
            .toolbar-panel {
-             flex-direction: row !important;
-             overflow-x: auto !important;
-             overflow-y: hidden !important;
+             display: grid !important;
+             grid-template-columns: repeat(7, 1fr) !important;
+             gap: 6px !important;
              padding: 8px !important;
-             min-height: 60px !important;
-             max-height: 60px !important;
+             min-height: auto !important;
+             max-height: none !important;
+             overflow-x: visible !important;
+             overflow-y: visible !important;
+             box-sizing: border-box !important;
            }
            
-           .toolbar-panel::-webkit-scrollbar {
-             height: 4px;
-             width: auto;
-           }
-           
-           .toolbar-panel::-webkit-scrollbar-track {
-             background: transparent;
-           }
-           
-           .toolbar-panel::-webkit-scrollbar-thumb {
-             background: var(--border-color);
-             border-radius: 2px;
+           .toolbar-panel button {
+             width: 100% !important;
+             height: 42px !important;
+             min-width: 40px !important;
+             max-width: 100% !important;
+             font-size: 14px !important;
+             padding: 8px 4px !important;
+             box-sizing: border-box !important;
            }
            
            /* Мобильные стили для кнопок */
            .btn-ai {
              width: 100% !important;
-             padding: 12px 16px !important;
-             font-size: 14px !important;
+             padding: 14px 16px !important;
+             font-size: 15px !important;
+             justify-content: center !important;
+             min-height: 48px !important;
            }
            
            .btn {
              width: 100% !important;
              padding: 12px 16px !important;
              font-size: 14px !important;
+             justify-content: center !important;
+             min-height: 44px !important;
+           }
+           
+           .btn-gradient {
+             width: 100% !important;
+             padding: 12px 16px !important;
+             font-size: 14px !important;
+             justify-content: center !important;
+             min-height: 44px !important;
+           }
+           
+           .btn-sm {
+             padding: 8px 10px !important;
+             font-size: 13px !important;
+             min-height: 38px !important;
+           }
+           
+           .btn-lg {
+             padding: 14px 16px !important;
+             font-size: 15px !important;
+             min-height: 48px !important;
            }
          }
       `}</style>
       
       {/* Область редактирования с панелью инструментов справа */}
-      <div className="flex flex-col md:flex-row h-[400px] md:h-[600px]">
+      <div className="flex flex-col md:flex-row h-[500px] md:h-[600px] w-full">
         {/* Область редактирования */}
-        <div className="flex-1 md:flex-1">
+        <div className="flex-1 md:flex-1 flex flex-col overflow-hidden w-full">
           <div 
-            className="editor-container h-full p-4 md:p-8 bg-transparent border rounded-lg md:rounded-l-lg overflow-y-auto"
+            className="editor-container flex-1 p-4 md:p-8 bg-transparent border rounded-lg md:rounded-l-lg overflow-y-auto w-full"
             style={{ 
               borderColor: 'var(--border-color)',
-              background: 'var(--bg-primary)'
+              background: 'var(--bg-primary)',
+              maxHeight: '100%'
             }}
           >
             <EditorContent 
@@ -633,18 +657,19 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 outline: 'none',
                 whiteSpace: 'pre-wrap',
                 fontSize: '16px',
-                minHeight: '100%'
+                width: '100%'
               }}
             />
           </div>
         </div>
 
         {/* Вертикальная панель инструментов справа */}
-        <div className="toolbar-panel flex flex-row md:flex-col gap-2 p-2 md:p-4 bg-transparent border border-t-0 md:border-t-1 md:border-l-0 rounded-b-lg md:rounded-r-lg h-auto md:h-full overflow-x-auto md:overflow-y-auto" style={{ 
+        <div className="toolbar-panel flex flex-row md:flex-col gap-2 p-2 md:p-4 bg-transparent border border-t-0 md:border-t-1 md:border-l-0 rounded-b-lg md:rounded-r-lg h-auto md:h-full overflow-x-auto md:overflow-y-auto w-full md:w-auto" style={{ 
           borderColor: 'var(--border-color)',
           background: 'var(--bg-primary)',
           minWidth: 'auto',
-          minHeight: '60px'
+          minHeight: '60px',
+          maxWidth: '100%'
         }}>
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}

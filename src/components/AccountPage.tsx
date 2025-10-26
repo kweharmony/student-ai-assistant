@@ -964,56 +964,30 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             <div className="flex gap-2 mb-6 md:mb-8 lg:mb-12">
               <button
                 onClick={() => handleViewChange('records')}
-                className={`px-4 md:px-6 lg:px-8 xl:px-8 py-2 md:py-3 lg:py-4 xl:py-4 rounded-lg transition-all duration-300 text-sm md:text-base lg:text-lg xl:text-lg ${
+                className={`px-4 md:px-6 lg:px-8 xl:px-8 py-2 md:py-3 lg:py-4 xl:py-4 rounded-lg border-2 transition-all duration-200 hover:-translate-y-1 text-sm md:text-base lg:text-lg xl:text-lg ${
                   activeView === 'records' 
-                    ? 'bg-blue-500 text-white shadow-lg' 
-                    : 'bg-transparent border-0 hover:bg-hover'
+                    ? 'shadow-lg' 
+                    : ''
                 }`}
-                style={ activeView === 'records' ? {
-                  color: 'white',
-                  background: '#3b82f6'
-                } : { 
-                  color: 'var(--text-secondary)',
-                  background: 'var(--hover-bg)',
-                  border: '2px solid var(--border-color)'
-                }}
-                onMouseEnter={(e) => {
-                  if (activeView !== 'records') {
-                    e.currentTarget.style.borderColor = 'var(--text-secondary)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeView !== 'records') {
-                    e.currentTarget.style.borderColor = 'var(--border-color)';
-                  }
+                style={{
+                  borderColor: activeView === 'records' ? '#3b82f6' : 'var(--border-color)',
+                  background: activeView === 'records' ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)',
+                  color: 'var(--text-primary)'
                 }}
               >
                 <span>Записи</span>
               </button>
               <button
                 onClick={() => handleViewChange('schedule')}
-                className={`px-4 md:px-6 lg:px-8 xl:px-8 py-2 md:py-3 lg:py-4 xl:py-4 rounded-lg transition-all duration-300 text-sm md:text-base lg:text-lg xl:text-lg ${
+                className={`px-4 md:px-6 lg:px-8 xl:px-8 py-2 md:py-3 lg:py-4 xl:py-4 rounded-lg border-2 transition-all duration-200 hover:-translate-y-1 text-sm md:text-base lg:text-lg xl:text-lg ${
                   activeView === 'schedule' 
-                    ? 'bg-blue-500 text-white shadow-lg' 
-                    : 'bg-transparent border-0 hover:bg-hover'
+                    ? 'shadow-lg' 
+                    : ''
                 }`}
-                style={ activeView === 'schedule' ? {
-                  color: 'white',
-                  background: '#3b82f6'
-                } : { 
-                  color: 'var(--text-secondary)',
-                  background: 'var(--hover-bg)',
-                  border: '2px solid var(--border-color)'
-                }}
-                onMouseEnter={(e) => {
-                  if (activeView !== 'schedule') {
-                    e.currentTarget.style.borderColor = 'var(--text-secondary)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeView !== 'schedule') {
-                    e.currentTarget.style.borderColor = 'var(--border-color)';
-                  }
+                style={{
+                  borderColor: activeView === 'schedule' ? '#3b82f6' : 'var(--border-color)',
+                  background: activeView === 'schedule' ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)',
+                  color: 'var(--text-primary)'
                 }}
               >
                 <span>Расписание</span>
@@ -1037,56 +1011,30 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                         <div className="flex gap-2 mb-4">
                           <button
                             onClick={() => toggleTextExpansion(record.id, 'original')}
-                            className={`px-4 md:px-6 lg:px-8 xl:px-8 py-2 md:py-3 lg:py-4 xl:py-4 rounded-lg transition-all duration-300 text-sm md:text-base lg:text-lg xl:text-lg ${
+                            className={`px-4 md:px-6 lg:px-8 xl:px-8 py-2 md:py-3 lg:py-4 xl:py-4 rounded-lg border-2 transition-all duration-200 hover:-translate-y-1 text-sm md:text-base lg:text-lg xl:text-lg ${
                               expandedTexts[record.id] === 'original' 
-                                ? 'bg-blue-500 text-white shadow-lg' 
-                                : 'bg-transparent border-0 hover:bg-hover'
+                                ? 'shadow-lg' 
+                                : ''
                             }`}
-                            style={ expandedTexts[record.id] === 'original' ? {
-                              color: 'white',
-                              background: '#3b82f6'
-                            } : { 
-                              color: 'var(--text-secondary)',
-                              background: 'var(--hover-bg)',
-                              border: '2px solid var(--border-color)'
-                            }}
-                            onMouseEnter={(e) => {
-                              if (expandedTexts[record.id] !== 'original') {
-                                e.currentTarget.style.borderColor = 'var(--text-secondary)';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (expandedTexts[record.id] !== 'original') {
-                                e.currentTarget.style.borderColor = 'var(--border-color)';
-                              }
+                            style={{
+                              borderColor: expandedTexts[record.id] === 'original' ? '#3b82f6' : 'var(--border-color)',
+                              background: expandedTexts[record.id] === 'original' ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)',
+                              color: 'var(--text-primary)'
                             }}
                           >
                             <span>Оригинальный текст</span>
                           </button>
                           <button
                             onClick={() => toggleTextExpansion(record.id, 'processed')}
-                            className={`px-4 md:px-6 lg:px-8 xl:px-8 py-2 md:py-3 lg:py-4 xl:py-4 rounded-lg transition-all duration-300 text-sm md:text-base lg:text-lg xl:text-lg ${
+                            className={`px-4 md:px-6 lg:px-8 xl:px-8 py-2 md:py-3 lg:py-4 xl:py-4 rounded-lg border-2 transition-all duration-200 hover:-translate-y-1 text-sm md:text-base lg:text-lg xl:text-lg ${
                               expandedTexts[record.id] === 'processed' 
-                                ? 'bg-blue-500 text-white shadow-lg' 
-                                : 'bg-transparent border-0 hover:bg-hover'
+                                ? 'shadow-lg' 
+                                : ''
                             }`}
-                            style={ expandedTexts[record.id] === 'processed' ? {
-                              color: 'white',
-                              background: '#3b82f6'
-                            } : { 
-                              color: 'var(--text-secondary)',
-                              background: 'var(--hover-bg)',
-                              border: '2px solid var(--border-color)'
-                            }}
-                            onMouseEnter={(e) => {
-                              if (expandedTexts[record.id] !== 'processed') {
-                                e.currentTarget.style.borderColor = 'var(--text-secondary)';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (expandedTexts[record.id] !== 'processed') {
-                                e.currentTarget.style.borderColor = 'var(--border-color)';
-                              }
+                            style={{
+                              borderColor: expandedTexts[record.id] === 'processed' ? '#3b82f6' : 'var(--border-color)',
+                              background: expandedTexts[record.id] === 'processed' ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)',
+                              color: 'var(--text-primary)'
                             }}
                           >
                             <span>Обработанный текст</span>
@@ -1300,7 +1248,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                   <button
                     key={mode.id}
                     onClick={() => setSelectedMLMode(mode.id)}
-                    className={`p-4 rounded-lg border-2 text-left transition-all duration-200 hover:scale-105 ${
+                    className={`p-4 rounded-lg border-2 text-left transition-all duration-200 hover:-translate-y-1 ${
                       selectedMLMode === mode.id
                         ? 'border-blue-500 shadow-lg'
                         : 'border-gray-300 hover:border-blue-300'
@@ -1537,23 +1485,23 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 </div>
 
                 {/* Панель экспорта справа снизу */}
-                <div className="mt-6 flex flex-col items-end gap-4">
+                <div className="mt-6 flex flex-col md:items-end gap-4 w-full">
                   {/* Выбор формата экспорта */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <div className="flex flex-col md:flex-row items-start md:items-center gap-3 w-full md:w-auto">
                     <label className="text-sm font-medium whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
                       Формат экспорта:
                     </label>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid grid-cols-4 md:flex md:flex-wrap gap-2 w-full md:w-auto">
                       {[
                         { value: 'txt', label: 'TXT' },
-                        { value: 'md', label: 'Markdown' },
+                        { value: 'md', label: 'MD' },
                         { value: 'docx', label: 'DOCX' },
                         { value: 'pdf', label: 'PDF' }
                       ].map((format) => (
                         <button
                           key={format.value}
                           onClick={() => setSaveFormat(format.value)}
-                          className={`btn btn-sm border-2 transition-all duration-200 hover:scale-105 ${
+                          className={`btn btn-sm border-2 transition-all duration-200 hover:-translate-y-1 ${
                             saveFormat === format.value
                               ? 'shadow-lg'
                               : ''
@@ -1561,7 +1509,8 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                           style={{
                             borderColor: saveFormat === format.value ? '#3b82f6' : 'var(--border-color)',
                             background: saveFormat === format.value ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)',
-                            color: 'var(--text-primary)'
+                            color: 'var(--text-primary)',
+                            minWidth: '60px'
                           }}
                         >
                           {format.label}
@@ -1571,11 +1520,11 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                   </div>
                   
                   {/* Кнопки действий */}
-                  <div className="flex flex-row flex-wrap gap-3">
+                  <div className="flex flex-col md:flex-row md:flex-wrap gap-3 w-full md:w-auto">
                     <button
                       onClick={handleMLProcess}
                       disabled={isProcessing || !editorInstance}
-                      className={`btn-ai btn-lg flex items-center gap-2 ${
+                      className={`btn-ai btn-lg flex items-center justify-center gap-2 w-full md:w-auto ${
                         isProcessing || !editorInstance
                           ? 'opacity-50 cursor-not-allowed'
                           : ''
@@ -1598,7 +1547,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                     </button>
                     <button
                       onClick={handleCopyText}
-                      className="btn btn-lg flex items-center justify-center gap-2"
+                      className="btn btn-lg flex items-center justify-center gap-2 w-full md:w-auto"
                     >
                       {isCopied ? (
                         <>
@@ -1648,7 +1597,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                           alert('Ошибка при сохранении файла');
                         }
                       }}
-                      className="btn-gradient btn-lg flex items-center justify-center gap-2"
+                      className="btn-gradient btn-lg flex items-center justify-center gap-2 w-full md:w-auto"
                     >
                       {isDownloaded ? (
                         <>
