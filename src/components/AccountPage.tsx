@@ -352,6 +352,32 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       return;
     }
 
+    // Проверка длины текста (лимит API - 70000 символов)
+    const MAX_TEXT_LENGTH = 70000;
+    if (text.length > MAX_TEXT_LENGTH) {
+      alert(
+        `⚠️ Текст слишком длинный!\n\n` +
+        `Текущая длина: ${text.length.toLocaleString()} символов\n` +
+        `Максимум: ${MAX_TEXT_LENGTH.toLocaleString()} символов\n` +
+        `Превышение: ${(text.length - MAX_TEXT_LENGTH).toLocaleString()} символов\n\n` +
+        `Пожалуйста, сократите текст или разбейте на части.`
+      );
+      return;
+    }
+
+    // Предупреждение для очень длинных текстов (более 20000 символов)
+    if (text.length > 20000) {
+      const confirmProcess = window.confirm(
+        `⚠️ Большой объем текста!\n\n` +
+        `Длина текста: ${text.length.toLocaleString()} символов\n` +
+        `Обработка может занять 60-120 секунд.\n\n` +
+        `Продолжить?`
+      );
+      if (!confirmProcess) {
+        return;
+      }
+    }
+
     // Проверка темы для expand_topic
     if (selectedMLMode === 'expand_topic' && !topicInput.trim()) {
       alert('⚠️ Для режима "Расширение темы" нужно указать тему');
@@ -397,10 +423,25 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         setEditorMode('processed');
         
         console.log('✅ Обработка успешна, результат получен');
+      } else {
+        // Если результат null, проверяем наличие ошибки в состоянии
+        console.warn('⚠️ Обработка вернула null, проверьте ошибки в консоли');
       }
     } catch (error) {
       console.error('❌ Ошибка обработки:', error);
-      alert(`❌ Ошибка обработки текста: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`);
+      
+      // Правильная обработка разных типов ошибок
+      let errorMessage = 'Неизвестная ошибка';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object') {
+        errorMessage = JSON.stringify(error);
+      }
+      
+      alert(`❌ Ошибка обработки текста: ${errorMessage}`);
     }
   };
 
@@ -1230,11 +1271,23 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
               </p>
               
               {/* Индикатор статуса ML API */}
-              <div className="mt-4 flex items-center justify-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${mlApiHealthy === true ? 'bg-green-500' : mlApiHealthy === false ? 'bg-red-500' : 'bg-yellow-500'}`}></div>
-                <span className="text-xs opacity-70" style={{ color: 'var(--text-secondary)' }}>
-                  {mlApiHealthy === true ? 'ML API подключен' : mlApiHealthy === false ? 'ML API недоступен (запустите бэкенд)' : 'Проверка ML API...'}
-                </span>
+              <div className="mt-4 flex flex-col items-center justify-center gap-2">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${mlApiHealthy === true ? 'bg-green-500' : mlApiHealthy === false ? 'bg-red-500' : 'bg-yellow-500'}`}></div>
+                  <span className="text-xs opacity-70" style={{ color: 'var(--text-secondary)' }}>
+                    {mlApiHealthy === true ? 'ML API подключен' : mlApiHealthy === false ? 'ML API недоступен (запустите бэкенд)' : 'Проверка ML API...'}
+                  </span>
+                </div>
+                
+                {/* Счетчик символов */}
+                {editorInstance && (
+                  <div className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
+                    Символов в редакторе: {editorInstance.getText().length.toLocaleString()} / 70,000
+                    {editorInstance.getText().length > 70000 && (
+                      <span className="text-red-500 ml-2">⚠️ Превышен лимит!</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1460,6 +1513,18 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                   onModeChange={setEditorMode}
                   isProcessing={isProcessing}
                 />
+                
+                {/* Предупреждение о превышении лимита */}
+                {editorInstance && editorInstance.getText().length > 70000 && (
+                  <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+                    <p className="text-red-800 dark:text-red-300 text-sm flex items-center gap-2">
+                      <span>⚠️</span>
+                      <strong>Внимание:</strong> Текст превышает лимит в 70,000 символов.
+                      Текущая длина: {editorInstance.getText().length.toLocaleString()} символов.
+                      Пожалуйста, сократите текст перед обработкой.
+                    </p>
+                  </div>
+                )}
                 
                 {/* Отображение ошибки и индикатора обработки */}
                 <div className="mt-6 flex flex-col gap-4">

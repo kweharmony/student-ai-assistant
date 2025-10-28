@@ -40,14 +40,14 @@ def get_processor():
 # Модели данных для API
 class ProcessRequest(BaseModel):
     """Запрос на обработку текста"""
-    text: str = Field(..., min_length=10, max_length=50000, description="Текст лекции для обработки")
+    text: str = Field(..., min_length=10, max_length=70000, description="Текст лекции для обработки")
     mode: str = Field(..., description="Режим обработки: summarize, extract_terms, expand_topic, generate_questions, detailed_notes, cheat_sheet")
     topic: Optional[str] = Field(None, description="Тема для расширения (только для режима expand_topic)")
     context: Optional[str] = Field(None, description="Дополнительный контекст (для режима expand_topic)")
 
 class BatchProcessRequest(BaseModel):
     """Запрос на пакетную обработку текста"""
-    text: str = Field(..., min_length=10, max_length=50000, description="Текст лекции")
+    text: str = Field(..., min_length=10, max_length=70000, description="Текст лекции")
     modes: List[str] = Field(..., min_items=1, max_items=5, description="Список режимов обработки")
 
 class ProcessResponse(BaseModel):

@@ -66,8 +66,24 @@ export const useMLProcessor = () => {
         let errorMessage = 'Ошибка обработки текста';
         try {
           const errorData = await response.json();
-          errorMessage = errorData.detail || errorMessage;
-        } catch {
+          console.error('❌ Ответ с ошибкой от API:', errorData);
+          
+          // Обрабатываем разные форматы ошибок
+          if (errorData.detail) {
+            if (typeof errorData.detail === 'string') {
+              errorMessage = errorData.detail;
+            } else if (Array.isArray(errorData.detail)) {
+              errorMessage = errorData.detail.map((e: any) => e.msg || JSON.stringify(e)).join(', ');
+            } else {
+              errorMessage = JSON.stringify(errorData.detail);
+            }
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else {
+            errorMessage = JSON.stringify(errorData);
+          }
+        } catch (parseError) {
+          console.error('❌ Не удалось распарсить ошибку:', parseError);
           errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         }
         throw new Error(errorMessage);
@@ -75,12 +91,19 @@ export const useMLProcessor = () => {
 
       const data: MLProcessResponse = await response.json();
 
+      console.log('✅ Полный ответ от API:', data);
       console.log('✅ Успешная обработка:', {
         mode: data.mode,
         inputLength: data.input_length,
         outputLength: data.output_length,
-        processingTime: data.processing_time
+        processingTime: data.processing_time,
+        hasProcessedText: !!data.processed_text
       });
+
+      // Проверяем наличие обработанного текста
+      if (!data.processed_text) {
+        throw new Error('API вернул пустой результат обработки');
+      }
 
       // Успешная обработка
       setState({
