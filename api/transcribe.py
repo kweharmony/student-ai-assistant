@@ -1,160 +1,137 @@
 """
-Эндпоинт для транскрибации аудио через Nexara API
-Этот файл отвечает за превращение аудио в текст
+Эндпоинт для транскрибации аудио через ЛОКАЛЬНЫЙ Whisper
+Не требует API ключей, работает полностью офлайн
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-import requests
+import whisper
 import os
 import tempfile
 import logging
-from dotenv import load_dotenv
+import time
 
-# Загружаем переменные окружения (API ключи и т.д.)
-load_dotenv()
-
-# Настройка логирования (чтобы видеть, что происходит)
+# Настройка логирования
 logger = logging.getLogger(__name__)
 
-# Создаём роутер - это как раздел API для транскрибации
 router = APIRouter(prefix="/api/transcribe", tags=["Audio Transcription"])
 
-# URL API Nexara
-NEXARA_API_URL = "https://api.nexara.ru/api/v1/audio/transcriptions"
+# ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
+# Модель будет загружена один раз при старте сервера
+_whisper_model = None
+_model_name = os.getenv('WHISPER_MODEL', 'base')  # По умолчанию 'base'
+
+
+def get_whisper_model():
+    """
+    Получает или загружает модель Whisper
+    Модель загружается только один раз и переиспользуется
+    """
+    global _whisper_model
+    
+    if _whisper_model is None:
+        logger.info(f"🔄 Загружаем модель Whisper '{_model_name}'...")
+        try:
+            _whisper_model = whisper.load_model(_model_name)
+            logger.info(f"✅ Модель '{_model_name}' загружена успешно!")
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки модели: {e}")
+            raise Exception(f"Не удалось загрузить модель Whisper: {e}")
+    
+    return _whisper_model
 
 
 class TranscriptionResponse(BaseModel):
-    """
-    Модель ответа - описывает, что мы вернём пользователю
-    """
-    success: bool  # Успешно ли прошла транскрибация
-    text: str  # Транскрибированный текст
-    filename: str  # Название файла
-    duration: Optional[float] = None  # Длительность аудио (если есть)
-    language: Optional[str] = None  # Язык (если определён)
+    """Модель ответа транскрибации"""
+    success: bool
+    text: str
+    filename: str
+    duration: Optional[float] = None
+    language: Optional[str] = None
+    processing_time: Optional[float] = None  # Время обработки
 
 
 @router.post("/audio", response_model=TranscriptionResponse)
 async def transcribe_audio(audio: UploadFile = File(...)):
     """
-    Основная функция транскрибации
+    Транскрибирует аудиофайл используя локальный Whisper
     
-    Что она делает:
-    1. Принимает аудиофайл от пользователя
-    2. Проверяет формат файла
-    3. Отправляет в Nexara API
-    4. Возвращает текст транскрипции
+    Поддерживаемые форматы: mp3, wav, m4a, flac, ogg, opus, mp4, mov, avi, mkv, webm
+    Максимальный размер: ограничен только вашим железом
     """
     
-    # ============ ШАГ 1: ПРОВЕРКА ФОРМАТА ============
-    # Список разрешённых форматов (из документации Nexara)
-    allowed_formats = ['mp3', 'wav', 'm4a', 'flac', 'ogg', 'opus', 'mp4', 'mov', 'avi', 'mkv']
+    start_time = time.time()
     
-    # Получаем расширение файла (всё после последней точки)
+    # Проверка формата
+    allowed_formats = ['mp3', 'wav', 'm4a', 'flac', 'ogg', 'opus', 'mp4', 'mov', 'avi', 'mkv', 'webm']
     file_extension = audio.filename.split('.')[-1].lower()
     
-    # Если формат не поддерживается - возвращаем ошибку
     if file_extension not in allowed_formats:
         raise HTTPException(
             status_code=400,
             detail=f"❌ Формат {file_extension} не поддерживается. Разрешены: {', '.join(allowed_formats)}"
         )
     
-    # Получаем API ключ из переменных окружения
-    api_key = os.getenv('NEXARA_API_KEY')
-    
-    # Если ключа нет - возвращаем ошибку
-    if not api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="❌ NEXARA_API_KEY не найден в .env файле!"
-        )
+    logger.info(f"📝 Получен файл: {audio.filename} ({file_extension})")
     
     try:
-        # ============ ШАГ 2: СОХРАНЕНИЕ ФАЙЛА ВРЕМЕННО ============
-        # API Nexara требует файл на диске, поэтому сохраняем временно
-        
-        # Создаём временный файл
+        # Сохраняем временный файл
         with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_file:
-            # Читаем содержимое загруженного файла
             content = await audio.read()
-            # Записываем в временный файл
             temp_file.write(content)
-            # Запоминаем путь к временному файлу
             temp_file_path = temp_file.name
         
-        logger.info(f"📝 Начинаем транскрибацию: {audio.filename}")
+        file_size_mb = os.path.getsize(temp_file_path) / (1024 * 1024)
+        logger.info(f"📦 Размер файла: {file_size_mb:.2f} MB")
         
-        # ============ ШАГ 3: ОТПРАВКА В NEXARA API ============
+        # Получаем модель
+        model = get_whisper_model()
         
-        # Заголовки запроса (авторизация)
-        headers = {
-            "Authorization": f"Bearer {api_key}"
-        }
+        logger.info(f"🎙️ Начинаем транскрибацию...")
         
-        # Открываем временный файл для отправки
-        with open(temp_file_path, 'rb') as audio_file:
-            # Формируем данные для отправки
-            files = {
-                'file': (audio.filename, audio_file, f'audio/{file_extension}')
-            }
-            
-            # Параметры запроса
-            data = {
-                'response_format': 'json',  # Хотим получить JSON ответ
-                # 'task': 'transcribe'  # По умолчанию, можно не указывать
-            }
-            
-            # Отправляем POST запрос в Nexara
-            response = requests.post(
-                NEXARA_API_URL,
-                headers=headers,
-                files=files,
-                data=data,
-                timeout=300  # Максимум 5 минут на транскрибацию
-            )
+        # ===== ТРАНСКРИБАЦИЯ =====
+        # Параметры для длинных аудио:
+        # - fp16=False: отключаем 16-битную точность (стабильнее на CPU)
+        # - verbose=True: показываем прогресс
+        # - language='ru': указываем русский (ускоряет обработку)
+        # - task='transcribe': транскрибация (не перевод)
         
-        # Удаляем временный файл (он больше не нужен)
+        result = model.transcribe(
+            temp_file_path,
+            language='ru',  # Укажите 'en' для английского или None для автоопределения
+            task='transcribe',
+            fp16=False,  # Для CPU обязательно False
+            verbose=True  # Показывать прогресс
+        )
+        
+        # Удаляем временный файл
         os.unlink(temp_file_path)
         
-        # ============ ШАГ 4: ОБРАБОТКА ОТВЕТА ============
+        # Извлекаем результаты
+        transcribed_text = result['text']
+        detected_language = result.get('language', 'unknown')
         
-        # Проверяем, успешен ли запрос
-        if response.status_code != 200:
-            logger.error(f"❌ Ошибка Nexara API: {response.text}")
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Ошибка транскрибации: {response.text}"
-            )
+        processing_time = time.time() - start_time
         
-        # Парсим JSON ответ
-        result = response.json()
+        logger.info(f"✅ Транскрибация завершена!")
+        logger.info(f"   Длина текста: {len(transcribed_text)} символов")
+        logger.info(f"   Язык: {detected_language}")
+        logger.info(f"   Время обработки: {processing_time:.2f} сек")
         
-        # Извлекаем текст из ответа
-        transcribed_text = result.get('text', '')
-        
-        logger.info(f"✅ Транскрибация завершена! Длина текста: {len(transcribed_text)} символов")
-        
-        # ============ ШАГ 5: ВОЗВРАТ РЕЗУЛЬТАТА ============
         return TranscriptionResponse(
             success=True,
             text=transcribed_text,
             filename=audio.filename,
-            duration=result.get('duration'),
-            language=result.get('language')
+            duration=None,  # Whisper не возвращает длительность напрямую
+            language=detected_language,
+            processing_time=processing_time
         )
         
-    except HTTPException:
-        # Если это HTTPException - пробрасываем дальше
-        raise
-        
     except Exception as e:
-        # Любая другая ошибка
-        logger.error(f"❌ Неожиданная ошибка: {str(e)}")
+        logger.error(f"❌ Ошибка транскрибации: {str(e)}")
         
-        # Пытаемся удалить временный файл, если он остался
+        # Удаляем временный файл в случае ошибки
         if 'temp_file_path' in locals():
             try:
                 os.unlink(temp_file_path)
@@ -163,27 +140,47 @@ async def transcribe_audio(audio: UploadFile = File(...)):
         
         raise HTTPException(
             status_code=500,
-            detail=f"Внутренняя ошибка сервера: {str(e)}"
+            detail=f"Ошибка транскрибации: {str(e)}"
         )
 
 
 @router.get("/health")
 async def health_check():
-    """
-    Проверка работоспособности API транскрибации
-    Просто проверяет, есть ли API ключ
-    """
-    api_key = os.getenv('NEXARA_API_KEY')
+    """Проверка работоспособности локального Whisper"""
     
-    if api_key:
+    try:
+        model = get_whisper_model()
         return {
             "status": "healthy",
-            "message": "✅ Nexara API ключ найден",
-            "api_configured": True
+            "message": f"✅ Модель Whisper '{_model_name}' загружена и готова",
+            "model": _model_name,
+            "local": True
         }
-    else:
+    except Exception as e:
         return {
             "status": "unhealthy",
-            "message": "❌ NEXARA_API_KEY не настроен",
-            "api_configured": False
+            "message": f"❌ Ошибка: {str(e)}",
+            "model": _model_name,
+            "local": True
         }
+
+
+@router.get("/model-info")
+async def model_info():
+    """Информация о загруженной модели"""
+    
+    model_sizes = {
+        "tiny": "~75 MB",
+        "base": "~150 MB",
+        "small": "~500 MB",
+        "medium": "~1.5 GB",
+        "large": "~3 GB"
+    }
+    
+    return {
+        "model": _model_name,
+        "size": model_sizes.get(_model_name, "unknown"),
+        "loaded": _whisper_model is not None,
+        "cache_location": os.path.expanduser("~/.cache/whisper/"),
+        "supported_formats": ['mp3', 'wav', 'm4a', 'flac', 'ogg', 'opus', 'mp4', 'mov', 'avi', 'mkv', 'webm']
+    }
