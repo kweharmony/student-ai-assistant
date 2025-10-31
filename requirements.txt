@@ -1,3 +1,4 @@
+
 # DeepSeek через OpenAI SDK
 openai==1.51.0
 
@@ -29,3 +30,17 @@ gunicorn==21.2.0
 
 # Транскрибация
 requests
+
+# ===== ЛОКАЛЬНАЯ ТРАНСКРИБАЦИЯ =====
+# Whisper от OpenAI (локальная версия)
+openai-whisper
+
+# FFmpeg wrapper (для обработки аудио)
+ffmpeg-python
+
+# Для ускорения на GPU (опционально, но рекомендуется)
+torch
+torchaudio
+
+# Для отображения прогресса
+tqdm
