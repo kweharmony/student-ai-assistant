@@ -23,7 +23,7 @@ const HowItWorks: React.FC = () => {
   ];
 
   return (
-    <section id="how-it-works" className="mt-60 max-w-5xl mx-auto">
+    <section id="how-it-works" className="mt-60 mb-60 max-w-5xl mx-auto">
       <h2 
         className="text-center text-3xl sm:text-4xl md:text-5xl font-light mb-25 tracking-tight opacity-90"
         style={{ color: 'var(--text-primary)' }}

@@ -69,10 +69,14 @@ const Footer: React.FC = () => {
                 <a 
                   key={linkIndex}
                   href="#" 
-                  className="text-secondary no-underline transition-all duration-500 text-base opacity-50 font-light tracking-wide hover:opacity-80 hover:pl-2"
+                  className="text-secondary no-underline transition-all duration-300 text-base opacity-50 font-light tracking-wide hover:opacity-80 relative group inline-block w-fit"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  {link}
+                  <span className="relative z-10">{link}</span>
+                  <div 
+                    className="absolute -bottom-1 left-0 w-0 h-0.5 transition-all duration-300 group-hover:w-full"
+                    style={{ background: 'var(--text-secondary)' }}
+                  />
                 </a>
               ))}
             </div>
@@ -93,10 +97,14 @@ const Footer: React.FC = () => {
             <a 
               key={index}
               href="#" 
-              className="text-secondary no-underline transition-all duration-500 opacity-50 hover:opacity-80"
+              className="text-secondary no-underline transition-all duration-300 opacity-50 hover:opacity-80 relative group inline-block"
               style={{ color: 'var(--text-secondary)' }}
             >
-              {link}
+              <span className="relative z-10">{link}</span>
+              <div 
+                className="absolute -bottom-1 left-0 w-0 h-0.5 transition-all duration-300 group-hover:w-full"
+                style={{ background: 'var(--text-secondary)' }}
+              />
             </a>
           ))}
         </div>

@@ -34,39 +34,53 @@ const Header: React.FC<HeaderProps> = ({ onToggleTheme, isLightTheme }) => {
         <div className="flex items-center gap-5 md:gap-15">
           <a 
             href="#how-it-works" 
-            className="hidden md:block text-secondary no-underline font-normal text-base transition-all duration-500 opacity-60 tracking-wide hover:opacity-100"
+            className="hidden md:block text-secondary no-underline font-normal text-base transition-all duration-300 opacity-60 tracking-wide hover:opacity-100 relative group"
             style={{ color: 'var(--text-secondary)' }}
           >
-            Как работает
+            <span className="relative z-10">Как работает</span>
+            <div 
+              className="absolute -bottom-1 left-0 w-0 h-0.5 transition-all duration-300 group-hover:w-full"
+              style={{ background: 'var(--text-secondary)' }}
+            />
           </a>
           <Link 
             to="/account"
-            className="hidden md:block text-secondary no-underline font-normal text-base transition-all duration-500 opacity-60 tracking-wide hover:opacity-100 bg-transparent border-none cursor-pointer"
+            className="hidden md:block text-secondary no-underline font-normal text-base transition-all duration-300 opacity-60 tracking-wide hover:opacity-100 bg-transparent border-none cursor-pointer relative group"
             style={{ color: 'var(--text-secondary)' }}
           >
-            Аккаунт
+            <span className="relative z-10">Аккаунт</span>
+            <div 
+              className="absolute -bottom-1 left-0 w-0 h-0.5 transition-all duration-300 group-hover:w-full"
+              style={{ background: 'var(--text-secondary)' }}
+            />
+          </Link>
+          <Link 
+            to="/pricing"
+            className="hidden md:block text-secondary no-underline font-normal text-base transition-all duration-300 opacity-60 tracking-wide hover:opacity-100 bg-transparent border-none cursor-pointer relative group"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <span className="relative z-10">Подписки</span>
+            <div 
+              className="absolute -bottom-1 left-0 w-0 h-0.5 transition-all duration-300 group-hover:w-full"
+              style={{ background: 'var(--text-secondary)' }}
+            />
           </Link>
           {!isAuthPage && (
-            <Link 
+            <Link
               to="/auth"
-              className="px-5 py-3 md:px-7 bg-transparent border text-secondary cursor-pointer text-sm md:text-base transition-all duration-500 opacity-60 hover:opacity-100 hover:bg-hover rounded-lg"
-              style={{ 
-                color: 'var(--text-secondary)',
-                borderColor: 'var(--border-color)',
-                background: 'var(--hover-bg)'
-              }}
+              className="hidden md:block text-secondary no-underline font-normal text-base transition-all duration-300 opacity-60 tracking-wide hover:opacity-100 bg-transparent border-none cursor-pointer relative group"
+              style={{ color: 'var(--text-secondary)' }}
             >
-              Войти
+              <span className="relative z-10">Войти</span>
+              <div 
+                className="absolute -bottom-1 left-0 w-0 h-0.5 transition-all duration-300 group-hover:w-full"
+                style={{ background: 'var(--text-secondary)' }}
+              />
             </Link>
           )}
           <button 
             onClick={onToggleTheme}
-            className="bg-transparent border text-secondary px-3 py-3 md:px-5 cursor-pointer text-base transition-all duration-500 opacity-60 hover:opacity-100 hover:bg-hover rounded-lg"
-            style={{ 
-              color: 'var(--text-secondary)',
-              borderColor: 'var(--border-color)',
-              background: 'var(--hover-bg)'
-            }}
+            className="btn-theme"
           >
             {isLightTheme ? '☾' : '☀︎'}
           </button>

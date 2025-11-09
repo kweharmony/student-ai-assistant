@@ -54,14 +54,10 @@ const Hero: React.FC = () => {
       <div className="flex flex-col sm:flex-row gap-6 items-center justify-center">
         <button
           onClick={handleUploadClick}
-          className={`inline-block px-8 py-4 sm:px-12 sm:py-5 text-base sm:text-lg font-normal bg-transparent text-primary border-2 no-underline transition-all duration-500 tracking-wider font-serif cursor-pointer hover:opacity-100 hover:border-primary hover:bg-hover rounded-lg custom-upload-btn
-            isUploading ? 'opacity-50 cursor-not-allowed' : 'opacity-90'
-          `}
-          style={{ 
-            color: 'var(--text-primary)',
-            borderColor: 'var(--text-primary)',
-            background: 'var(--hover-bg)'
-          }}
+          className={`btn-upload btn-lg ${
+            isUploading ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
+          disabled={isUploading}
         >
           {isUploading ? `Загрузка... ${uploadProgress}%` : success ? 'Файл загружен!' : 'Загрузить аудио'}
         </button>
