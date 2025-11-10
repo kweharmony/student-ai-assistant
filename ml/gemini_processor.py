@@ -94,19 +94,32 @@ class GeminiProcessor:
         prompt_template = PROMPTS[mode]
         config = PROCESSING_CONFIGS.get(mode, PROCESSING_CONFIGS['summarize'])
         
-        # Форматируем промпт
+        # Получаем max_tokens для этого режима
+        max_tokens = config.get('max_tokens', 8192)
+        approx_words = int(max_tokens * 0.6)  # ~60% от токенов для русского языка
+        
+        # Форматируем промпт с параметрами токенов
         if mode == "expand_topic":
             topic = kwargs.get('topic', 'неизвестная тема')
             context = kwargs.get('context', text[:1000])  # Берем первые 1000 символов как контекст
-            formatted_prompt = prompt_template.format(topic=topic, context=context)
+            formatted_prompt = prompt_template.format(
+                topic=topic, 
+                context=context,
+                max_tokens=max_tokens,
+                approx_words=approx_words
+            )
         else:
-            formatted_prompt = prompt_template.format(text=text)
+            formatted_prompt = prompt_template.format(
+                text=text,
+                max_tokens=max_tokens,
+                approx_words=approx_words
+            )
         
         # Комбинируем системный промпт с пользовательским
         full_prompt = f"{PROMPTS['system']}\n\n{formatted_prompt}"
         
         # Отправляем запрос
-        logger.info(f"Обрабатываем текст в режиме '{mode}'. Длина текста: {len(text)} символов")
+        logger.info(f"Обрабатываем текст в режиме '{mode}'. Длина текста: {len(text)} символов, лимит токенов: {max_tokens}")
         result = self._make_request(full_prompt, config)
         
         return result

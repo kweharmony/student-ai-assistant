@@ -1,7 +1,7 @@
 """
 Расширенный тест режима "шпаргалка" (cheat_sheet)
 
-Этот тест демонстрирует работу ML-обработчика DeepSeek в режиме создания шпаргалки.
+Этот тест демонстрирует работу ML-обработчика Gemini в режиме создания шпаргалки.
 Режим cheat_sheet оптимизирован для создания компактной выжимки с формулами и ключевыми фактами.
 
 Запуск: python scripts/test_cheat_sheet_advanced.py
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ml.deepseek_processor import DeepSeekProcessor
+from ml.gemini_processor import GeminiProcessor
 
 
 def print_section(title: str):
@@ -44,21 +44,21 @@ def main():
     print("   └─ Применение: подготовка к экзаменам, быстрое повторение материала")
     
     print("\n🔧 Технические детали:")
-    print("   ├─ ML модель: DeepSeek Chat (через OpenAI SDK)")
-    print("   ├─ Backend: ml/deepseek_processor.py -> create_cheat_sheet()")
+    print("   ├─ ML модель: Google Gemini 2.0 Flash")
+    print("   ├─ Backend: ml/gemini_processor.py -> create_cheat_sheet()")
     print("   ├─ API endpoint: POST /api/ml/process (mode='cheat_sheet')")
     print("   └─ Конфигурация: см. ml/prompts.py -> CHEAT_SHEET_PROMPT")
     
     print_subsection("Проверка API ключа")
     
     # Проверка API ключа
-    api_key = os.getenv("DEEPSEEK_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print("\n❌ ОШИБКА: DEEPSEEK_API_KEY не найден в переменных окружения!")
+        print("\n❌ ОШИБКА: GEMINI_API_KEY не найден в переменных окружения!")
         print("\n💡 Решение:")
         print("   1. Создайте файл .env в корне проекта")
-        print("   2. Добавьте строку: DEEPSEEK_API_KEY=your_key_here")
-        print("   3. Получить ключ: https://platform.deepseek.com/")
+        print("   2. Добавьте строку: GEMINI_API_KEY=your_key_here")
+        print("   3. Получить ключ: https://aistudio.google.com/apikey")
         return 1
     
     print(f"✅ API ключ найден: {api_key[:8]}...{api_key[-4:]}")
@@ -198,17 +198,17 @@ def main():
     print_subsection("Инициализация ML процессора")
     
     try:
-        processor = DeepSeekProcessor()
-        print("✅ DeepSeekProcessor успешно инициализирован")
+        processor = GeminiProcessor()
+        print("✅ GeminiProcessor успешно инициализирован")
         
         # Health check
-        print("\n🔍 Выполняем health check DeepSeek API...")
+        print("\n🔍 Выполняем health check Gemini API...")
         is_healthy = processor.health_check()
         
         if is_healthy:
-            print("✅ DeepSeek API доступен и работает корректно")
+            print("✅ Gemini API доступен и работает корректно")
         else:
-            print("⚠️  DeepSeek API недоступен, но попробуем выполнить запрос...")
+            print("⚠️  Gemini API недоступен, но попробуем выполнить запрос...")
         
     except Exception as e:
         print(f"❌ Ошибка инициализации: {e}")
@@ -216,7 +216,7 @@ def main():
     
     print_subsection("Обработка текста в режиме cheat_sheet")
     
-    print("\n⏳ Отправляем запрос к DeepSeek API...")
+    print("\n⏳ Отправляем запрос к Gemini API...")
     print("   (это может занять 5-15 секунд в зависимости от объема текста)")
     
     try:
@@ -280,7 +280,7 @@ def main():
             
 **Создано:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}  
 **Режим обработки:** cheat_sheet  
-**ML модель:** DeepSeek Chat  
+**ML модель:** Google Gemini 2.0 Flash  
 **Время обработки:** {elapsed:.2f} сек  
 **Исходный текст:** {len(lecture_text)} символов  
 **Результат:** {result_length} символов  
@@ -322,8 +322,8 @@ def main():
         print(f"\n🔧 Возможные причины:")
         print("   - Неверный API ключ")
         print("   - Нет доступа к интернету")
-        print("   - Превышен лимит запросов к DeepSeek API")
-        print("   - Ошибка в коде ml/deepseek_processor.py")
+        print("   - Превышен лимит запросов к Gemini API")
+        print("   - Ошибка в коде ml/gemini_processor.py")
         return 3
 
 

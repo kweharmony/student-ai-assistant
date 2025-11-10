@@ -6,21 +6,21 @@
 
 - Транскрибация аудио в текст
 - WYSIWYG редактор текста
-- AI обработка текста (6 режимов через DeepSeek API)
+- AI обработка текста (6 режимов через Google Gemini API)
 - Экспорт в PDF, DOCX, TXT
 - Темная/светлая тема
 
-## �️ Технологии
+## 🛠️ Технологии
 
 **Frontend:** React 18, TypeScript, TipTap, Tailwind CSS  
 **Backend:** FastAPI, Python 3.10+  
-**AI/ML:** DeepSeek API, Nexara API
+**AI/ML:** Google Gemini API, Nexara API
 
 ## 📋 Требования
 
 - Node.js 14+
 - Python 3.10+
-- DeepSeek API ключ
+- Google Gemini API ключ (бесплатно)
 - Nexara API ключ (опционально)
 
 ## 🔧 Установка
@@ -58,15 +58,15 @@ npm install
 Создайте файл `.env` в корневой директории:
 
 ```env
-DEEPSEEK_API_KEY=your_key_here
-DEEPSEEK_MODEL=deepseek-chat
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-2.0-flash-exp
 NEXARA_API_KEY=your_key_here
 REACT_APP_API_URL=http://localhost:8000
 ```
 
 **Получить ключи:**
 
-- DeepSeek: https://platform.deepseek.com/
+- Google Gemini: https://aistudio.google.com/apikey (бесплатно)
 - Nexara: https://nexara.ai/
 
 ## ▶️ Запуск
@@ -99,10 +99,10 @@ Frontend: http://localhost:3000
 6. Вставьте результат в редактор
 7. Экспортируйте в нужный формат
 
-## � Дополнительная документация
+## 📚 Дополнительная документация
 
 - **Полная техническая документация**: `student-ai-docs.md`
-- **ML модуль и DeepSeek**: `ML_documentation.md`
+- **ML модуль и Google Gemini**: `ML_documentation.md`
 - **Настройка ML**: `ML_SETUP_GUIDE.md`
 
 ## � Troubleshooting

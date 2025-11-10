@@ -1,6 +1,6 @@
 """
 FastAPI эндпоинты для ML обработки текста
-Интеграция DeepSeek с веб-приложением
+Интеграция Google Gemini с веб-приложением
 """
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, FastAPI
@@ -13,12 +13,12 @@ from datetime import datetime
 
 # Импортируем наш процессор
 try:
-    from ..ml.deepseek_processor import DeepSeekProcessor
+    from ..ml.gemini_processor import GeminiProcessor
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from ml.deepseek_processor import DeepSeekProcessor
+    from ml.gemini_processor import GeminiProcessor
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def get_processor():
     """Получение глобального экземпляра процессора"""
     global processor
     if processor is None:
-        processor = DeepSeekProcessor()
+        processor = GeminiProcessor()
     return processor
 
 
@@ -70,7 +70,7 @@ class BatchProcessResponse(BaseModel):
 class HealthResponse(BaseModel):
     """Ответ проверки здоровья API"""
     status: str
-    deepseek_api_available: bool
+    gemini_api_available: bool
     message: str
     timestamp: datetime
 
@@ -84,15 +84,15 @@ async def health_check():
         
         return HealthResponse(
             status="healthy" if is_available else "unhealthy",
-            deepseek_api_available=is_available,
-            message="DeepSeek API работает корректно" if is_available else "Проблемы с DeepSeek API",
+            gemini_api_available=is_available,
+            message="Gemini API работает корректно" if is_available else "Проблемы с Gemini API",
             timestamp=datetime.now()
         )
     except Exception as e:
         logger.error(f"Ошибка health check: {str(e)}")
         return HealthResponse(
             status="error",
-            deepseek_api_available=False,
+            gemini_api_available=False,
             message=f"Ошибка инициализации: {str(e)}",
             timestamp=datetime.now()
         )

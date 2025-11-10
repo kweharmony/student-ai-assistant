@@ -68,14 +68,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     result: mlResult, 
     error: mlError, 
     processText, 
-    checkHealth,
-    reset: resetML 
+    reset: resetML,
+    cancelProcessing  // Добавляем функцию отмены
   } = useMLProcessor();
   
   // Состояние ML обработки
   const [selectedMLMode, setSelectedMLMode] = useState<MLMode>('summarize');
   const [topicInput, setTopicInput] = useState<string>('');
-  const [mlApiHealthy, setMlApiHealthy] = useState<boolean | null>(null);
   
   // Описания режимов ML для UI
   const mlModes: MLModeInfo[] = [
@@ -238,17 +237,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     }
   }, [sidebarCollapsed, mobileMenuOpen]);
 
-  // Проверка здоровья ML API при монтировании
-  useEffect(() => {
-    const checkMLHealth = async () => {
-      const healthy = await checkHealth();
-      setMlApiHealthy(healthy);
-      if (!healthy) {
-        console.warn('⚠️ ML API недоступен. Убедитесь, что бэкенд запущен на http://localhost:8000');
-      }
-    };
-    checkMLHealth();
-  }, [checkHealth]);
+
 
   // Обработка переключения темы
   const handleThemeToggle = () => {
@@ -365,35 +354,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       return;
     }
 
-    // Предупреждение для очень длинных текстов (более 20000 символов)
-    if (text.length > 20000) {
-      const confirmProcess = window.confirm(
-        `⚠️ Большой объем текста!\n\n` +
-        `Длина текста: ${text.length.toLocaleString()} символов\n` +
-        `Обработка может занять 60-120 секунд.\n\n` +
-        `Продолжить?`
-      );
-      if (!confirmProcess) {
-        return;
-      }
-    }
-
     // Проверка темы для expand_topic
     if (selectedMLMode === 'expand_topic' && !topicInput.trim()) {
       alert('⚠️ Для режима "Расширение темы" нужно указать тему');
       return;
-    }
-
-    // Проверка здоровья API
-    if (mlApiHealthy === false) {
-      const confirmProcess = window.confirm(
-        '⚠️ ML API недоступен. Убедитесь, что бэкенд запущен на http://localhost:8000\n\n' +
-        'Запустите бэкенд командой:\nuvicorn api.app:app --reload\n\n' +
-        'Продолжить попытку обработки?'
-      );
-      if (!confirmProcess) {
-        return;
-      }
     }
 
     console.log('🚀 Начало обработки текста:', {
@@ -1270,25 +1234,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 Используйте AI для создания конспектов, терминов, вопросов и многого другого
               </p>
               
-              {/* Индикатор статуса ML API */}
-              <div className="mt-4 flex flex-col items-center justify-center gap-2">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${mlApiHealthy === true ? 'bg-green-500' : mlApiHealthy === false ? 'bg-red-500' : 'bg-yellow-500'}`}></div>
-                  <span className="text-xs opacity-70" style={{ color: 'var(--text-secondary)' }}>
-                    {mlApiHealthy === true ? 'ML API подключен' : mlApiHealthy === false ? 'ML API недоступен (запустите бэкенд)' : 'Проверка ML API...'}
-                  </span>
+              {/* Счетчик символов */}
+              {editorInstance && (
+                <div className="mt-4 text-xs opacity-60 text-center" style={{ color: 'var(--text-secondary)' }}>
+                  Символов в редакторе: {editorInstance.getText().length.toLocaleString()} / 70,000
+                  {editorInstance.getText().length > 70000 && (
+                    <span className="text-red-500 ml-2">⚠️ Превышен лимит!</span>
+                  )}
                 </div>
-                
-                {/* Счетчик символов */}
-                {editorInstance && (
-                  <div className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
-                    Символов в редакторе: {editorInstance.getText().length.toLocaleString()} / 70,000
-                    {editorInstance.getText().length > 70000 && (
-                      <span className="text-red-500 ml-2">⚠️ Превышен лимит!</span>
-                    )}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
 
             {/* Выбор режима ML обработки */}
@@ -1586,6 +1540,35 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                   
                   {/* Кнопки действий */}
                   <div className="flex flex-col md:flex-row md:flex-wrap gap-3 w-full md:w-auto">
+                    {/* Кнопка отмены обработки - показывается только во время обработки */}
+                    {isProcessing && (
+                      <button
+                        onClick={cancelProcessing}
+                        className="btn-lg flex items-center justify-center gap-2 w-full md:w-auto"
+                        style={{
+                          backgroundColor: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          padding: '0.75rem 1.5rem',
+                          borderRadius: '0.5rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#dc2626';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#ef4444';
+                        }}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        Отменить обработку
+                      </button>
+                    )}
+                    
                     <button
                       onClick={handleMLProcess}
                       disabled={isProcessing || !editorInstance}

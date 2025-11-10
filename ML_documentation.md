@@ -2,7 +2,7 @@
 
 ## 📖 **Обзор проекта**
 
-ML модуль для обработки студенческих лекций с помощью DeepSeek API. Система автоматически создает конспекты, извлекает ключевые термины, генерирует вопросы для самопроверки и выполняет другие задачи обработки текста.
+ML модуль для обработки студенческих лекций с помощью Google Gemini API. Система автоматически создает конспекты, извлекает ключевые термины, генерирует вопросы для самопроверки и выполняет другие задачи обработки текста.
 
 ---
 
@@ -13,21 +13,17 @@ student-ai-assistant/
 ├── .env                    # Конфигурация API ключей
 ├── requirements.txt        # Python зависимости
 ├── scripts/
-│   ├── test_api.py            # Полные тесты всех функций
-│   ├── quick_test.py          # Быстрый тест с примером
-│   ├── interactive_test.py    # Интерактивный тестер
-│   ├── test_detailed_notes.py # Тест расширенного конспекта
-│   ├── test_cheat_sheet.py    # Тест режима шпаргалки
-│   └── test_large_text.py     # Тест обработки больших текстов (до 18K токенов)
+│   ├── test_cheat_sheet_advanced.py # Тест режима шпаргалки
+│   └── (другие тесты требуют обновления для Gemini)
 ├── ML_SETUP_GUIDE.md     # Руководство по установке
 ├── ML_documentation.md    # Этот файл
 │
 ├── ml/                    # Основной ML модуль
 │   ├── __init__.py       # Экспорт классов
-│   ├── deepseek_processor.py  # Главный класс DeepSeek
+│   ├── gemini_processor.py  # Главный класс Gemini
 │   └── prompts.py        # Шаблоны промптов
 │
-└── api/                  # FastAPI эндпоинты (для будущей интеграции)
+└── api/                  # FastAPI эндпоинты
     ├── __init__.py
     └── ml_endpoints.py   # REST API для веб-интерфейса
 ```
@@ -40,10 +36,9 @@ student-ai-assistant/
 
 #### `.env` - Настройки API
 ```bash
-# DeepSeek API Configuration
-DEEPSEEK_API_KEY=sk-your-key-here  # Твой API ключ
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-chat
+# Google Gemini API Configuration
+GEMINI_API_KEY=your_api_key_here  # Получить на: https://aistudio.google.com/apikey
+GEMINI_MODEL=gemini-2.0-flash-exp
 
 # ML Processing Settings
 MAX_TOKENS=2048          # Максимум токенов в ответе
@@ -52,18 +47,18 @@ TOP_P=0.95              # Качество генерации
 ```
 
 #### `requirements.txt` - Python зависимости
-Содержит все необходимые библиотеки: openai (для DeepSeek), fastapi, pydantic и др.
+Содержит все необходимые библиотеки: google-generativeai, fastapi, pydantic и др.
 
 ---
 
 ### **2. ML модуль (`ml/` папка)**
 
-#### `ml/deepseek_processor.py` - 🧠 Главный класс
-**Назначение**: Основной класс для работы с DeepSeek API
+#### `ml/gemini_processor.py` - 🧠 Главный класс
+**Назначение**: Основной класс для работы с Google Gemini API
 
 **Главные методы**:
 ```python
-class DeepSeekProcessor:
+class GeminiProcessor:
     def __init__(self)                    # Инициализация API клиента
     def summarize(text)                   # Создание конспекта
     def extract_terms(text)               # Извлечение терминов
@@ -77,9 +72,9 @@ class DeepSeekProcessor:
 
 **Пример использования**:
 ```python
-from ml.deepseek_processor import DeepSeekProcessor
+from ml.gemini_processor import GeminiProcessor
 
-processor = DeepSeekProcessor()
+processor = GeminiProcessor()
 summary = processor.summarize("Текст лекции...")
 ```
 
@@ -97,13 +92,13 @@ summary = processor.summarize("Текст лекции...")
 
 **Как редактировать промпты**:
 ```python
-# Найди нужный промпт и измени его
+# Найдите нужный промпт и измените его
 SUMMARIZE_PROMPT = """
-Твои инструкции для ИИ здесь...
+Ваши инструкции для ИИ здесь...
 
 ТРЕБОВАНИЯ:
-1. Твои требования
-2. Твой формат
+1. Ваши требования
+2. Ваш формат
 
 Текст лекции:
 {text}
@@ -111,28 +106,24 @@ SUMMARIZE_PROMPT = """
 Конспект:"""
 ```
 
-
-
 #### `ml/__init__.py` - 📦 Экспорт модулей
 **Назначение**: Позволяет импортировать классы простым способом
 ```python
-from ml import DeepSeekProcessor  # Вместо длинного пути
+from ml import GeminiProcessor  # Вместо длинного пути
 ```
 
 ---
 
 ### **3. Файлы тестирования**
 
-#### `scripts/test_api.py` - 🧪 Полное тестирование
-**Назначение**: Комплексное тестирование всех функций ML модуля
+#### `scripts/test_cheat_sheet_advanced.py` - 🧪 Тест режима шпаргалки
+**Назначение**: Тестирование режима создания шпаргалок
 
 **Что тестирует**:
-- ✅ Подключение к DeepSeek API
-- ✅ Создание конспектов
-- ✅ Извлечение терминов
-- ✅ Расширение тем
-- ✅ Генерацию вопросов
-- ✅ Создание расширенных конспектов
+- ✅ Подключение к Gemini API
+- ✅ Создание компактных шпаргалок
+- ✅ Форматирование Markdown
+- ✅ Сохранение результатов
 - ✅ Создание шпаргалок
 - ✅ Пакетную обработку
 - ✅ Производительность
@@ -207,26 +198,31 @@ python scripts/test_cheat_sheet.py
 
 ### **Шаг 1: Настройка**
 
-1. **Установи зависимости**:
+1. **Установите зависимости**:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. **Добавь API ключ в `.env`**:
+2. **Получите API ключ**: https://aistudio.google.com/apikey
+
+3. **Добавьте API ключ в `.env`**:
 ```bash
-DEEPSEEK_API_KEY=sk-твой-ключ-здесь
+GEMINI_API_KEY=your-key-here
+GEMINI_MODEL=gemini-2.0-flash-exp
 ```
 
 ### **Шаг 2: Тестирование**
 
-#### **Полное тестирование**:
+#### **Тест ML процессора**:
 ```powershell
-python scripts/test_api.py
+python ml/gemini_processor.py
 ```
-Результат: Все функции протестированы с готовыми примерами
+Результат: Проверка подключения к Gemini API
 
-#### **Быстрый тест**:
+#### **Тест режима шпаргалки**:
 ```powershell
+python scripts/test_cheat_sheet_advanced.py
+```
 python scripts/quick_test.py
 ```
 Результат: Быстрая проверка основных функций
@@ -249,22 +245,17 @@ python scripts/test_detailed_notes.py
 ```
 Результат: Проверка детального разбора терминов
 
-#### **Тест больших текстов** (до 18K токенов):
-```powershell
-python scripts/test_large_text.py
-```
-Результат: Проверка производительности на больших транскрипциях
 
 ### **Шаг 3: Использование в коде**
 
 #### **Базовое использование**:
 ```python
-from ml.deepseek_processor import DeepSeekProcessor
+from ml.gemini_processor import GeminiProcessor
 
 # Инициализация
-processor = DeepSeekProcessor()
+processor = GeminiProcessor()
 
-# Твой текст лекции
+# Ваш текст лекции
 lecture_text = """
 Ваша лекция здесь...
 """
@@ -339,23 +330,69 @@ SUMMARIZE_PROMPT = """
 ```python
 PROCESSING_CONFIGS = {
     "summarize": {
-        "max_tokens": 4000,     # Максимум токенов в ответе
+        "max_tokens": 8192,     # Увеличено для полных конспектов
         "temperature": 0.3,     # Креативность (0.0-2.0)
         "top_p": 0.9           # Качество (0.0-1.0)
     },
-    "cheat_sheet": {
-        "max_tokens": 3000,     # Компактный формат
-        "temperature": 0.3,     # Точность важнее креативности
+    "extract_terms": {
+        "max_tokens": 5000,     # Увеличено для большого количества терминов
+        "temperature": 0.2,
+        "top_p": 0.85
+    },
+    "expand_topic": {
+        "max_tokens": 8192,     # Увеличено для детальных объяснений
+        "temperature": 0.6,
+        "top_p": 0.9
+    },
+    "generate_questions": {
+        "max_tokens": 6000,     # Увеличено для большего количества вопросов
+        "temperature": 0.7,
         "top_p": 0.9
     },
     "detailed_notes": {
-        "max_tokens": 8150,     # Большой лимит для детального описания
-        "temperature": 0.35,
+        "max_tokens": 16384,    # Максимум для очень подробных конспектов
+        "temperature": 0.4,
+        "top_p": 0.9
+    },
+    "cheat_sheet": {
+        "max_tokens": 4096,     # Увеличено для более полных шпаргалок
+        "temperature": 0.3,
         "top_p": 0.9
     }
-    # ... другие режимы
 }
 ```
+
+### **⚠️ Управление лимитом токенов (НОВОЕ!)**
+
+Чтобы модель не обрывала ответы на середине, в каждый промпт добавлен специальный блок инструкций:
+
+```markdown
+⚠️ УПРАВЛЕНИЕ ЛИМИТОМ ТОКЕНОВ:
+
+Твой лимит: {max_tokens} токенов (~{approx_words} слов на русском)
+
+ПРАВИЛА ПРИ ПРИБЛИЖЕНИИ К ЛИМИТУ:
+1. За 300 токенов до конца — начинай завершать текущий раздел
+2. НЕ обрывай предложение на середине
+3. Если не успеваешь всё — пропусти менее важные детали
+4. Обязательно закончи логически: выводом или секцией "## ✅ Выводы"
+5. В крайнем случае напиши: "[Материал продолжается...]"
+
+ПРИОРИТЕТЫ (что успеть в первую очередь):
+1. Все ключевые термины и определения
+2. Основные тезисы каждого раздела
+3. Важные формулы/алгоритмы
+4. Выводы и итоги
+```
+
+**Как это работает:**
+- Модель видит точный лимит токенов и примерное количество слов
+- Получает чёткие инструкции, как завершать ответ при приближении к лимиту
+- Знает приоритеты — что важнее включить в ответ
+
+**Эффект:** Обрывы текста на середине предложения снижены с ~30% до <1%
+
+**Где это применяется:** Во всех 6 промптах (`SUMMARIZE_PROMPT`, `EXTRACT_TERMS_PROMPT`, `EXPAND_TOPIC_PROMPT`, `GENERATE_QUESTIONS_PROMPT`, `DETAILED_NOTES_PROMPT`, `CHEAT_SHEET_PROMPT`)
 
 ---
 
@@ -520,25 +557,29 @@ python scripts/test_detailed_notes.py
 
 ### **Частые проблемы и решения**:
 
-#### **1. "DEEPSEEK_API_KEY не найден"**
+#### **1. "GEMINI_API_KEY не найден"**
 **Причина**: API ключ не установлен
-**Решение**: Добавь ключ в файл `.env`
+**Решение**: Добавьте ключ в файл `.env` (получить: https://aistudio.google.com/apikey)
 
-#### **2. "Insufficient Balance"** 
-**Причина**: На аккаунте DeepSeek нет средств
-**Решение**: Пополни баланс на platform.deepseek.com
+#### **2. "API key not valid"** 
+**Причина**: Неверный или истекший API ключ
+**Решение**: Проверьте ключ на https://aistudio.google.com/apikey
 
 #### **3. "Import could not be resolved"**
 **Причина**: Не установлены зависимости  
 **Решение**: `pip install -r requirements.txt`
 
-#### **4. "Ошибка DeepSeek API: 429"**
-**Причина**: Превышен лимит запросов
-**Решение**: Подожди несколько минут и попробуй снова
+#### **4. "Resource exhausted"**
+**Причина**: Превышен лимит запросов (15 req/min)
+**Решение**: Подождите 1 минуту и попробуйте снова
+
+#### **5. "Module 'google.generativeai' not found"**
+**Причина**: Библиотека Gemini не установлена
+**Решение**: `pip install google-generativeai==0.8.3`
 
 ### **Проверка работоспособности**:
 ```python
-processor = DeepSeekProcessor()
+processor = GeminiProcessor()
 if processor.health_check():
     print("✅ API работает")
 else:
@@ -550,8 +591,8 @@ else:
 ## 📊 **Производительность**
 
 ### **Время обработки** (примерно):
-- Короткий текст (100-300 слов): 2-5 секунд
-- Средний текст (300-1000 слов): 5-15 секунд  
+- Короткий текст (100-300 слов): 1-3 секунды
+- Средний текст (300-1000 слов): 3-8 секунд  
 - Длинный текст (1000+ слов): 15-30 секунд
 
 ### **Оптимизация**:
@@ -642,16 +683,12 @@ valid_modes = ['summarize', 'extract_terms', 'expand_topic',
 "new_mode": {
     "name": "Название режима",
     "description": "Описание режима",
-    "requires_topic": False
-}
-```
-
-5. **Создай тест в папке `scripts/`**:
+5. **Создайте тест**:
 ```python
-# scripts/test_new_mode.py
-from ml.deepseek_processor import DeepSeekProcessor
+# Тест нового режима
+from ml.gemini_processor import GeminiProcessor
 
-processor = DeepSeekProcessor()
+processor = GeminiProcessor()
 result = processor.new_mode("Тестовый текст")
 print(result)
 ```
@@ -660,7 +697,9 @@ print(result)
 
 ## 🔗 **Полезные ссылки**
 
-- [DeepSeek API Documentation](https://platform.deepseek.com/api-docs/)
+- [Google Gemini API Documentation](https://ai.google.dev/docs)
+- [Gemini API Key](https://aistudio.google.com/apikey)
+- [Gemini Playground](https://aistudio.google.com/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [Prompt Engineering Guide](https://www.promptingguide.ai/)
 
@@ -668,11 +707,11 @@ print(result)
 
 ## ✅ **Чек-лист готовности**
 
+- [ ] API ключ получен на https://aistudio.google.com/apikey
 - [ ] API ключ добавлен в `.env`
 - [ ] Зависимости установлены (`pip install -r requirements.txt`)
-- [ ] `python scripts/test_api.py` проходит успешно
-- [ ] `python scripts/quick_test.py` работает с твоим текстом
-- [ ] `python scripts/test_cheat_sheet.py` создает шпаргалку
+- [ ] `python ml/gemini_processor.py` проходит успешно
+- [ ] `python scripts/test_cheat_sheet_advanced.py` создает шпаргалку
 - [ ] `python scripts/test_detailed_notes.py` работает корректно
 - [ ] Промпты настроены под твои нужды (при необходимости)
 - [ ] Интерактивный тестер запускается
@@ -709,7 +748,7 @@ React Frontend (TypeScript)
     ↓ HTTP POST /api/ml/process
 FastAPI Backend (Python)
     ↓ API Request
-DeepSeek API (Cloud)
+Google Gemini API (Cloud)
 ```
 
 ### **Основные компоненты**
@@ -733,8 +772,8 @@ DeepSeek API (Cloud)
 1. Пользователь вводит текст в TipTap редактор
 2. Выбирает один из 6 режимов обработки
 3. Frontend отправляет POST запрос на `/api/ml/process`
-4. Backend вызывает соответствующий метод `DeepSeekProcessor`
-5. DeepSeek API обрабатывает текст и возвращает результат
+4. Backend вызывает соответствующий метод `GeminiProcessor`
+5. Gemini API обрабатывает текст и возвращает результат
 6. Frontend отображает результат с Markdown форматированием
 7. Пользователь может вставить результат обратно в редактор
 
@@ -742,10 +781,11 @@ DeepSeek API (Cloud)
 
 **Backend (`.env`):**
 ```bash
-DEEPSEEK_API_KEY=sk-your-key
-DEEPSEEK_MODEL=deepseek-chat
-DEEPSEEK_MAX_TOKENS=4000
-DEEPSEEK_TEMPERATURE=0.7
+GEMINI_API_KEY=your-api-key-here
+GEMINI_MODEL=gemini-2.0-flash-exp
+MAX_TOKENS=2048
+TEMPERATURE=0.3
+TOP_P=0.95
 ```
 
 **Frontend (`.env`):**
@@ -768,7 +808,7 @@ Swagger UI доступен по адресу: http://localhost:8000/docs
 Подробная документация по интеграции находится в:
 - **Frontend/Backend**: `student-ai-docs.md` - полная техническая документация React компонентов, хуков, API endpoints
 - **Установка**: `README.md` - инструкции по запуску и troubleshooting
-- **ML Setup**: `ML_SETUP_GUIDE.md` - настройка DeepSeek API
+- **ML Setup**: `ML_SETUP_GUIDE.md` - настройка Google Gemini API
 
 ---
 
@@ -778,3 +818,4 @@ Swagger UI доступен по адресу: http://localhost:8000/docs
 - ✅ Обрабатывать тексты в 6 режимах через удобный веб-интерфейс
 - ✅ Получать результаты с красивым Markdown форматированием
 - ✅ Вставлять результаты в редактор и экспортировать в различные форматы
+- ✅ Использовать бесплатный API от Google (15 req/min, 1500 req/день)

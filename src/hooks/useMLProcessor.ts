@@ -1,7 +1,7 @@
 // src/hooks/useMLProcessor.ts
 // Custom hook для работы с ML API
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { MLMode, MLProcessRequest, MLProcessResponse, MLProcessingState } from '../types/ml';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -13,6 +13,9 @@ export const useMLProcessor = () => {
     result: null,
     error: null
   });
+
+  // AbortController для отмены запросов
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   /**
    * Основная функция обработки текста через ML API
@@ -40,6 +43,9 @@ export const useMLProcessor = () => {
       error: null
     });
 
+    // Создаем новый AbortController для этого запроса
+    abortControllerRef.current = new AbortController();
+
     try {
       const requestBody: MLProcessRequest = {
         text,
@@ -59,7 +65,8 @@ export const useMLProcessor = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
+        signal: abortControllerRef.current.signal  // Добавляем signal для отмены
       });
 
       if (!response.ok) {
@@ -116,6 +123,18 @@ export const useMLProcessor = () => {
       return data.processed_text;
 
     } catch (error: any) {
+      // Проверяем, была ли отмена запроса
+      if (error.name === 'AbortError') {
+        console.log('🛑 Обработка отменена пользователем');
+        setState({
+          isProcessing: false,
+          currentMode: mode,
+          result: null,
+          error: null  // Не показываем ошибку при отмене
+        });
+        return null;
+      }
+
       console.error('❌ Ошибка обработки текста:', error);
       
       const errorMessage = error.message || 'Неизвестная ошибка';
@@ -128,6 +147,9 @@ export const useMLProcessor = () => {
       });
       
       return null;
+    } finally {
+      // Очищаем AbortController
+      abortControllerRef.current = null;
     }
   };
 
@@ -250,6 +272,17 @@ export const useMLProcessor = () => {
     });
   };
 
+  /**
+   * Отмена текущей обработки
+   */
+  const cancelProcessing = () => {
+    if (abortControllerRef.current) {
+      console.log('🛑 Отмена обработки...');
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  };
+
   return {
     // Состояние
     isProcessing: state.isProcessing,
@@ -261,7 +294,7 @@ export const useMLProcessor = () => {
     processText,
     batchProcess,
     getModes,
-    checkHealth,
-    reset
+    reset,
+    cancelProcessing  // Новый метод отмены
   };
 };

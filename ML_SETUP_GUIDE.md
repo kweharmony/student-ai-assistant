@@ -1,4 +1,4 @@
-# 🤖 DeepSeek ML Integration Guide
+# 🤖 Google Gemini ML Integration Guide
 
 ## Быстрый старт
 
@@ -10,33 +10,28 @@ pip install -r requirements.txt
 
 ### 2. Настройка API ключа
 
-Создай файл `.env` в корне проекта и добавь свой DeepSeek API ключ:
+Получите бесплатный API ключ на https://aistudio.google.com/apikey
+
+Создайте файл `.env` в корне проекта и добавьте свой Gemini API ключ:
 
 ```bash
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-chat
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.0-flash-exp
 ```
 
 ### 3. Тестирование
 
-Запусти тесты, чтобы убедиться, что все работает:
+Запустите тесты, чтобы убедиться, что все работает:
 
 ```powershell
-# Полное тестирование всех режимов
+# Тест ML процессора
+python ml/gemini_processor.py
+
+# Тест режима шпаргалки
+python scripts/test_cheat_sheet_advanced.py
+
+# Полное тестирование всех режимов (требует обновления для Gemini)
 python scripts/test_api.py
-
-# Быстрый тест основных функций
-python scripts/quick_test.py
-
-# Тест расширенного конспекта
-python scripts/test_detailed_notes.py
-
-# Интерактивный тестер
-python scripts/interactive_test.py
-
-# Тест обработки больших текстов
-python scripts/test_large_text.py
 ```
 
 ## 📁 Структура ML модуля
@@ -44,7 +39,7 @@ python scripts/test_large_text.py
 ```
 ml/
 ├── __init__.py           # Экспорт основных классов
-├── deepseek_processor.py # Главный класс для работы с DeepSeek
+├── gemini_processor.py   # Главный класс для работы с Google Gemini
 └── prompts.py           # Шаблоны промптов для разных задач
 
 api/
@@ -56,9 +51,9 @@ api/
 
 ### 1. Создание конспектов
 ```python
-from ml.deepseek_processor import DeepSeekProcessor
+from ml.gemini_processor import GeminiProcessor
 
-processor = DeepSeekProcessor()
+processor = GeminiProcessor()
 summary = processor.summarize(lecture_text)
 ```
 
@@ -80,7 +75,7 @@ explanation = processor.expand_topic(
 questions = processor.generate_questions(lecture_text)
 ```
 
-### 5. 🆕 Создание расширенного конспекта
+### 5. Создание расширенного конспекта
 ```python
 # Максимально подробное описание всех терминов
 detailed_notes = processor.create_detailed_notes(lecture_text)
@@ -90,6 +85,12 @@ detailed_notes = processor.create_detailed_notes(lecture_text)
 # - Определения, контекст, примеры
 # - Взаимосвязи между понятиями
 # - Практическое применение
+```
+
+### 6. Создание шпаргалки
+```python
+# Компактная выжимка с формулами и ключевыми фактами
+cheat_sheet = processor.create_cheat_sheet(lecture_text)
 ```
 
 **Когда использовать расширенный конспект:**
@@ -155,13 +156,13 @@ app.include_router(router)
 
 ```python
 # Базовое использование
-from ml import DeepSeekProcessor
+from ml import GeminiProcessor
 
-processor = DeepSeekProcessor()
+processor = GeminiProcessor()
 
 # Проверяем соединение
 if processor.health_check():
-    print("✅ DeepSeek готов к работе!")
+    print("✅ Gemini готов к работе!")
     
     # Обрабатываем лекцию
     lecture = "Ваш текст лекции здесь..."
@@ -254,21 +255,22 @@ const processText = async (text, mode) => {
 
 ## 🎯 Следующие шаги
 
-1. **Настрой .env файл** с твоим DeepSeek API ключом
-2. **Запусти тесты** командой `python scripts/test_api.py`
-3. **Интегрируй с FastAPI** сервером твоего проекта
-4. **Подключи к React** компонентам через API
+1. **Настройте .env файл** с вашим Gemini API ключом (бесплатно: https://aistudio.google.com/apikey)
+2. **Запустите тесты** командой `python ml/gemini_processor.py`
+3. **Интегрируйте с FastAPI** сервером вашего проекта
+4. **Подключите к React** компонентам через API
 
 ## 💡 Советы по оптимизации
 
-1. **Кэширование**: Добавь Redis для кэширования частых запросов
-2. **Пакетная обработка**: Используй batch_process для экономии API вызовов
-3. **Асинхронность**: Длинные тексты обрабатывай в фоновых задачах
-4. **Мониторинг**: Отслеживай использование API и лимиты
+1. **Кэширование**: Добавьте Redis для кэширования частых запросов
+2. **Пакетная обработка**: Используйте batch_process для экономии API вызовов
+3. **Асинхронность**: Длинные тексты обрабатывайте в фоновых задачах
+4. **Мониторинг**: Отслеживайте использование API (лимит: 15 req/min, 1500 req/день)
 
 ## 📞 Поддержка
 
 При возникновении проблем:
-1. Проверь API ключ в .env файле
-2. Убедись, что все зависимости установлены
-3. Запусти `python scripts/test_api.py` для диагностики
+1. Проверьте API ключ в .env файле
+2. Убедитесь, что все зависимости установлены (`pip install -r requirements.txt`)
+3. Запустите `python ml/gemini_processor.py` для диагностики
+4. Проверьте лимиты на https://aistudio.google.com/quota

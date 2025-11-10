@@ -499,8 +499,8 @@ const {
   processText,     // (text, mode, topic?) => Promise<void> - обработать текст
   batchProcess,    // (text, modes[]) => Promise<void> - обработка в нескольких режимах
   getModes,        // () => Promise<MLMode[]> - получить доступные режимы
-  checkHealth,     // () => Promise<boolean> - проверка доступности API
   reset,           // () => void - сброс состояния
+  cancelProcessing // () => void - отмена текущей обработки (НОВОЕ!)
 } = useMLProcessor();
 ```
 
@@ -593,18 +593,43 @@ console.log(modes);
 // ['summarize', 'extract_terms', 'expand_topic', ...]
 ```
 
-#### Проверка здоровья API: `checkHealth()`
+#### Отмена обработки: `cancelProcessing()` ⭐ НОВОЕ!
 
 ```typescript
-const { checkHealth } = useMLProcessor();
+/**
+ * Отменяет текущую обработку текста
+ * Прерывает HTTP-запрос через AbortController
+ * Не тратит токены API, если отмена произошла до отправки запроса в Gemini
+ */
+const { cancelProcessing, isProcessing } = useMLProcessor();
 
-const isHealthy = await checkHealth();
-if (isHealthy) {
-  console.log('✅ ML API работает');
-} else {
-  console.log('❌ ML API недоступен');
-}
+// Использование
+const handleCancel = () => {
+  cancelProcessing();
+  console.log('🛑 Обработка отменена');
+};
 ```
+
+**Важно:**
+- ✅ Если отмена произошла **в первые 0.5-2 секунды** → запрос не дойдёт до backend → **токены НЕ потрачены**
+- ⚠️ Если backend уже начал обработку и вызвал Gemini API → **токены уже потрачены**
+- ✅ После отмены редактор показывает **исходный текст** (не обработанный)
+- ✅ Состояние `isProcessing` автоматически становится `false`
+
+**Пример в UI:**
+
+```typescript
+// Кнопка отмены появляется только во время обработки
+{isProcessing && (
+  <button onClick={cancelProcessing} className="btn-cancel">
+    ❌ Отменить обработку
+  </button>
+)}
+```
+
+#### Проверка здоровья API: `checkHealth()` (удалено)
+
+> **Примечание:** Метод `checkHealth()` был удалён из API хука, чтобы не расходовать токены Gemini API на проверки. Приложение работает без предварительных health checks.
 
 #### Внутренняя реализация
 
@@ -617,16 +642,23 @@ export const useMLProcessor = (): UseMLProcessorReturn => {
     error: null
   });
 
+  // AbortController для отмены запросов
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
   const processText = async (text: string, mode: MLMode, topic?: string) => {
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
     
+    // Создаём новый AbortController для этого запроса
+    abortControllerRef.current = new AbortController();
+    
     try {
       const response = await fetch(`${API_BASE_URL}/api/ml/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, mode, topic })
+        body: JSON.stringify({ text, mode, topic }),
+        signal: abortControllerRef.current.signal  // Добавляем signal для отмены
       });
 
       if (!response.ok) throw new Error('ML API request failed');
@@ -639,15 +671,51 @@ export const useMLProcessor = (): UseMLProcessorReturn => {
         error: null
       });
     } catch (err) {
+      // Проверяем, была ли отмена запроса
+      if (err.name === 'AbortError') {
+        console.log('🛑 Обработка отменена пользователем');
+        setState({
+          isProcessing: false,
+          currentMode: mode,
+          result: null,
+          error: null  // Не показываем ошибку при отмене
+        });
+        return;
+      }
+
       setState(prev => ({
         ...prev,
         isProcessing: false,
         error: err instanceof Error ? err.message : 'Unknown error'
       }));
+    } finally {
+      // Очищаем AbortController
+      abortControllerRef.current = null;
     }
   };
 
-  // ... остальные методы
+  /**
+   * Отмена текущей обработки
+   */
+  const cancelProcessing = () => {
+    if (abortControllerRef.current) {
+      console.log('🛑 Отмена обработки...');
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  };
+
+  return {
+    isProcessing: state.isProcessing,
+    currentMode: state.currentMode,
+    result: state.result,
+    error: state.error,
+    processText,
+    batchProcess,
+    getModes,
+    reset,
+    cancelProcessing  // Экспортируем новый метод
+  };
 };
 ```
 
@@ -663,27 +731,14 @@ const AccountPage = () => {
     result: mlResult, 
     error: mlError, 
     processText,
-    checkHealth,
-    reset: resetML 
+    reset: resetML,
+    cancelProcessing  // Добавляем функцию отмены
   } = useMLProcessor();
 
   // Состояние
   const [selectedMLMode, setSelectedMLMode] = useState<MLMode>('summarize');
   const [topicInput, setTopicInput] = useState<string>('');
   const [showMLResult, setShowMLResult] = useState<boolean>(false);
-  const [mlApiHealthy, setMlApiHealthy] = useState<boolean | null>(null);
-
-  // Проверка здоровья при монтировании
-  useEffect(() => {
-    const checkMLHealth = async () => {
-      const healthy = await checkHealth();
-      setMlApiHealthy(healthy);
-      if (!healthy) {
-        console.warn('⚠️ ML API недоступен');
-      }
-    };
-    checkMLHealth();
-  }, [checkHealth]);
 
   // Обработка текста
   const handleMLProcess = async () => {
@@ -698,6 +753,51 @@ const AccountPage = () => {
       alert('⚠️ Укажите тему для расширения');
       return;
     }
+
+    // Запускаем обработку
+    await processText(text, selectedMLMode, topicInput);
+    
+    // После завершения показываем результат
+    if (mlResult) {
+      setShowMLResult(true);
+    }
+  };
+
+  return (
+    <div>
+      {/* Кнопка отмены - показывается только во время обработки */}
+      {isProcessing && (
+        <button 
+          onClick={cancelProcessing}
+          className="btn-cancel"
+          style={{
+            backgroundColor: '#ef4444',
+            color: 'white',
+            padding: '0.75rem 1.5rem',
+            borderRadius: '0.5rem',
+            fontWeight: '600'
+          }}
+        >
+          ❌ Отменить обработку
+        </button>
+      )}
+      
+      {/* Кнопка обработки */}
+      <button
+        onClick={handleMLProcess}
+        disabled={isProcessing || !editorInstance}
+        className="btn-ai"
+      >
+        {isProcessing ? '⏳ Обработка...' : '🤖 Обработать с ИИ'}
+      </button>
+      
+      {/* Отображение результата */}
+      {mlResult && showMLResult && (
+        <div dangerouslySetInnerHTML={{ __html: marked(mlResult) }} />
+      )}
+    </div>
+  );
+};
 
     await processText(text, selectedMLMode, topicInput || undefined);
     
