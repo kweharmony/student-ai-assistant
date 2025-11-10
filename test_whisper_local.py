@@ -25,14 +25,24 @@ def test_local_whisper(audio_file_path, model_name="base"):
     print(f"\n✅ Файл найден: {audio_file_path}")
     print(f"📦 Размер: {file_size_mb:.2f} MB")
     
+    # Проверка CUDA
+    import torch
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"\n🔧 Устройство: {device.upper()}")
+    if device == "cuda":
+        print(f"   GPU: {torch.cuda.get_device_name(0)}")
+        print(f"   VRAM доступно: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    else:
+        print(f"   ⚠️ CUDA не доступна, используется CPU (будет медленнее)")
+    
     # Загрузка модели
     print(f"\n🔄 Загружаем модель '{model_name}'...")
     start_load = time.time()
     
     try:
-        model = whisper.load_model(model_name)
+        model = whisper.load_model(model_name, device=device)
         load_time = time.time() - start_load
-        print(f"✅ Модель загружена за {load_time:.2f} сек")
+        print(f"✅ Модель загружена на {device.upper()} за {load_time:.2f} сек")
     except Exception as e:
         print(f"❌ Ошибка загрузки модели: {e}")
         return
@@ -49,8 +59,8 @@ def test_local_whisper(audio_file_path, model_name="base"):
             audio_file_path,
             language='ru',  # Русский язык
             task='transcribe',
-            fp16=False,
-            verbose=False  # Показывать прогресс
+            fp16=torch.cuda.is_available(),  # FP16 только если есть GPU
+            verbose=True  # Показывать прогресс
         )
         
         transcribe_time = time.time() - start_transcribe
@@ -101,14 +111,20 @@ if __name__ == "__main__":
     audio_file = "ПУТЬ/К/ВАШЕМУ/ФАЙЛУ"
     
     # Модель (tiny, base, small, medium, large)
-    model = "base"
+    # Для RTX 4060: medium даёт отличное качество с хорошей скоростью
+    model = "medium"
     # ================================
     
     if "ПУТЬ/К/ВАШЕМУ/ФАЙЛУ" in audio_file:
         print("\n⚠️  Вы не указали путь к аудиофайлу!")
         print("\n📝 Откройте test_whisper_local.py и измените:")
         print('   audio_file = "C:/path/to/your/lecture.mp3"')
-        print('   model = "base"  # или small, medium для лучшего качества')
+        print('   model = "medium"  # medium рекомендуется для RTX 4060')
+        print("\n💡 Модели:")
+        print("   • tiny/base - быстрые, но менее точные")
+        print("   • small - хороший баланс")
+        print("   • medium - отличное качество (рекомендуется) ⭐")
+        print("   • large - максимальное качество (медленнее)")
     else:
         test_local_whisper(audio_file, model)
     
