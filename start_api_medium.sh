@@ -1,9 +1,9 @@
 #!/bin/bash
-# Скрипт для запуска API с моделью Whisper Small
+# Скрипт для запуска API с моделью Whisper Medium
 # Для macOS/Linux
 
 echo "========================================"
-echo "Запуск API сервера с моделью Whisper Small"
+echo "Запуск API сервера с моделью Whisper Medium"
 echo "========================================"
 echo ""
 
@@ -18,7 +18,7 @@ else
 fi
 
 # Установка переменной окружения для модели
-export WHISPER_MODEL=small
+export WHISPER_MODEL=medium
 
 echo ""
 echo "Используется модель: $WHISPER_MODEL"
@@ -31,4 +31,5 @@ echo ""
 
 # Запуск сервера
 uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
+
 

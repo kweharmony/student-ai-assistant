@@ -75,29 +75,29 @@ REACT_APP_API_URL=http://localhost:8000
 
 Откройте **два терминала** в корневой директории:
 
-### Терминал 1 - Backend (с моделью Whisper Small)
+### Терминал 1 - Backend (с моделью Whisper Medium)
 
 **Windows:**
 
 ```bash
-./start_api_small.bat
+./start_api_medium.bat
 ```
 
 **macOS/Linux:**
 
 ```bash
-./start_api_small.sh
+./start_api_medium.sh
 ```
 
 Или вручную:
 
 ```bash
 # Windows
-set WHISPER_MODEL=small
+set WHISPER_MODEL=medium
 .venv\Scripts\uvicorn.exe api.app:app --reload --host 0.0.0.0 --port 8000
 
 # Linux/Mac
-export WHISPER_MODEL=small
+export WHISPER_MODEL=medium
 uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
 ```
 

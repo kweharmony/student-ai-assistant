@@ -1,9 +1,9 @@
 @echo off
-REM Скрипт для запуска API с моделью Whisper Small
+REM Скрипт для запуска API с моделью Whisper Medium
 REM Для Windows
 
 echo ========================================
-echo Запуск API сервера с моделью Whisper Small
+echo Запуск API сервера с моделью Whisper Medium
 echo ========================================
 echo.
 
@@ -19,7 +19,7 @@ if exist "venv\Scripts\activate.bat" (
 )
 
 REM Установка переменной окружения для модели
-set WHISPER_MODEL=small
+set WHISPER_MODEL=medium
 
 echo.
 echo Используется модель: %WHISPER_MODEL%
@@ -32,4 +32,5 @@ echo.
 
 REM Запуск сервера
 uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
+
 
