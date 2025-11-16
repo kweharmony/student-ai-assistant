@@ -4,7 +4,7 @@
 
 ## 🚀 Возможности
 
-- Транскрибация аудио в текст
+- **Транскрибация аудио в текст** (Whisper AI - локально, без интернета)
 - WYSIWYG редактор текста
 - AI обработка текста (6 режимов через Google Gemini API)
 - Экспорт в PDF, DOCX, TXT
@@ -14,12 +14,13 @@
 
 **Frontend:** React 18, TypeScript, TipTap, Tailwind CSS  
 **Backend:** FastAPI, Python 3.10+  
-**AI/ML:** Google Gemini API, Nexara API
+**AI/ML:** OpenAI Whisper (локально), Google Gemini API, Nexara API
 
 ## 📋 Требования
 
 - Node.js 14+
 - Python 3.10+
+- FFmpeg (для транскрибации аудио)
 - Google Gemini API ключ (бесплатно)
 - Nexara API ключ (опционально)
 
@@ -39,6 +40,7 @@ cd student-ai-assistant
 python -m venv .venv
 
 # Активировать (Windows PowerShell)
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 .venv\Scripts\Activate.ps1
 
 # Установить зависимости
@@ -73,10 +75,30 @@ REACT_APP_API_URL=http://localhost:8000
 
 Откройте **два терминала** в корневой директории:
 
-### Терминал 1 - Backend
+### Терминал 1 - Backend (с моделью Whisper Small)
+
+**Windows:**
 
 ```bash
-.venv\Scripts\uvicorn.exe api.app:app --reload --host 127.0.0.1 --port 8000
+./start_api_small.bat
+```
+
+**macOS/Linux:**
+
+```bash
+./start_api_small.sh
+```
+
+Или вручную:
+
+```bash
+# Windows
+set WHISPER_MODEL=small
+.venv\Scripts\uvicorn.exe api.app:app --reload --host 0.0.0.0 --port 8000
+
+# Linux/Mac
+export WHISPER_MODEL=small
+uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Backend: http://127.0.0.1:8000
@@ -89,18 +111,32 @@ npm start
 
 Frontend: http://localhost:3000
 
-## Использование
+## 📖 Использование
+
+### Транскрибация аудио (новая функция!)
 
 1. Откройте http://localhost:3000
 2. Войти → Личный кабинет
-3. Введите текст или загрузите аудио
-4. Выберите режим AI обработки
-5. Нажмите "Обработать с помощью ИИ"
-6. Вставьте результат в редактор
-7. Экспортируйте в нужный формат
+3. Перейдите в раздел **"Транскрибатор аудио в текст"**
+4. Загрузите аудиофайл (mp3, wav, m4a и др.)
+5. Дождитесь завершения транскрибации
+6. Текст автоматически появится в редакторе
+
+### AI обработка текста
+
+1. В разделе **"Обработка текста с помощью ИИ"**
+2. Введите или вставьте текст в редактор
+3. Выберите режим AI обработки (конспект, термины, вопросы и др.)
+4. Нажмите "Обработать с помощью ИИ"
+5. Вставьте результат в редактор
+6. Экспортируйте в PDF, DOCX или TXT
+
+💡 **Совет:** Можно сначала транскрибировать аудио лекции, а затем обработать текст с помощью AI!
 
 ## 📚 Дополнительная документация
 
+- **🚀 Быстрый старт транскрибации** (5 минут): `QUICK_START_TRANSCRIPTION.md`
+- **Установка Whisper для транскрибации**: `WHISPER_INSTALL.md` ⭐ **ВАЖНО**
 - **Полная техническая документация**: `student-ai-docs.md`
 - **ML модуль и Google Gemini**: `ML_documentation.md`
 - **Настройка ML**: `ML_SETUP_GUIDE.md`
