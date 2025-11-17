@@ -1,12 +1,12 @@
 """
-Простой быстрый тест DeepSeek API
+Простой быстрый тест Gemini API
 """
 
-from ml.deepseek_processor import DeepSeekProcessor
+from ml.gemini_processor import GeminiProcessor
 
 # Инициализируем процессор
-print("🚀 Инициализация DeepSeek...")
-processor = DeepSeekProcessor()
+print("🚀 Инициализация Gemini...")
+processor = GeminiProcessor()
 
 # Твой тестовый текст
 text = """

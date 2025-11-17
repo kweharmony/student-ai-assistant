@@ -82,6 +82,11 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
   const [transcriptionMinimized, setTranscriptionMinimized] = useState(false);
   
+  // Состояние AI-фильтрации транскрибированного текста
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [transcribedText, setTranscribedText] = useState('');
+  const [isFiltering, setIsFiltering] = useState(false);
+  
   // Описания режимов ML для UI
   const mlModes: MLModeInfo[] = [
     {
@@ -333,22 +338,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       if (result.success) {
         setTranscriptionProgress('Транскрибация завершена успешно!');
         
-        // Вставляем текст в редактор
-        if (editorInstance) {
-          editorInstance.setText(result.text);
-        }
-        setOriginalText(result.text);
-        setEditorMode('original');
-
-        // Небольшая задержка перед переключением
+        // Сохраняем транскрибированный текст
+        setTranscribedText(result.text);
+        
+        // Небольшая задержка и показываем модальное окно выбора
         setTimeout(() => {
           setIsTranscribing(false);
           setTranscriptionProgress('');
-          setTranscriptionMinimized(false);
-          // Переключаемся на раздел обработки текста
-          setActiveSection('text-processing');
-          setShowTextEditor(true);
-        }, 1500);
+          setShowFilterModal(true); // Показываем модальное окно выбора
+        }, 1000);
       } else {
         throw new Error('Транскрибация не удалась');
       }
@@ -356,6 +354,86 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       console.error('Ошибка транскрибации:', error);
       setTranscriptionError(error.message || 'Произошла ошибка при транскрибации');
       setIsTranscribing(false);
+    }
+  };
+  
+  // Функция для пропуска фильтрации (сразу в редактор)
+  const handleSkipFilter = () => {
+    setShowFilterModal(false);
+    
+    // Вставляем текст в редактор без фильтрации
+    if (editorInstance) {
+      editorInstance.commands.setContent(transcribedText);
+    }
+    setOriginalText(transcribedText);
+    setEditorMode('original');
+    
+    // Переключаемся на раздел обработки текста
+    setActiveSection('text-processing');
+    setShowTextEditor(true);
+    
+    // Очищаем сохраненный текст
+    setTranscribedText('');
+  };
+  
+  // Функция для применения AI-фильтрации
+  const handleApplyFilter = async () => {
+    setIsFiltering(true);
+    
+    try {
+      console.log('🔄 Отправляем текст на фильтрацию:', transcribedText.substring(0, 200));
+      
+      // Отправляем текст на фильтрацию
+      const response = await fetch('http://localhost:8000/api/transcribe/filter', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: transcribedText }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Ошибка фильтрации текста');
+      }
+
+      const result = await response.json();
+      console.log('📥 Получен результат фильтрации:', {
+        success: result.success,
+        originalLength: result.original_length,
+        filteredLength: result.filtered_length,
+        firstChars: result.filtered_text.substring(0, 200)
+      });
+
+      if (result.success) {
+        console.log('✅ Фильтрация успешна, текст изменился:', transcribedText !== result.filtered_text);
+        
+        // Вставляем отфильтрованный текст в редактор
+        if (editorInstance) {
+          editorInstance.commands.setContent(result.filtered_text);
+        }
+        setOriginalText(result.filtered_text);
+        setEditorMode('original');
+        
+        // Закрываем модальное окно
+        setShowFilterModal(false);
+        setIsFiltering(false);
+        
+        // Переключаемся на раздел обработки текста
+        setActiveSection('text-processing');
+        setShowTextEditor(true);
+        
+        // Очищаем сохраненный текст
+        setTranscribedText('');
+      } else {
+        console.error('❌ Фильтрация вернула success=false');
+        throw new Error('Фильтрация не удалась');
+      }
+    } catch (error: any) {
+      console.error('Ошибка фильтрации:', error);
+      alert('Ошибка AI-фильтрации. Текст будет вставлен без обработки.');
+      
+      // В случае ошибки вставляем оригинальный текст
+      handleSkipFilter();
     }
   };
 
@@ -2182,6 +2260,193 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 color: 'var(--text-primary)',
                 borderColor: '#B58488'
               }}
+            >
+              {transcriptionError}
+            </div>
+
+            {/* Кнопка закрытия */}
+            <button
+              onClick={() => setTranscriptionError(null)}
+              className="btn-upload w-full"
+            >
+              Понятно
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Модальное окно выбора фильтрации транскрибированного текста */}
+      {showFilterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div 
+            className={`max-w-md w-full rounded-2xl shadow-2xl p-8 ${
+              isLightTheme 
+                ? 'bg-white' 
+                : 'bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700'
+            }`}
+          >
+            {/* Иконка */}
+            <div className="flex justify-center mb-6">
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                isLightTheme 
+                  ? 'bg-blue-100' 
+                  : 'bg-blue-900/30'
+              }`}>
+                <svg 
+                  className={`w-8 h-8 ${isLightTheme ? 'text-blue-600' : 'text-blue-400'}`}
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" 
+                  />
+                </svg>
+              </div>
+            </div>
+
+            {/* Заголовок */}
+            <h3 
+              className={`text-2xl font-bold mb-3 text-center ${
+                isLightTheme ? 'text-gray-900' : 'text-white'
+              }`}
+            >
+              Транскрибация завершена!
+            </h3>
+
+            {/* Описание */}
+            <p 
+              className={`text-center mb-6 ${
+                isLightTheme ? 'text-gray-600' : 'text-gray-300'
+              }`}
+            >
+              Хотите дополнительно обработать текст с помощью ИИ для исправления ошибок транскрибации?
+            </p>
+
+            {/* Информация о фильтре */}
+            <div 
+              className={`p-4 rounded-lg mb-6 ${
+                isLightTheme 
+                  ? 'bg-blue-50 border border-blue-200' 
+                  : 'bg-blue-900/20 border border-blue-800/30'
+              }`}
+            >
+              <p className={`text-sm font-semibold mb-2 ${
+                isLightTheme ? 'text-blue-900' : 'text-blue-300'
+              }`}>
+                🤖 AI-фильтр исправит:
+              </p>
+              <ul className={`text-sm space-y-1 ${
+                isLightTheme ? 'text-blue-800' : 'text-blue-200'
+              }`}>
+                <li>• Орфографические ошибки распознавания</li>
+                <li>• Фразы-паразиты (эээ, ну, вот)</li>
+                <li>• Пунктуацию и форматирование</li>
+                <li>• Разделение на абзацы</li>
+              </ul>
+            </div>
+
+            {/* Кнопки выбора */}
+            <div className="space-y-3">
+              <button
+                onClick={handleApplyFilter}
+                disabled={isFiltering}
+                className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 ${
+                  isFiltering
+                    ? 'opacity-50 cursor-not-allowed bg-gray-400'
+                    : isLightTheme
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl'
+                    : 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl'
+                }`}
+              >
+                {isFiltering ? (
+                  <span className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Обработка...
+                  </span>
+                ) : (
+                  '✨ Обработать с помощью ИИ'
+                )}
+              </button>
+
+              <button
+                onClick={handleSkipFilter}
+                disabled={isFiltering}
+                className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 ${
+                  isFiltering
+                    ? 'opacity-50 cursor-not-allowed'
+                    : isLightTheme
+                    ? 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                    : 'bg-slate-700 hover:bg-slate-600 text-gray-300'
+                }`}
+              >
+                Пропустить обработку
+              </button>
+            </div>
+
+            {/* Подсказка */}
+            <p className={`text-xs text-center mt-4 ${
+              isLightTheme ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              Обработка займет 5-15 секунд
+            </p>
+          </div>
+        </div>
+      )}
+      
+      {/* Модальное окно ошибки транскрибации */}
+      {transcriptionError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div 
+            className={`max-w-md w-full rounded-2xl shadow-2xl p-8 ${
+              isLightTheme 
+                ? 'bg-white' 
+                : 'bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700'
+            }`}
+          >
+            {/* Иконка ошибки */}
+            <div className="flex justify-center mb-6">
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                isLightTheme 
+                  ? 'bg-red-100' 
+                  : 'bg-red-900/30'
+              }`}>
+                <svg 
+                  className={`w-8 h-8 ${isLightTheme ? 'text-red-600' : 'text-red-400'}`}
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                  />
+                </svg>
+              </div>
+            </div>
+            <h3 
+              className={`text-xl font-semibold mb-2 ${
+                isLightTheme ? 'text-gray-900' : 'text-white'
+              }`}
+            >
+              Ошибка транскрибации
+            </h3>
+
+            {/* Сообщение об ошибке */}
+            <div 
+              className={`text-sm mb-6 p-4 rounded-lg border ${
+                isLightTheme 
+                  ? 'bg-red-50 text-red-800 border-red-200' 
+                  : 'bg-red-900/20 text-red-300 border-red-800/30'
+              }`}
             >
               {transcriptionError}
             </div>

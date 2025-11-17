@@ -11,9 +11,50 @@ import os
 import tempfile
 import logging
 import time
+import sys
+from pathlib import Path
+
+# ===== НАСТРОЙКА FFMPEG PATH =====
+# Ищем FFmpeg в стандартных местах установки для Windows
+def setup_ffmpeg_path():
+    """Добавляет FFmpeg в PATH если он не найден"""
+    import shutil
+    
+    # Проверяем, доступен ли ffmpeg
+    if shutil.which('ffmpeg') is not None:
+        logger.info("✅ FFmpeg уже доступен в PATH")
+        return
+    
+    # Возможные пути установки FFmpeg на Windows
+    possible_paths = [
+        Path(os.environ.get('LOCALAPPDATA', '')) / 'Microsoft' / 'WinGet' / 'Packages',
+        Path('C:/ProgramData/chocolatey/bin'),
+        Path('C:/ffmpeg/bin'),
+        Path(os.environ.get('PROGRAMFILES', '')) / 'ffmpeg' / 'bin',
+    ]
+    
+    for base_path in possible_paths:
+        if not base_path.exists():
+            continue
+            
+        # Ищем ffmpeg.exe рекурсивно
+        for ffmpeg_path in base_path.rglob('ffmpeg.exe'):
+            bin_dir = str(ffmpeg_path.parent)
+            logger.info(f"🔍 Найден FFmpeg: {bin_dir}")
+            
+            # Добавляем в PATH текущего процесса
+            if bin_dir not in os.environ['PATH']:
+                os.environ['PATH'] = bin_dir + os.pathsep + os.environ['PATH']
+                logger.info(f"✅ FFmpeg добавлен в PATH: {bin_dir}")
+            return
+    
+    logger.warning("⚠️ FFmpeg не найден автоматически. Установите FFmpeg: winget install ffmpeg")
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
+
+# Настраиваем FFmpeg при импорте модуля
+setup_ffmpeg_path()
 
 router = APIRouter(prefix="/api/transcribe", tags=["Audio Transcription"])
 
@@ -75,15 +116,29 @@ async def transcribe_audio(audio: UploadFile = File(...)):
     
     logger.info(f"📝 Получен файл: {audio.filename} ({file_extension})")
     
+    temp_file_path = None
+    
     try:
+        # Читаем содержимое файла
+        content = await audio.read()
+        logger.info(f"📦 Прочитано байт: {len(content)}")
+        
+        if len(content) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="❌ Файл пустой или не был загружен"
+            )
+        
         # Сохраняем временный файл
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_file:
-            content = await audio.read()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}', mode='wb') as temp_file:
             temp_file.write(content)
+            temp_file.flush()  # Принудительно записываем на диск
+            os.fsync(temp_file.fileno())  # Синхронизируем с диском
             temp_file_path = temp_file.name
         
         file_size_mb = os.path.getsize(temp_file_path) / (1024 * 1024)
         logger.info(f"📦 Размер файла: {file_size_mb:.2f} MB")
+        logger.info(f"💾 Временный файл: {temp_file_path}")
         
         # Получаем модель
         model = get_whisper_model()
@@ -112,6 +167,13 @@ async def transcribe_audio(audio: UploadFile = File(...)):
         transcribed_text = result['text']
         detected_language = result.get('language', 'unknown')
         
+        # Удаляем временный файл после успешной обработки
+        try:
+            os.unlink(temp_file_path)
+            logger.info(f"🗑️ Временный файл удален")
+        except Exception as cleanup_error:
+            logger.warning(f"⚠️ Не удалось удалить временный файл: {cleanup_error}")
+        
         processing_time = time.time() - start_time
         
         logger.info(f"✅ Транскрибация завершена!")
@@ -128,15 +190,21 @@ async def transcribe_audio(audio: UploadFile = File(...)):
             processing_time=processing_time
         )
         
+    except HTTPException:
+        # Пробрасываем HTTPException без изменений
+        raise
+        
     except Exception as e:
         logger.error(f"❌ Ошибка транскрибации: {str(e)}")
+        logger.error(f"   Тип ошибки: {type(e).__name__}")
         
         # Удаляем временный файл в случае ошибки
-        if 'temp_file_path' in locals():
+        if temp_file_path and os.path.exists(temp_file_path):
             try:
                 os.unlink(temp_file_path)
-            except:
-                pass
+                logger.info(f"🗑️ Временный файл удален после ошибки")
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️ Не удалось удалить временный файл: {cleanup_error}")
         
         raise HTTPException(
             status_code=500,
@@ -184,3 +252,108 @@ async def model_info():
         "cache_location": os.path.expanduser("~/.cache/whisper/"),
         "supported_formats": ['mp3', 'wav', 'm4a', 'flac', 'ogg', 'opus', 'mp4', 'mov', 'avi', 'mkv', 'webm']
     }
+
+
+# ===== AI-ФИЛЬТРАЦИЯ ТРАНСКРИБИРОВАННОГО ТЕКСТА =====
+
+class FilterRequest(BaseModel):
+    """Запрос на фильтрацию транскрибированного текста"""
+    text: str
+
+
+class FilterResponse(BaseModel):
+    """Ответ фильтрации"""
+    success: bool
+    filtered_text: str
+    original_length: int
+    filtered_length: int
+    processing_time: float
+
+
+@router.post("/filter", response_model=FilterResponse)
+async def filter_transcription(request: FilterRequest):
+    """
+    Фильтрует и очищает транскрибированный текст от ошибок распознавания
+    
+    Использует Gemini API для:
+    - Исправления орфографических ошибок
+    - Удаления фраз-паразитов
+    - Улучшения пунктуации
+    - Форматирования текста
+    
+    ВАЖНО: Это отдельный AI-процесс от создания конспектов!
+    """
+    start_time = time.time()
+    
+    try:
+        # Импортируем фильтр (ленивая загрузка)
+        try:
+            from ..ml.transcription_filter import TranscriptionFilter
+        except ImportError:
+            import sys
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from ml.transcription_filter import TranscriptionFilter
+        
+        logger.info(f"🔄 Начинаем AI-фильтрацию текста ({len(request.text)} символов)")
+        logger.info(f"📝 Первые 200 символов входного текста: {request.text[:200]}")
+        
+        # Создаём фильтр и обрабатываем
+        filter_instance = TranscriptionFilter()
+        filtered_text = filter_instance.filter_text(request.text)
+        
+        processing_time = time.time() - start_time
+        
+        logger.info(f"✅ Фильтрация завершена за {processing_time:.2f}с")
+        logger.info(f"📊 Размер: {len(request.text)} → {len(filtered_text)}")
+        logger.info(f"📝 Первые 200 символов ОТФИЛЬТРОВАННОГО текста: {filtered_text[:200]}")
+        
+        # Проверяем, изменился ли текст
+        if request.text.strip() == filtered_text.strip():
+            logger.warning("⚠️ ВНИМАНИЕ: Текст не изменился после фильтрации!")
+        else:
+            logger.info(f"✅ Текст успешно отфильтрован (есть изменения)")
+        
+        return FilterResponse(
+            success=True,
+            filtered_text=filtered_text,
+            original_length=len(request.text),
+            filtered_length=len(filtered_text),
+            processing_time=processing_time
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка фильтрации: {str(e)}")
+        
+        # В случае ошибки возвращаем оригинальный текст
+        processing_time = time.time() - start_time
+        
+        return FilterResponse(
+            success=False,
+            filtered_text=request.text,  # Возвращаем оригинал
+            original_length=len(request.text),
+            filtered_length=len(request.text),
+            processing_time=processing_time
+        )
+
+
+@router.get("/filter/health")
+async def filter_health_check():
+    """Проверка работоспособности AI-фильтра"""
+    
+    try:
+        from ..ml.transcription_filter import TranscriptionFilter
+        
+        filter_instance = TranscriptionFilter()
+        is_healthy = filter_instance.health_check()
+        
+        return {
+            "status": "healthy" if is_healthy else "unhealthy",
+            "message": "✅ AI-фильтр готов к работе" if is_healthy else "❌ Проблемы с AI-фильтром",
+            "uses_gemini": True
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"❌ Ошибка: {str(e)}",
+            "uses_gemini": True
+        }
