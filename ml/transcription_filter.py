@@ -10,6 +10,8 @@ import logging
 from typing import Optional
 import google.generativeai as genai
 from dotenv import load_dotenv
+import time
+from pathlib import Path
 
 from .filter_prompts import (
     TRANSCRIPTION_FILTER_PROMPT,
@@ -17,8 +19,9 @@ from .filter_prompts import (
     TRANSCRIPTION_FILTER_CONFIG
 )
 
-# Загружаем переменные окружения
-load_dotenv()
+# Загружаем переменные окружения из корня проекта
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -39,7 +42,11 @@ class TranscriptionFilter:
         # Используем отдельные переменные окружения для фильтрации
         # Можно использовать тот же ключ или отдельный
         self.api_key = os.getenv('GEMINI_API_KEY')
-        self.model_name = os.getenv('GEMINI_FILTER_MODEL', os.getenv('GEMINI_MODEL', 'gemini-2.0-flash'))
+        # Используем более стабильную модель gemini-1.5-flash вместо экспериментальной
+        self.model_name = os.getenv('GEMINI_FILTER_MODEL', 'gemini-1.5-flash')
+        
+        logger.info(f"🔍 GEMINI_FILTER_MODEL из .env: {os.getenv('GEMINI_FILTER_MODEL')}")
+        logger.info(f"📌 Используемая модель фильтратора: {self.model_name}")
         
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY не найден в переменных окружения!")
@@ -55,12 +62,13 @@ class TranscriptionFilter:
         
         logger.info(f"TranscriptionFilter инициализирован. Модель: {self.model_name}")
     
-    def filter_text(self, transcribed_text: str) -> str:
+    def filter_text(self, transcribed_text: str, max_retries: int = 3) -> str:
         """
         Фильтрует и очищает транскрибированный текст от ошибок
         
         Args:
             transcribed_text: Сырой текст после транскрибации Whisper
+            max_retries: Количество попыток при ошибках API (по умолчанию 3)
         
         Returns:
             Очищенный и исправленный текст
@@ -69,34 +77,70 @@ class TranscriptionFilter:
             logger.warning("Текст слишком короткий для фильтрации")
             return transcribed_text
         
-        try:
-            # Формируем промпт
-            prompt = TRANSCRIPTION_FILTER_PROMPT.format(text=transcribed_text)
-            
-            logger.info(f"🔄 Начинаем фильтрацию текста ({len(transcribed_text)} символов)")
-            
-            # Генерация с настройками из конфига
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=TRANSCRIPTION_FILTER_CONFIG["temperature"],
-                    max_output_tokens=TRANSCRIPTION_FILTER_CONFIG["max_tokens"],
-                    top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"],
+        # Retry логика для обработки перегрузки API
+        for attempt in range(max_retries):
+            try:
+                # Формируем промпт
+                prompt = TRANSCRIPTION_FILTER_PROMPT.format(text=transcribed_text)
+                
+                if attempt > 0:
+                    logger.info(f"🔄 Попытка {attempt + 1}/{max_retries}")
+                
+                logger.info(f"🔄 Начинаем фильтрацию текста ({len(transcribed_text)} символов)")
+                logger.info(f"📝 Первые 150 символов ДО фильтрации: {transcribed_text[:150]}")
+                
+                # Генерация с настройками из конфига и таймаутом
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config=genai.GenerationConfig(
+                        temperature=TRANSCRIPTION_FILTER_CONFIG["temperature"],
+                        max_output_tokens=TRANSCRIPTION_FILTER_CONFIG["max_tokens"],
+                        top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"],
+                    ),
+                    request_options={'timeout': 120}  # Таймаут 2 минуты вместо 10
                 )
-            )
-            
-            filtered_text = response.text.strip()
-            
-            logger.info(f"✅ Фильтрация завершена. Результат: {len(filtered_text)} символов")
-            logger.info(f"📊 Изменение размера: {len(transcribed_text)} → {len(filtered_text)} ({len(filtered_text) - len(transcribed_text):+d})")
-            
-            return filtered_text
-            
-        except Exception as e:
-            logger.error(f"❌ Ошибка фильтрации: {str(e)}")
-            # В случае ошибки возвращаем оригинальный текст
-            logger.warning("⚠️ Возвращаем оригинальный текст без фильтрации")
-            return transcribed_text
+                
+                filtered_text = response.text.strip()
+                
+                logger.info(f"✅ Фильтрация завершена. Результат: {len(filtered_text)} символов")
+                logger.info(f"📊 Изменение размера: {len(transcribed_text)} → {len(filtered_text)} ({len(filtered_text) - len(transcribed_text):+d})")
+                logger.info(f"📝 Первые 150 символов ПОСЛЕ фильтрации: {filtered_text[:150]}")
+                
+                # Проверяем, изменился ли текст
+                if transcribed_text.strip() == filtered_text.strip():
+                    logger.warning("⚠️ ПРЕДУПРЕЖДЕНИЕ: Текст не изменился после фильтрации! Возможно, текст уже был чистым или модель вернула то же самое.")
+                
+                return filtered_text
+                
+            except Exception as e:
+                error_message = str(e)
+                
+                # Проверяем, является ли это ошибкой перегрузки API
+                if "503" in error_message or "overloaded" in error_message.lower():
+                    if attempt < max_retries - 1:
+                        wait_time = (attempt + 1) * 5  # Увеличивающаяся задержка: 5, 10, 15 секунд
+                        logger.warning(f"⚠️ API перегружен. Ждем {wait_time}с перед повторной попыткой...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        logger.error(f"❌ API перегружен после {max_retries} попыток")
+                elif "timeout" in error_message.lower():
+                    logger.error(f"❌ Таймаут запроса к API (попытка {attempt + 1}/{max_retries})")
+                    if attempt < max_retries - 1:
+                        logger.info("⏳ Повторная попытка через 3 секунды...")
+                        time.sleep(3)
+                        continue
+                else:
+                    logger.error(f"❌ Ошибка фильтрации: {error_message}")
+                
+                # Если это последняя попытка или неизвестная ошибка
+                if attempt == max_retries - 1:
+                    logger.warning("⚠️ Возвращаем оригинальный текст без фильтрации")
+                    return transcribed_text
+        
+        # Если все попытки исчерпаны
+        logger.warning("⚠️ Все попытки исчерпаны. Возвращаем оригинальный текст")
+        return transcribed_text
     
     def health_check(self) -> bool:
         """Проверка работоспособности API"""

@@ -116,15 +116,29 @@ async def transcribe_audio(audio: UploadFile = File(...)):
     
     logger.info(f"📝 Получен файл: {audio.filename} ({file_extension})")
     
+    temp_file_path = None
+    
     try:
+        # Читаем содержимое файла
+        content = await audio.read()
+        logger.info(f"📦 Прочитано байт: {len(content)}")
+        
+        if len(content) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="❌ Файл пустой или не был загружен"
+            )
+        
         # Сохраняем временный файл
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_file:
-            content = await audio.read()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}', mode='wb') as temp_file:
             temp_file.write(content)
+            temp_file.flush()  # Принудительно записываем на диск
+            os.fsync(temp_file.fileno())  # Синхронизируем с диском
             temp_file_path = temp_file.name
         
         file_size_mb = os.path.getsize(temp_file_path) / (1024 * 1024)
         logger.info(f"📦 Размер файла: {file_size_mb:.2f} MB")
+        logger.info(f"💾 Временный файл: {temp_file_path}")
         
         # Получаем модель
         model = get_whisper_model()
@@ -153,6 +167,13 @@ async def transcribe_audio(audio: UploadFile = File(...)):
         transcribed_text = result['text']
         detected_language = result.get('language', 'unknown')
         
+        # Удаляем временный файл после успешной обработки
+        try:
+            os.unlink(temp_file_path)
+            logger.info(f"🗑️ Временный файл удален")
+        except Exception as cleanup_error:
+            logger.warning(f"⚠️ Не удалось удалить временный файл: {cleanup_error}")
+        
         processing_time = time.time() - start_time
         
         logger.info(f"✅ Транскрибация завершена!")
@@ -169,15 +190,21 @@ async def transcribe_audio(audio: UploadFile = File(...)):
             processing_time=processing_time
         )
         
+    except HTTPException:
+        # Пробрасываем HTTPException без изменений
+        raise
+        
     except Exception as e:
         logger.error(f"❌ Ошибка транскрибации: {str(e)}")
+        logger.error(f"   Тип ошибки: {type(e).__name__}")
         
         # Удаляем временный файл в случае ошибки
-        if 'temp_file_path' in locals():
+        if temp_file_path and os.path.exists(temp_file_path):
             try:
                 os.unlink(temp_file_path)
-            except:
-                pass
+                logger.info(f"🗑️ Временный файл удален после ошибки")
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️ Не удалось удалить временный файл: {cleanup_error}")
         
         raise HTTPException(
             status_code=500,
@@ -268,6 +295,7 @@ async def filter_transcription(request: FilterRequest):
             from ml.transcription_filter import TranscriptionFilter
         
         logger.info(f"🔄 Начинаем AI-фильтрацию текста ({len(request.text)} символов)")
+        logger.info(f"📝 Первые 200 символов входного текста: {request.text[:200]}")
         
         # Создаём фильтр и обрабатываем
         filter_instance = TranscriptionFilter()
@@ -277,6 +305,13 @@ async def filter_transcription(request: FilterRequest):
         
         logger.info(f"✅ Фильтрация завершена за {processing_time:.2f}с")
         logger.info(f"📊 Размер: {len(request.text)} → {len(filtered_text)}")
+        logger.info(f"📝 Первые 200 символов ОТФИЛЬТРОВАННОГО текста: {filtered_text[:200]}")
+        
+        # Проверяем, изменился ли текст
+        if request.text.strip() == filtered_text.strip():
+            logger.warning("⚠️ ВНИМАНИЕ: Текст не изменился после фильтрации!")
+        else:
+            logger.info(f"✅ Текст успешно отфильтрован (есть изменения)")
         
         return FilterResponse(
             success=True,

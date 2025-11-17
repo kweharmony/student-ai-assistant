@@ -381,6 +381,8 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     setIsFiltering(true);
     
     try {
+      console.log('🔄 Отправляем текст на фильтрацию:', transcribedText.substring(0, 200));
+      
       // Отправляем текст на фильтрацию
       const response = await fetch('http://localhost:8000/api/transcribe/filter', {
         method: 'POST',
@@ -395,8 +397,16 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       }
 
       const result = await response.json();
+      console.log('📥 Получен результат фильтрации:', {
+        success: result.success,
+        originalLength: result.original_length,
+        filteredLength: result.filtered_length,
+        firstChars: result.filtered_text.substring(0, 200)
+      });
 
       if (result.success) {
+        console.log('✅ Фильтрация успешна, текст изменился:', transcribedText !== result.filtered_text);
+        
         // Вставляем отфильтрованный текст в редактор
         if (editorInstance) {
           editorInstance.commands.setContent(result.filtered_text);
@@ -415,6 +425,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         // Очищаем сохраненный текст
         setTranscribedText('');
       } else {
+        console.error('❌ Фильтрация вернула success=false');
         throw new Error('Фильтрация не удалась');
       }
     } catch (error: any) {
