@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import RichTextEditor from './RichTextEditor';
 import { useExport } from '../hooks/useExport';
@@ -75,6 +75,12 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   // Состояние ML обработки
   const [selectedMLMode, setSelectedMLMode] = useState<MLMode>('summarize');
   const [topicInput, setTopicInput] = useState<string>('');
+  
+  // Состояние транскрибации
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptionProgress, setTranscriptionProgress] = useState('');
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
+  const [transcriptionMinimized, setTranscriptionMinimized] = useState(false);
   
   // Описания режимов ML для UI
   const mlModes: MLModeInfo[] = [
@@ -239,6 +245,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
 
 
+
   // Обработка переключения темы
   const handleThemeToggle = () => {
     onToggleTheme();
@@ -290,6 +297,66 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     setShowRecords(false);
     setShowButtons(false);
     setActiveView('records');
+  };
+
+  // Функция транскрибации аудио
+  const handleAudioTranscription = async (file: File) => {
+    setIsTranscribing(true);
+    setTranscriptionError(null);
+    setTranscriptionProgress('Загрузка файла...');
+    setTranscriptionMinimized(false);
+
+    try {
+      // Создаем FormData для отправки файла
+      const formData = new FormData();
+      formData.append('audio', file);
+
+      // Отправляем файл на сервер
+      const response = await fetch('http://localhost:8000/api/transcribe/audio', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Ошибка транскрибации');
+      }
+
+      // Файл загружен, начинаем обработку
+      setTranscriptionProgress('Начало обработки...');
+
+      // Ждем ответ от сервера (это может занять много времени)
+      setTranscriptionProgress('Обработка аудио... Это может занять несколько минут.');
+      
+      const result = await response.json();
+
+      if (result.success) {
+        setTranscriptionProgress('Транскрибация завершена успешно!');
+        
+        // Вставляем текст в редактор
+        if (editorInstance) {
+          editorInstance.setText(result.text);
+        }
+        setOriginalText(result.text);
+        setEditorMode('original');
+
+        // Небольшая задержка перед переключением
+        setTimeout(() => {
+          setIsTranscribing(false);
+          setTranscriptionProgress('');
+          setTranscriptionMinimized(false);
+          // Переключаемся на раздел обработки текста
+          setActiveSection('text-processing');
+          setShowTextEditor(true);
+        }, 1500);
+      } else {
+        throw new Error('Транскрибация не удалась');
+      }
+    } catch (error: any) {
+      console.error('Ошибка транскрибации:', error);
+      setTranscriptionError(error.message || 'Произошла ошибка при транскрибации');
+      setIsTranscribing(false);
+    }
   };
 
   const navigateMonth = (direction: 'prev' | 'next') => {
@@ -702,6 +769,31 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
               !showSidebarText ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
             }`}>
               Обработка текста
+            </span>
+          </button>
+
+          {/* Кнопка выхода */}
+          <button 
+            onClick={() => {
+              navigate('/');
+              window.scrollTo(0, 0);
+            }}
+            className={`w-full flex items-center gap-4 p-4 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-all duration-700 ease-in-out h-16`}
+            style={{ 
+              color: '#ef4444',
+              background: 'var(--hover-bg)'
+            }}
+            title={sidebarCollapsed ? 'Выход' : ''}
+          >
+            <span className="text-2xl">
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </span>
+            <span className={`text-lg font-medium transition-all duration-300 delay-100 ${
+              !showSidebarText ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
+            }`}>
+              Выход
             </span>
           </button>
         </div>
@@ -1179,7 +1271,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                     className="text-base opacity-80 mb-6"
                     style={{ color: 'var(--text-secondary)' }}
                   >
-                    Выберите аудиофайл до 90 минутдля транскрибации
+                    Выберите аудиофайл до 90 минут для транскрибации
                   </p>
                 </div>
                 
@@ -1188,7 +1280,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 >
                   <input
                     type="file"
-                    accept="audio/*"
+                    accept="audio/*,video/*,.mp3,.wav,.m4a,.flac,.ogg,.opus,.mp4,.mov,.avi,.mkv,.webm"
                     style={{ display: 'none' }}
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
@@ -1206,8 +1298,11 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                         return;
                       }
 
-                      // Здесь будет логика загрузки файла (можно заменить/добавить)
-                      alert(`Файл "${file.name}" выбран для загрузки. (Загрузка не реализована)`);
+                      // Запускаем транскрибацию
+                      await handleAudioTranscription(file);
+                      
+                      // Сбрасываем input для возможности загрузки того же файла снова
+                      e.target.value = '';
                     }}
                   />
                   Выбрать файл
@@ -1827,6 +1922,247 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно транскрибации */}
+      {isTranscribing && !transcriptionMinimized && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              // Предотвращаем закрытие при клике на фон во время обработки
+            }
+          }}
+        >
+          <div 
+            className={`rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 relative ${
+              isLightTheme 
+                ? 'bg-white border-2 border-gray-200' 
+                : 'bg-gray-800 border-2 border-gray-700'
+            }`}
+          >
+            {/* Кнопки управления */}
+            <div className="absolute top-4 right-4 flex gap-2">
+              <button
+                onClick={() => setTranscriptionMinimized(true)}
+                className={`p-2 rounded-full transition-colors ${
+                  isLightTheme 
+                    ? 'hover:bg-gray-100 text-gray-600' 
+                    : 'hover:bg-gray-700 text-gray-300'
+                }`}
+                title="Свернуть"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Заголовок */}
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4"
+                style={{ background: 'rgba(59, 130, 246, 0.1)' }}
+              >
+                <svg 
+                  className="w-8 h-8 animate-spin" 
+                  fill="none" 
+                  viewBox="0 0 24 24"
+                  style={{ color: '#3b82f6' }}
+                >
+                  <circle 
+                    className="opacity-25" 
+                    cx="12" 
+                    cy="12" 
+                    r="10" 
+                    stroke="currentColor" 
+                    strokeWidth="4"
+                  />
+                  <path 
+                    className="opacity-75" 
+                    fill="currentColor" 
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+              </div>
+              <h3 
+                className={`text-xl font-semibold mb-2 ${
+                  isLightTheme ? 'text-gray-900' : 'text-white'
+                }`}
+              >
+                Транскрибация аудио
+              </h3>
+              <p 
+                className={`text-sm ${
+                  isLightTheme ? 'text-gray-600' : 'text-gray-400'
+                }`}
+              >
+                Пожалуйста, подождите
+              </p>
+            </div>
+
+            {/* Текст прогресса */}
+            <div className="mb-6">
+              <div 
+                className={`text-sm text-center py-4 px-4 rounded-lg ${
+                  isLightTheme 
+                    ? 'bg-gray-50 text-gray-800 border border-gray-200' 
+                    : 'bg-gray-700/50 text-gray-200 border border-gray-600'
+                }`}
+              >
+                {transcriptionProgress}
+              </div>
+            </div>
+
+            {/* Информационное сообщение */}
+            <div 
+              className={`text-xs text-center p-3 rounded-lg ${
+                isLightTheme 
+                  ? 'bg-blue-50 text-blue-800 border border-blue-200' 
+                  : 'bg-blue-900/20 text-blue-300 border border-blue-800/30'
+              }`}
+            >
+              💡 Транскрибация может занять несколько минут в зависимости от длины аудио. Модель Whisper анализирует вашу запись...
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Свернутое окно транскрибации (справа снизу) */}
+      {isTranscribing && transcriptionMinimized && (
+        <div 
+          className={`fixed bottom-4 right-4 z-50 rounded-xl shadow-2xl p-4 w-80 cursor-pointer hover:shadow-3xl transition-all duration-300 border-2 ${
+            isLightTheme 
+              ? 'bg-white border-gray-200 hover:border-gray-300' 
+              : 'bg-gray-800 border-gray-700 hover:border-gray-600'
+          }`}
+          onClick={() => setTranscriptionMinimized(false)}
+        >
+          <div className="flex items-center gap-3">
+            {/* Анимированная иконка */}
+            <div className="flex-shrink-0">
+              <svg 
+                className="w-8 h-8 animate-spin" 
+                fill="none" 
+                viewBox="0 0 24 24"
+                style={{ color: '#3b82f6' }}
+              >
+                <circle 
+                  className="opacity-25" 
+                  cx="12" 
+                  cy="12" 
+                  r="10" 
+                  stroke="currentColor" 
+                  strokeWidth="4"
+                />
+                <path 
+                  className="opacity-75" 
+                  fill="currentColor" 
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+            </div>
+
+            {/* Информация */}
+            <div className="flex-1 min-w-0">
+              <h4 
+                className={`text-sm font-semibold mb-1 ${
+                  isLightTheme ? 'text-gray-900' : 'text-white'
+                }`}
+              >
+                Транскрибация аудио
+              </h4>
+              
+              <p 
+                className={`text-xs truncate ${
+                  isLightTheme ? 'text-gray-600' : 'text-gray-400'
+                }`}
+              >
+                {transcriptionProgress}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно ошибки транскрибации */}
+      {transcriptionError && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
+          onClick={() => setTranscriptionError(null)}
+        >
+          <div 
+            className={`rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 relative border-2 ${
+              isLightTheme 
+                ? 'bg-white border-gray-200' 
+                : 'bg-gray-800 border-gray-700'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Кнопка закрытия */}
+            <button
+              onClick={() => setTranscriptionError(null)}
+              className={`absolute top-4 right-4 p-2 rounded-full transition-colors ${
+                isLightTheme 
+                  ? 'hover:bg-gray-100 text-gray-600' 
+                  : 'hover:bg-gray-700 text-gray-300'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Иконка ошибки */}
+            <div className="text-center mb-6">
+              <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${
+                isLightTheme 
+                  ? 'bg-red-50' 
+                  : 'bg-red-900/20'
+              }`}>
+                <svg 
+                  className="w-8 h-8" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                  style={{ color: '#ef4444' }}
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                  />
+                </svg>
+              </div>
+              <h3 
+                className={`text-xl font-semibold mb-2 ${
+                  isLightTheme ? 'text-gray-900' : 'text-white'
+                }`}
+              >
+                Ошибка транскрибации
+              </h3>
+            </div>
+
+            {/* Сообщение об ошибке */}
+            <div 
+              className={`text-sm mb-6 p-4 rounded-lg border ${
+                isLightTheme 
+                  ? 'bg-red-50 text-red-800 border-red-200' 
+                  : 'bg-red-900/20 text-red-300 border-red-800/30'
+              }`}
+            >
+              {transcriptionError}
+            </div>
+
+            {/* Кнопка закрытия */}
+            <button
+              onClick={() => setTranscriptionError(null)}
+              className="btn-upload w-full"
+            >
+              Понятно
+            </button>
           </div>
         </div>
       )}
