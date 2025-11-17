@@ -11,9 +11,50 @@ import os
 import tempfile
 import logging
 import time
+import sys
+from pathlib import Path
+
+# ===== НАСТРОЙКА FFMPEG PATH =====
+# Ищем FFmpeg в стандартных местах установки для Windows
+def setup_ffmpeg_path():
+    """Добавляет FFmpeg в PATH если он не найден"""
+    import shutil
+    
+    # Проверяем, доступен ли ffmpeg
+    if shutil.which('ffmpeg') is not None:
+        logger.info("✅ FFmpeg уже доступен в PATH")
+        return
+    
+    # Возможные пути установки FFmpeg на Windows
+    possible_paths = [
+        Path(os.environ.get('LOCALAPPDATA', '')) / 'Microsoft' / 'WinGet' / 'Packages',
+        Path('C:/ProgramData/chocolatey/bin'),
+        Path('C:/ffmpeg/bin'),
+        Path(os.environ.get('PROGRAMFILES', '')) / 'ffmpeg' / 'bin',
+    ]
+    
+    for base_path in possible_paths:
+        if not base_path.exists():
+            continue
+            
+        # Ищем ffmpeg.exe рекурсивно
+        for ffmpeg_path in base_path.rglob('ffmpeg.exe'):
+            bin_dir = str(ffmpeg_path.parent)
+            logger.info(f"🔍 Найден FFmpeg: {bin_dir}")
+            
+            # Добавляем в PATH текущего процесса
+            if bin_dir not in os.environ['PATH']:
+                os.environ['PATH'] = bin_dir + os.pathsep + os.environ['PATH']
+                logger.info(f"✅ FFmpeg добавлен в PATH: {bin_dir}")
+            return
+    
+    logger.warning("⚠️ FFmpeg не найден автоматически. Установите FFmpeg: winget install ffmpeg")
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
+
+# Настраиваем FFmpeg при импорте модуля
+setup_ffmpeg_path()
 
 router = APIRouter(prefix="/api/transcribe", tags=["Audio Transcription"])
 
@@ -184,3 +225,100 @@ async def model_info():
         "cache_location": os.path.expanduser("~/.cache/whisper/"),
         "supported_formats": ['mp3', 'wav', 'm4a', 'flac', 'ogg', 'opus', 'mp4', 'mov', 'avi', 'mkv', 'webm']
     }
+
+
+# ===== AI-ФИЛЬТРАЦИЯ ТРАНСКРИБИРОВАННОГО ТЕКСТА =====
+
+class FilterRequest(BaseModel):
+    """Запрос на фильтрацию транскрибированного текста"""
+    text: str
+
+
+class FilterResponse(BaseModel):
+    """Ответ фильтрации"""
+    success: bool
+    filtered_text: str
+    original_length: int
+    filtered_length: int
+    processing_time: float
+
+
+@router.post("/filter", response_model=FilterResponse)
+async def filter_transcription(request: FilterRequest):
+    """
+    Фильтрует и очищает транскрибированный текст от ошибок распознавания
+    
+    Использует Gemini API для:
+    - Исправления орфографических ошибок
+    - Удаления фраз-паразитов
+    - Улучшения пунктуации
+    - Форматирования текста
+    
+    ВАЖНО: Это отдельный AI-процесс от создания конспектов!
+    """
+    start_time = time.time()
+    
+    try:
+        # Импортируем фильтр (ленивая загрузка)
+        try:
+            from ..ml.transcription_filter import TranscriptionFilter
+        except ImportError:
+            import sys
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from ml.transcription_filter import TranscriptionFilter
+        
+        logger.info(f"🔄 Начинаем AI-фильтрацию текста ({len(request.text)} символов)")
+        
+        # Создаём фильтр и обрабатываем
+        filter_instance = TranscriptionFilter()
+        filtered_text = filter_instance.filter_text(request.text)
+        
+        processing_time = time.time() - start_time
+        
+        logger.info(f"✅ Фильтрация завершена за {processing_time:.2f}с")
+        logger.info(f"📊 Размер: {len(request.text)} → {len(filtered_text)}")
+        
+        return FilterResponse(
+            success=True,
+            filtered_text=filtered_text,
+            original_length=len(request.text),
+            filtered_length=len(filtered_text),
+            processing_time=processing_time
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка фильтрации: {str(e)}")
+        
+        # В случае ошибки возвращаем оригинальный текст
+        processing_time = time.time() - start_time
+        
+        return FilterResponse(
+            success=False,
+            filtered_text=request.text,  # Возвращаем оригинал
+            original_length=len(request.text),
+            filtered_length=len(request.text),
+            processing_time=processing_time
+        )
+
+
+@router.get("/filter/health")
+async def filter_health_check():
+    """Проверка работоспособности AI-фильтра"""
+    
+    try:
+        from ..ml.transcription_filter import TranscriptionFilter
+        
+        filter_instance = TranscriptionFilter()
+        is_healthy = filter_instance.health_check()
+        
+        return {
+            "status": "healthy" if is_healthy else "unhealthy",
+            "message": "✅ AI-фильтр готов к работе" if is_healthy else "❌ Проблемы с AI-фильтром",
+            "uses_gemini": True
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"❌ Ошибка: {str(e)}",
+            "uses_gemini": True
+        }

@@ -1,5 +1,5 @@
 """
-Тестирование DeepSeek API для обработки студенческих лекций
+Тестирование Gemini API для обработки студенческих лекций
 Этот файл поможет тебе проверить, что все работает корректно
 """
 
@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Импортируем наши классы
 try:
-    from ml.deepseek_processor import DeepSeekProcessor
+    from ml.gemini_processor import GeminiProcessor
 except ImportError as e:
     print(f"❌ Ошибка импорта: {e}")
     print("Убедись, что установлены все зависимости: pip install -r requirements.txt")
@@ -21,19 +21,19 @@ except ImportError as e:
 
 
 def test_basic_functionality():
-    """Тестирование базовой функциональности DeepSeek"""
-    print("🔧 Тестирование DeepSeek API...")
+    """Тестирование базовой функциональности Gemini"""
+    print("🔧 Тестирование Gemini API...")
     
     try:
         # Создаем процессор
-        processor = DeepSeekProcessor()
-        print("✅ DeepSeek процессор создан успешно")
+        processor = GeminiProcessor()
+        print("✅ Gemini процессор создан успешно")
         
         # Проверяем здоровье API
         if processor.health_check():
-            print("✅ DeepSeek API доступен и работает")
+            print("✅ Gemini API доступен и работает")
         else:
-            print("❌ Проблемы с DeepSeek API")
+            print("❌ Проблемы с Gemini API")
             return False
         
         return True
@@ -72,7 +72,7 @@ def test_text_processing():
     """
     
     try:
-        processor = DeepSeekProcessor()
+        processor = GeminiProcessor()
         
         # Тест 1: Краткий конспект
         print("\n1️⃣ Тест: Создание конспекта")
@@ -125,7 +125,7 @@ def test_batch_processing():
     """
     
     try:
-        processor = DeepSeekProcessor()
+        processor = GeminiProcessor()
         
         # Пакетная обработка в нескольких режимах
         modes = ['summarize', 'extract_terms', 'generate_questions']
@@ -152,7 +152,7 @@ def performance_test():
     short_text = "Python — это интерпретируемый язык программирования высокого уровня."
     
     try:
-        processor = DeepSeekProcessor()
+        processor = GeminiProcessor()
         
         start_time = datetime.now()
         result = processor.summarize(short_text)
@@ -175,14 +175,14 @@ def performance_test():
 
 def main():
     """Главная функция тестирования"""
-    print("🚀 Запуск тестов DeepSeek ML модуля")
+    print("🚀 Запуск тестов Gemini ML модуля")
     print("=" * 60)
     
     # Проверяем переменные окружения
-    if not os.getenv('DEEPSEEK_API_KEY'):
-        print("❌ DEEPSEEK_API_KEY не найден!")
+    if not os.getenv('GEMINI_API_KEY'):
+        print("❌ GEMINI_API_KEY не найден!")
         print("📝 Создай файл .env и добавь туда свой API ключ:")
-        print("   DEEPSEEK_API_KEY=your_api_key_here")
+        print("   GEMINI_API_KEY=your_api_key_here")
         return
     
     tests = [
@@ -206,7 +206,7 @@ def main():
     print(f"🎯 Результаты: {passed}/{total} тестов пройдено")
     
     if passed == total:
-        print("🎉 Все тесты прошли успешно! DeepSeek готов к работе.")
+        print("🎉 Все тесты прошли успешно! Gemini готов к работе.")
         print("\n📝 Следующие шаги:")
         print("1. Запустить FastAPI сервер: uvicorn api.ml_endpoints:router --reload")
         print("2. Открыть документацию API: http://localhost:8000/docs")
