@@ -47,27 +47,15 @@ const PricingPage: React.FC<PricingPageProps> = ({ onToggleTheme, isLightTheme }
               <p className="mt-6" style={{ color: 'var(--text-secondary)' }}>Для знакомства с платформой</p>
               <ul role="list" className="mt-6 space-y-6">
                 <li className="flex">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                       strokeLinejoin="round" className="flex-shrink-0 w-6 h-6 text-emerald-500" aria-hidden="true">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
+                  <span className="material-symbols-outlined flex-shrink-0 w-6 h-6" style={{ color: 'var(--text-primary)' }}>check</span>
                   <span className="ml-3" style={{ color: 'var(--text-primary)' }}>5 транскрибаций лекций в месяц</span>
                 </li>
                 <li className="flex">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                       strokeLinejoin="round" className="flex-shrink-0 w-6 h-6 text-emerald-500" aria-hidden="true">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
+                  <span className="material-symbols-outlined flex-shrink-0 w-6 h-6" style={{ color: 'var(--text-primary)' }}>check</span>
                   <span className="ml-3" style={{ color: 'var(--text-primary)' }}>10 обработок текста с помощью ИИ в месяц</span>
                 </li>
                 <li className="flex">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                       strokeLinejoin="round" className="flex-shrink-0 w-6 h-6 text-emerald-500" aria-hidden="true">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
+                  <span className="material-symbols-outlined flex-shrink-0 w-6 h-6" style={{ color: 'var(--text-primary)' }}>check</span>
                   <span className="ml-3" style={{ color: 'var(--text-primary)' }}>Базовые функции</span>
                 </li>
               </ul>
@@ -92,7 +80,7 @@ const PricingPage: React.FC<PricingPageProps> = ({ onToggleTheme, isLightTheme }
           }}>
             <div className="flex-1">
               <h3 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Премиум</h3>
-              <p className="absolute top-0 py-1.5 px-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full text-xs font-semibold uppercase tracking-wide transform -translate-y-1/2">
+              <p className="absolute top-0 py-1.5 px-4 text-white rounded-full text-xs font-semibold uppercase tracking-wide transform -translate-y-1/2" style={{ background: '#B58488' }}>
                 Популярный
               </p>
               <p className="mt-4 flex items-baseline">
@@ -102,33 +90,22 @@ const PricingPage: React.FC<PricingPageProps> = ({ onToggleTheme, isLightTheme }
               <p className="mt-6" style={{ color: 'var(--text-secondary)' }}>Для активного обучения и работы</p>
               <ul role="list" className="mt-6 space-y-6">
                 <li className="flex">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                       strokeLinejoin="round" className="flex-shrink-0 w-6 h-6 text-emerald-500" aria-hidden="true">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
+                  <span className="material-symbols-outlined flex-shrink-0 w-6 h-6" style={{ color: 'var(--text-primary)' }}>check</span>
                   <span className="ml-3" style={{ color: 'var(--text-primary)' }}>15 транскрибаций лекций в месяц</span>
                 </li>
                 <li className="flex">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                       strokeLinejoin="round" className="flex-shrink-0 w-6 h-6 text-emerald-500" aria-hidden="true">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
+                  <span className="material-symbols-outlined flex-shrink-0 w-6 h-6" style={{ color: 'var(--text-primary)' }}>check</span>
                   <span className="ml-3" style={{ color: 'var(--text-primary)' }}>30 обработок текста с помощью ИИ в месяц</span>
                 </li>
                 <li className="flex">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                       strokeLinejoin="round" className="flex-shrink-0 w-6 h-6 text-emerald-500" aria-hidden="true">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
+                  <span className="material-symbols-outlined flex-shrink-0 w-6 h-6" style={{ color: 'var(--text-primary)' }}>check</span>
                   <span className="ml-3" style={{ color: 'var(--text-primary)' }}>Экспорт в различных форматах</span>
                 </li>
               </ul>
             </div>
             <Link
-              className="bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600 mt-8 block w-full py-3 px-6 border border-transparent rounded-md text-center font-medium transition-all duration-300"
+              className="mt-8 block w-full py-3 px-6 border border-transparent rounded-md text-center font-medium transition-all duration-300"
+              style={{ background: '#B58488', color: '#fffff0' }}
               to="/auth"
             >
               Выбрать Премиум

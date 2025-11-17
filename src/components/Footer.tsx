@@ -39,7 +39,7 @@ const Footer: React.FC = () => {
             Мы создаём инструменты для преобразования звука в текст. Делаем информацию доступной, понятной и удобной для работы.
           </p>
           <div className="flex gap-4 mt-10">
-            {['✈️', '⚡', '◆'].map((icon, index) => (
+            {['flight', 'bolt', 'diamond'].map((icon, index) => (
               <a 
                 key={index}
                 href="#" 
@@ -50,7 +50,7 @@ const Footer: React.FC = () => {
                 }}
                 aria-label={`Social link ${index + 1}`}
               >
-                {icon}
+                <span className="material-symbols-outlined">{icon}</span>
               </a>
             ))}
           </div>

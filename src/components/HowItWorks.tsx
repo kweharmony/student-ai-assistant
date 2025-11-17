@@ -3,71 +3,130 @@ import React from 'react';
 const HowItWorks: React.FC = () => {
   const steps = [
     {
-      number: '01',
-      icon: '📁',
+      number: '1',
+      icon: 'folder',
       title: 'Загрузите файл',
       description: 'Перетащите аудиофайл или выберите его из системы. Поддерживаем все популярные форматы.'
     },
     {
-      number: '02',
-      icon: '⚙️',
+      number: '2',
+      icon: 'settings',
       title: 'Обработка',
       description: 'Наш AI анализирует аудио, распознаёт речь и структурирует информацию.'
     },
     {
-      number: '03',
-      icon: '📄',
-      title: 'Получите текст',
-      description: 'Скачайте готовую транскрипцию в удобном формате. Редактируйте и сохраняйте.'
+      number: '3',
+      icon: 'edit_note',
+      title: 'Редактируйте текст',
+      description: 'Используйте встроенный редактор для форматирования, добавления заголовков, выделения важных моментов и структурирования контента.'
+    },
+    {
+      number: '4',
+      icon: 'psychology',
+      title: 'Обработка с ИИ',
+      description: 'Используйте возможности искусственного интеллекта для создания конспектов, извлечения терминов и генерации вопросов.'
+    },
+    {
+      number: '5',
+      icon: 'download',
+      title: 'Экспорт и сохранение',
+      description: 'Сохраните результат в нужном формате: DOCX, PDF, TXT или Markdown. Все ваши транскрипции доступны в личном кабинете.'
     }
   ];
 
   return (
-    <section id="how-it-works" className="mt-60 mb-60 max-w-5xl mx-auto">
+    <section id="how-it-works" className="mt-32 sm:mt-40 md:mt-60 mb-20 sm:mb-40 md:mb-60 max-w-4xl mx-auto px-4">
       <h2 
-        className="text-center text-3xl sm:text-4xl md:text-5xl font-light mb-25 tracking-tight opacity-90"
+        className="text-center text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-light mb-10 sm:mb-20 md:mb-25 tracking-tight opacity-90"
         style={{ color: 'var(--text-primary)' }}
       >
         Как это работает
       </h2>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-20 relative">
+      <div className="relative">
+        {/* Вертикальная линия */}
+        <div 
+          className="absolute left-1/2 transform -translate-x-1/2 w-0.5 h-full hidden sm:block"
+          style={{ 
+            background: 'linear-gradient(to bottom, var(--border-color), var(--text-secondary), var(--border-color))',
+            top: '40px',
+            bottom: '40px'
+          }}
+        />
         
-        {steps.map((step, index) => (
-          <div 
-            key={index} 
-            className="text-center relative group cursor-pointer transition-all duration-300 hover:scale-105"
-          >
-            {/* Номер шага */}
-            <div 
-              className="text-7xl font-light text-secondary opacity-20 mb-6 rounded-full w-20 h-20 flex items-center justify-center mx-auto transition-all duration-300 group-hover:opacity-30"
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              {step.number}
-            </div>
+        <div className="flex flex-col gap-8 sm:gap-12 md:gap-16 relative">
+          {steps.map((step, index) => {
+            const isLeft = index % 2 === 0;
             
-            {/* Иконка */}
-            <div className="text-6xl mb-8 opacity-90 transition-all duration-300 group-hover:scale-110">
-              {step.icon}
-            </div>
-            
-            {/* Заголовок */}
-            <h3 
-              className="text-2xl font-normal text-primary mb-4 tracking-wide transition-all duration-300 group-hover:scale-105"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {step.title}
-            </h3>
-            
-            {/* Описание */}
-            <p 
-              className="text-lg text-secondary opacity-60 leading-relaxed transition-all duration-300 group-hover:opacity-80"
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              {step.description}
-            </p>
-          </div>
-        ))}
+            return (
+              <div 
+                key={index} 
+                className="relative flex items-center justify-center sm:justify-start"
+                style={{
+                  paddingLeft: '0',
+                  paddingRight: '0'
+                }}
+              >
+                {/* Точка на линии */}
+                <div 
+                  className="absolute left-1/2 transform -translate-x-1/2 w-3 h-3 rounded-full z-10 transition-all duration-300 group-hover:scale-125 hidden sm:block"
+                  style={{ 
+                    background: 'var(--text-primary)',
+                    border: '2px solid var(--bg-primary)',
+                    boxShadow: '0 0 0 4px var(--hover-bg)'
+                  }}
+                />
+                
+                {/* Карточка шага */}
+                <div 
+                  className={`relative w-full max-w-sm rounded-3xl p-4 sm:p-5 transition-all duration-300 hover:scale-105 group cursor-pointer mx-auto sm:mx-0 ${isLeft ? 'sm:mr-auto' : 'sm:ml-auto'}`}
+                  style={{
+                    background: 'var(--hover-bg)',
+                    border: '1px solid var(--border-color)'
+                  }}
+                >
+                  <div className="flex items-start gap-4">
+                    {/* Иконка */}
+                    <div 
+                      className="flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110"
+                      style={{
+                        background: 'var(--text-primary)',
+                        color: 'var(--bg-primary)'
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-2xl">{step.icon}</span>
+                    </div>
+                    
+                    {/* Контент */}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span 
+                          className="text-xl font-normal"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          {step.number}
+                        </span>
+                        <h3 
+                          className="text-xl font-normal tracking-wide"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          {step.title}
+                        </h3>
+                      </div>
+                      
+                      <p 
+                        className="text-sm leading-relaxed opacity-70"
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
+                        {step.description}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

@@ -3,17 +3,17 @@ import React from 'react';
 const Features: React.FC = () => {
   const features = [
     {
-      icon: '🎯',
+      icon: 'target',
       title: 'Высокая точность',
       description: 'Современные алгоритмы AI обеспечивают точность распознавания речи в сложных условиях.'
     },
     {
-      icon: '⚡',
+      icon: 'bolt',
       title: 'Быстрая обработка',
       description: 'Часовая запись обрабатывается за несколько минут. Никаких длительных ожиданий.'
     },
     {
-      icon: '🔒',
+      icon: 'lock',
       title: 'Защита данных',
       description: 'Ваши файлы защищены шифрованием. Безопасность превыше всего.'
     }
@@ -22,42 +22,42 @@ const Features: React.FC = () => {
   return (
     <section
       id="features"
-      className="mt-60 max-w-6xl mx-auto px-2 sm:px-0 relative"
+      className="mt-20 sm:mt-40 md:mt-60 max-w-6xl mx-auto px-2 sm:px-0 relative"
     >
-      <div className="mb-25 flex flex-col items-center">
+      <div className="mb-10 sm:mb-20 md:mb-25 flex flex-col items-center">
         <h2
-          className="text-center text-3xl sm:text-4xl md:text-5xl font-light mb-7 leading-tight tracking-tight opacity-95"
+          className="text-center text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-light mb-5 sm:mb-7 leading-tight tracking-tight opacity-95"
           style={{ color: 'var(--text-primary)', fontFamily: 'Georgia, serif' }}
         >
           Особенности платформы
         </h2>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-12 mb-30 max-w-5xl mx-auto">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8 md:gap-12 mb-15 sm:mb-25 md:mb-30 max-w-5xl mx-auto">
         {features.map((feature, index) => (
           <div
             key={index}
-            className="group feature-card relative py-12 px-8 flex flex-col items-center bg-white bg-opacity-95 rounded-2xl border border-solid transition-all duration-500 hover:shadow-2xl hover:border-secondary hover:bg-hover hover:-translate-y-1.5 overflow-hidden"
+            className="group feature-card relative py-8 sm:py-10 md:py-12 px-4 sm:px-6 md:px-8 flex flex-col items-center bg-white bg-opacity-95 rounded-2xl border border-solid transition-all duration-500 hover:shadow-2xl hover:border-secondary hover:bg-hover hover:-translate-y-1.5 overflow-hidden"
             style={{
               borderColor: 'var(--border-color)',
               background: 'var(--bg-primary)'
             }}
           >
             <span
-              className="flex items-center justify-center w-20 h-20 text-5xl rounded-full bg-gradient-to-tr from-primary/10 to-secondary/10 mb-7 shadow transition-all duration-400 group-hover:scale-110"
+              className="flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 text-4xl sm:text-5xl rounded-full bg-gradient-to-tr from-primary/10 to-secondary/10 mb-5 sm:mb-7 shadow transition-all duration-400 group-hover:scale-110"
               style={{
                 boxShadow: '0 3px 12px rgba(50,30,46,0.07)'
               }}
             >
-              {feature.icon}
+              <span className="material-symbols-outlined text-4xl sm:text-5xl">{feature.icon}</span>
             </span>
             <h3
-              className="text-xl sm:text-2xl font-normal text-primary mb-3 tracking-wide text-center"
+              className="text-lg sm:text-xl md:text-2xl font-normal text-primary mb-2 sm:mb-3 tracking-wide text-center"
               style={{ color: 'var(--text-primary)' }}
             >
               {feature.title}
             </h3>
             <p
-              className="text-base sm:text-lg text-secondary opacity-70 leading-relaxed font-light text-center"
+              className="text-sm sm:text-base md:text-lg text-secondary opacity-70 leading-relaxed font-light text-center"
               style={{ color: 'var(--text-secondary)' }}
             >
               {feature.description}

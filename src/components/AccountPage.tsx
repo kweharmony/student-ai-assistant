@@ -88,38 +88,38 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       id: 'summarize',
       name: 'Краткий конспект',
       description: 'Создаёт структурированный конспект (30% от исходного объёма)',
-      icon: '📝'
+      icon: 'edit_note'
     },
     {
       id: 'extract_terms',
       name: 'Ключевые термины',
       description: 'Извлекает термины с определениями',
-      icon: '📚'
+      icon: 'menu_book'
     },
     {
       id: 'expand_topic',
       name: 'Расширение темы',
       description: 'Подробное объяснение выбранной темы',
-      icon: '🔍',
+      icon: 'search',
       requiresTopic: true
     },
     {
       id: 'generate_questions',
       name: 'Вопросы для самопроверки',
       description: 'Генерирует 8-12 вопросов по материалу',
-      icon: '❓'
+      icon: 'help_outline'
     },
     {
       id: 'detailed_notes',
       name: 'Расширенный конспект',
       description: 'Максимально подробное описание всех терминов',
-      icon: '📖'
+      icon: 'auto_stories'
     },
     {
       id: 'cheat_sheet',
       name: 'Шпаргалка',
       description: 'Сжатая выжимка с формулами и ключевыми тезисами',
-      icon: '📄'
+      icon: 'description'
     }
   ];
 
@@ -687,15 +687,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
               setMobileMenuOpen(false);
             }}
             className={`w-full flex items-center gap-4 p-4 rounded-lg transition-all duration-700 ease-in-out h-16 ${
-              activeSection === 'profile' ? 'bg-blue-500 text-white' : 'hover:bg-hover'
+              activeSection === 'profile' ? '' : 'hover:bg-hover'
             }`}
             style={{ 
-              background: activeSection === 'profile' ? '#3b82f6' : 'var(--hover-bg)',
-              color: activeSection === 'profile' ? 'white' : 'var(--text-secondary)'
+              background: activeSection === 'profile' ? 'var(--text-primary)' : 'var(--hover-bg)',
+              color: activeSection === 'profile' ? 'var(--bg-primary)' : 'var(--text-secondary)'
             }}
             title={sidebarCollapsed ? 'Профиль' : ''}
           >
-            <span className="text-2xl">👤</span>
+            <span className="material-symbols-outlined text-2xl">account_circle</span>
             <span className={`text-lg font-medium transition-all duration-300 delay-100 ${
               !showSidebarText ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
             }`}>
@@ -710,15 +710,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
               setMobileMenuOpen(false);
             }}
             className={`w-full flex items-center gap-4 p-4 rounded-lg transition-all duration-700 ease-in-out h-16 ${
-              activeSection === 'calendar' ? 'bg-blue-500 text-white' : 'hover:bg-hover'
+              activeSection === 'calendar' ? '' : 'hover:bg-hover'
             }`}
             style={{ 
-              background: activeSection === 'calendar' ? '#3b82f6' : 'var(--hover-bg)',
-              color: activeSection === 'calendar' ? 'white' : 'var(--text-secondary)'
+              background: activeSection === 'calendar' ? 'var(--text-primary)' : 'var(--hover-bg)',
+              color: activeSection === 'calendar' ? 'var(--bg-primary)' : 'var(--text-secondary)'
             }}
             title={sidebarCollapsed ? 'Календарь' : ''}
           >
-            <span className="text-2xl">📅</span>
+            <span className="material-symbols-outlined text-2xl">calendar_today</span>
             <span className={`text-lg font-medium transition-all duration-300 delay-100 ${
               !showSidebarText ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
             }`}>
@@ -733,15 +733,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
               setMobileMenuOpen(false);
             }}
             className={`w-full flex items-center gap-4 p-4 rounded-lg transition-all duration-700 ease-in-out h-16 ${
-              activeSection === 'transcriber' ? 'bg-blue-500 text-white' : 'hover:bg-hover'
+              activeSection === 'transcriber' ? '' : 'hover:bg-hover'
             }`}
             style={{ 
-              background: activeSection === 'transcriber' ? '#3b82f6' : 'var(--hover-bg)',
-              color: activeSection === 'transcriber' ? 'white' : 'var(--text-secondary)'
+              background: activeSection === 'transcriber' ? 'var(--text-primary)' : 'var(--hover-bg)',
+              color: activeSection === 'transcriber' ? 'var(--bg-primary)' : 'var(--text-secondary)'
             }}
             title={sidebarCollapsed ? 'Транскрибатор' : ''}
           >
-            <span className="text-2xl">🎤</span>
+            <span className="material-symbols-outlined text-2xl">mic</span>
             <span className={`text-lg font-medium transition-all duration-300 delay-100 ${
               !showSidebarText ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
             }`}>
@@ -756,15 +756,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
               setMobileMenuOpen(false);
             }}
             className={`w-full flex items-center gap-4 p-4 rounded-lg transition-all duration-700 ease-in-out h-16 ${
-              activeSection === 'text-processing' ? 'bg-blue-500 text-white' : 'hover:bg-hover'
+              activeSection === 'text-processing' ? '' : 'hover:bg-hover'
             }`}
             style={{ 
-              background: activeSection === 'text-processing' ? '#3b82f6' : 'var(--hover-bg)',
-              color: activeSection === 'text-processing' ? 'white' : 'var(--text-secondary)'
+              background: activeSection === 'text-processing' ? 'var(--text-primary)' : 'var(--hover-bg)',
+              color: activeSection === 'text-processing' ? 'var(--bg-primary)' : 'var(--text-secondary)'
             }}
             title={sidebarCollapsed ? 'Обработка текста' : ''}
           >
-            <span className="text-2xl">📝</span>
+            <span className="material-symbols-outlined text-2xl">edit_note</span>
             <span className={`text-lg font-medium transition-all duration-300 delay-100 ${
               !showSidebarText ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
             }`}>
@@ -778,18 +778,22 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
               navigate('/');
               window.scrollTo(0, 0);
             }}
-            className={`w-full flex items-center gap-4 p-4 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-all duration-700 ease-in-out h-16`}
+            className={`w-full flex items-center gap-4 p-4 rounded-lg transition-all duration-700 ease-in-out h-16`}
             style={{ 
-              color: '#ef4444',
+              color: 'var(--text-secondary)',
               background: 'var(--hover-bg)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--hover-bg)';
+              e.currentTarget.style.color = 'var(--text-primary)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--hover-bg)';
+              e.currentTarget.style.color = 'var(--text-secondary)';
             }}
             title={sidebarCollapsed ? 'Выход' : ''}
           >
-            <span className="text-2xl">
-              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </span>
+            <span className="material-symbols-outlined text-2xl">close</span>
             <span className={`text-lg font-medium transition-all duration-300 delay-100 ${
               !showSidebarText ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
             }`}>
@@ -879,9 +883,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
            
            {/* Информация о пользователе сверху */}
            <div className="text-center mb-6">
-             <div className="w-20 h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 profile-avatar rounded-full flex items-center justify-center text-white text-2xl md:text-3xl lg:text-4xl font-semibold mx-auto mb-4 relative">
-               <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full"></div>
-               <span className="relative z-10">ИИ</span>
+             <div 
+               className="w-20 h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 rounded-full flex items-center justify-center text-2xl md:text-3xl lg:text-4xl font-semibold mx-auto mb-4 relative"
+               style={{
+                 background: 'var(--text-primary)',
+                 color: 'var(--bg-primary)',
+                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+               }}
+             >
+               <span className="material-symbols-outlined text-3xl md:text-4xl lg:text-5xl">account_circle</span>
              </div>
              <h3 className="text-xl md:text-2xl lg:text-3xl font-semibold mb-2 md:mb-3" style={{ color: 'var(--text-primary)' }}>
                Иван Иванов
@@ -898,13 +908,17 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
            <div className="space-y-4 md:space-y-5">
 
              {/* Информация о подписке */}
-             <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg p-4 md:p-5">
+             <div className="border rounded-lg p-4 md:p-5"
+               style={{
+                 background: 'var(--hover-bg)',
+                 borderColor: '#B58488'
+               }}>
                <div className="flex items-center justify-between mb-3">
                  <div className="flex items-center gap-2">
-                   <div className="w-2 h-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
-                   <h4 className="text-base md:text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Премиум подписка</h4>
+                   <span className="material-symbols-outlined" style={{ color: '#B58488' }}>workspace_premium</span>
+                   <h4 className="text-base md:text-lg font-semibold" style={{ color: '#B58488' }}>Премиум подписка</h4>
                  </div>
-                 <div className="px-2 py-0.5 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-xs font-medium rounded-full">
+                 <div className="px-2 py-0.5 text-xs font-medium rounded-full" style={{ background: '#B58488', color: '#fffff0' }}>
                    Активна
                  </div>
                </div>
@@ -921,8 +935,12 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                <div className="mt-3 flex justify-end">
                  <Link
                    to="/pricing"
-                   className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg text-sm font-medium transition-all duration-300 hover:from-blue-500/20 hover:to-purple-500/20"
-                   style={{ color: 'var(--text-primary)' }}
+                   className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-all duration-300"
+                   style={{
+                     background: '#B58488',
+                     borderColor: '#B58488',
+                     color: '#fffff0'
+                   }}
                  >
                    <span>Посмотреть планы</span>
                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -945,10 +963,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                    navigate('/');
                    window.scrollTo(0, 0);
                  }}
-                 className="btn-gradient transition-all duration-300 hover:shadow-[0_0_20px_rgba(239,68,68,0.6)]"
-                 style={{ 
-                   background: 'linear-gradient(135deg, #ef4444, #dc2626)'
-                 }}
+                 className="btn-gradient transition-all duration-300"
                >
                  Выйти из профиля
                </button>
@@ -1067,9 +1082,9 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                     : ''
                 }`}
                 style={{
-                  borderColor: activeView === 'records' ? '#3b82f6' : 'var(--border-color)',
-                  background: activeView === 'records' ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)',
-                  color: 'var(--text-primary)'
+                  borderColor: activeView === 'records' ? 'var(--text-primary)' : 'var(--border-color)',
+                  background: activeView === 'records' ? 'var(--text-primary)' : 'var(--hover-bg)',
+                  color: activeView === 'records' ? 'var(--bg-primary)' : 'var(--text-primary)'
                 }}
               >
                 <span>Записи</span>
@@ -1082,9 +1097,9 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                     : ''
                 }`}
                 style={{
-                  borderColor: activeView === 'schedule' ? '#3b82f6' : 'var(--border-color)',
-                  background: activeView === 'schedule' ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)',
-                  color: 'var(--text-primary)'
+                  borderColor: activeView === 'schedule' ? 'var(--text-primary)' : 'var(--border-color)',
+                  background: activeView === 'schedule' ? 'var(--text-primary)' : 'var(--hover-bg)',
+                  color: activeView === 'schedule' ? 'var(--bg-primary)' : 'var(--text-primary)'
                 }}
               >
                 <span>Расписание</span>
@@ -1114,9 +1129,9 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                                 : ''
                             }`}
                             style={{
-                              borderColor: expandedTexts[record.id] === 'original' ? '#3b82f6' : 'var(--border-color)',
-                              background: expandedTexts[record.id] === 'original' ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)',
-                              color: 'var(--text-primary)'
+                              borderColor: expandedTexts[record.id] === 'original' ? 'var(--text-primary)' : 'var(--border-color)',
+                              background: expandedTexts[record.id] === 'original' ? 'var(--text-primary)' : 'var(--hover-bg)',
+                              color: expandedTexts[record.id] === 'original' ? 'var(--bg-primary)' : 'var(--text-primary)'
                             }}
                           >
                             <span>Оригинальный текст</span>
@@ -1129,9 +1144,9 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                                 : ''
                             }`}
                             style={{
-                              borderColor: expandedTexts[record.id] === 'processed' ? '#3b82f6' : 'var(--border-color)',
-                              background: expandedTexts[record.id] === 'processed' ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)',
-                              color: 'var(--text-primary)'
+                              borderColor: expandedTexts[record.id] === 'processed' ? 'var(--text-primary)' : 'var(--border-color)',
+                              background: expandedTexts[record.id] === 'processed' ? 'var(--text-primary)' : 'var(--hover-bg)',
+                              color: expandedTexts[record.id] === 'processed' ? 'var(--bg-primary)' : 'var(--text-primary)'
                             }}
                           >
                             <span>Обработанный текст</span>
@@ -1172,11 +1187,11 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                         <h3 className="text-base md:text-lg lg:text-xl xl:text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
                           {item.subject}
                         </h3>
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          item.type === 'lecture' ? 'bg-blue-100 text-blue-800' :
-                          item.type === 'seminar' ? 'bg-green-100 text-green-800' :
-                          'bg-purple-100 text-purple-800'
-                        }`}>
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium`}
+                          style={{
+                            background: 'var(--text-primary)',
+                            color: 'var(--bg-primary)'
+                          }}>
                           {item.type === 'lecture' ? 'Лекция' : 
                          item.type === 'seminar' ? 'Семинар' : 'Лабораторная'}
                         </span>
@@ -1334,7 +1349,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 <div className="mt-4 text-xs opacity-60 text-center" style={{ color: 'var(--text-secondary)' }}>
                   Символов в редакторе: {editorInstance.getText().length.toLocaleString()} / 70,000
                   {editorInstance.getText().length > 70000 && (
-                    <span className="text-red-500 ml-2">⚠️ Превышен лимит!</span>
+                    <span className="text-red-500 ml-2 flex items-center gap-1"><span className="material-symbols-outlined text-sm">warning</span> Превышен лимит!</span>
                   )}
                 </div>
               )}
@@ -1352,21 +1367,22 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                     onClick={() => setSelectedMLMode(mode.id)}
                     className={`p-4 rounded-lg border-2 text-left transition-all duration-200 hover:-translate-y-1 ${
                       selectedMLMode === mode.id
-                        ? 'border-blue-500 shadow-lg'
-                        : 'border-gray-300 hover:border-blue-300'
+                        ? 'shadow-lg'
+                        : ''
                     }`}
                     style={{
-                      borderColor: selectedMLMode === mode.id ? '#3b82f6' : 'var(--border-color)',
-                      background: selectedMLMode === mode.id ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)'
+                      borderColor: selectedMLMode === mode.id ? 'var(--text-primary)' : 'var(--border-color)',
+                      background: selectedMLMode === mode.id ? 'var(--text-primary)' : 'var(--hover-bg)',
+                      color: selectedMLMode === mode.id ? (isLightTheme ? '#fffff0' : '#1f1516') : 'var(--text-primary)'
                     }}
                   >
                     <div className="flex items-center gap-3 mb-2">
-                      <span className="text-2xl">{mode.icon}</span>
-                      <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      <span className="material-symbols-outlined text-2xl" style={{ color: selectedMLMode === mode.id ? (isLightTheme ? '#fffff0' : '#1f1516') : 'var(--text-primary)' }}>{mode.icon}</span>
+                      <h3 className="font-semibold" style={{ color: selectedMLMode === mode.id ? (isLightTheme ? '#fffff0' : '#1f1516') : 'var(--text-primary)' }}>
                         {mode.name}
                       </h3>
                     </div>
-                    <p className="text-sm opacity-80" style={{ color: 'var(--text-secondary)' }}>
+                    <p className="text-sm opacity-80" style={{ color: selectedMLMode === mode.id ? (isLightTheme ? '#fffff0' : '#1f1516') : 'var(--text-secondary)' }}>
                       {mode.description}
                     </p>
                   </button>
@@ -1393,7 +1409,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                   }}
                 />
                 <p className="mt-2 text-xs opacity-70" style={{ color: 'var(--text-secondary)' }}>
-                  💡 Укажите конкретную тему из вашего текста, которую хотите подробно изучить
+                  <span className="material-symbols-outlined text-sm align-middle mr-1">lightbulb</span> Укажите конкретную тему из вашего текста, которую хотите подробно изучить
                 </p>
               </div>
             )}
@@ -1567,7 +1583,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 {editorInstance && editorInstance.getText().length > 70000 && (
                   <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
                     <p className="text-red-800 dark:text-red-300 text-sm flex items-center gap-2">
-                      <span>⚠️</span>
+                      <span className="material-symbols-outlined">warning</span>
                       <strong>Внимание:</strong> Текст превышает лимит в 70,000 символов.
                       Текущая длина: {editorInstance.getText().length.toLocaleString()} символов.
                       Пожалуйста, сократите текст перед обработкой.
@@ -1579,9 +1595,16 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 <div className="mt-6 flex flex-col gap-4">
                   {/* Отображение ошибки */}
                   {mlError && (
-                    <div className="p-4 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                      <p className="text-red-800 dark:text-red-300 flex items-center gap-2">
-                        <span>❌</span>
+                    <div 
+                      className="p-4 border-2 rounded-lg"
+                      style={{
+                        borderColor: '#B58488',
+                        background: isLightTheme ? 'rgba(181, 132, 136, 0.1)' : 'rgba(181, 132, 136, 0.15)',
+                        color: 'var(--text-primary)'
+                      }}
+                    >
+                      <p className="flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                        <span className="material-symbols-outlined" style={{ color: '#B58488' }}>error</span>
                         <strong>Ошибка:</strong> {mlError}
                       </p>
                     </div>
@@ -1589,9 +1612,14 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
                   {/* Индикатор обработки */}
                   {isProcessing && (
-                    <div className="p-4 border border-blue-500 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                      <p className="text-blue-900 dark:text-blue-300 flex items-center gap-2 font-medium">
-                        <span>⏳</span>
+                    <div className="p-4 border rounded-lg"
+                      style={{
+                        borderColor: 'var(--border-color)',
+                        background: 'var(--hover-bg)'
+                      }}>
+                      <p className="flex items-center gap-2 font-medium"
+                        style={{ color: 'var(--text-primary)' }}>
+                        <span className="material-symbols-outlined">hourglass_empty</span>
                         Обработка может занять 30-90 секунд в зависимости от объёма текста и выбранного режима...
                       </p>
                     </div>
@@ -1621,9 +1649,9 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                               : ''
                           }`}
                           style={{
-                            borderColor: saveFormat === format.value ? '#3b82f6' : 'var(--border-color)',
-                            background: saveFormat === format.value ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)',
-                            color: 'var(--text-primary)',
+                            borderColor: saveFormat === format.value ? 'var(--text-primary)' : 'var(--border-color)',
+                            background: saveFormat === format.value ? 'var(--text-primary)' : 'var(--hover-bg)',
+                            color: saveFormat === format.value ? 'var(--bg-primary)' : 'var(--text-primary)',
                             minWidth: '60px'
                           }}
                         >
@@ -1639,27 +1667,24 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                     {isProcessing && (
                       <button
                         onClick={cancelProcessing}
-                        className="btn-lg flex items-center justify-center gap-2 w-full md:w-auto"
+                        className="px-4 py-2 rounded-lg border-2 font-medium transition-all duration-200 hover:-translate-y-1 flex items-center justify-center gap-2 w-full md:w-auto"
                         style={{
-                          backgroundColor: '#ef4444',
-                          color: 'white',
-                          border: 'none',
-                          padding: '0.75rem 1.5rem',
-                          borderRadius: '0.5rem',
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
+                          borderColor: 'var(--border-color)',
+                          color: 'var(--text-primary)',
+                          background: 'var(--hover-bg)'
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#dc2626';
+                          e.currentTarget.style.background = 'var(--text-primary)';
+                          e.currentTarget.style.color = 'var(--bg-primary)';
+                          e.currentTarget.style.borderColor = 'var(--text-primary)';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = '#ef4444';
+                          e.currentTarget.style.background = 'var(--hover-bg)';
+                          e.currentTarget.style.color = 'var(--text-primary)';
+                          e.currentTarget.style.borderColor = 'var(--border-color)';
                         }}
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+                        <span className="material-symbols-outlined text-xl">close</span>
                         Отменить обработку
                       </button>
                     )}
@@ -1683,7 +1708,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                         </>
                       ) : (
                         <>
-                          <span>🤖</span>
+                          <span className="material-symbols-outlined">psychology</span>
                           Обработать с ИИ
                         </>
                       )}
@@ -1815,7 +1840,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 {/* Заголовки */}
                 <div className="p-4 rounded-lg" style={{ background: 'var(--hover-bg)' }}>
                   <h4 className="font-semibold mb-2 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                    <span className="text-lg">📋</span> Заголовки (H1, H2, H3)
+                    <span className="material-symbols-outlined text-lg">list</span> Заголовки (H1, H2, H3)
                   </h4>
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     Используйте для структурирования текста. H1 — самый крупный заголовок, H3 — самый мелкий.
@@ -1915,7 +1940,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
               <div className="mt-6 pt-6 border-t" style={{ borderColor: 'var(--border-color)' }}>
                 <h3 className="text-lg font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
-                  💡 Совет
+                  <span className="material-symbols-outlined align-middle mr-1">lightbulb</span> Совет
                 </h3>
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                   При перемещении курсора или выделении текста кнопки инструментов автоматически показывают активные стили форматирования, как в Microsoft Word.
@@ -1937,21 +1962,28 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
           }}
         >
           <div 
-            className={`rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 relative ${
-              isLightTheme 
-                ? 'bg-white border-2 border-gray-200' 
-                : 'bg-gray-800 border-2 border-gray-700'
-            }`}
+            className="rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 relative"
+            style={{
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)'
+            }}
           >
             {/* Кнопки управления */}
             <div className="absolute top-4 right-4 flex gap-2">
               <button
                 onClick={() => setTranscriptionMinimized(true)}
-                className={`p-2 rounded-full transition-colors ${
-                  isLightTheme 
-                    ? 'hover:bg-gray-100 text-gray-600' 
-                    : 'hover:bg-gray-700 text-gray-300'
-                }`}
+                className="p-2 rounded-full transition-colors"
+                style={{
+                  color: 'var(--text-secondary)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--hover-bg)';
+                  e.currentTarget.style.color = 'var(--text-primary)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--text-secondary)';
+                }}
                 title="Свернуть"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1963,13 +1995,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             {/* Заголовок */}
             <div className="text-center mb-6">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4"
-                style={{ background: 'rgba(59, 130, 246, 0.1)' }}
+                style={{ background: 'var(--hover-bg)' }}
               >
                 <svg 
                   className="w-8 h-8 animate-spin" 
                   fill="none" 
                   viewBox="0 0 24 24"
-                  style={{ color: '#3b82f6' }}
+                  style={{ color: 'var(--text-primary)' }}
                 >
                   <circle 
                     className="opacity-25" 
@@ -1987,16 +2019,14 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 </svg>
               </div>
               <h3 
-                className={`text-xl font-semibold mb-2 ${
-                  isLightTheme ? 'text-gray-900' : 'text-white'
-                }`}
+                className="text-xl font-semibold mb-2"
+                style={{ color: 'var(--text-primary)' }}
               >
                 Транскрибация аудио
               </h3>
               <p 
-                className={`text-sm ${
-                  isLightTheme ? 'text-gray-600' : 'text-gray-400'
-                }`}
+                className="text-sm"
+                style={{ color: 'var(--text-secondary)' }}
               >
                 Пожалуйста, подождите
               </p>
@@ -2005,11 +2035,12 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             {/* Текст прогресса */}
             <div className="mb-6">
               <div 
-                className={`text-sm text-center py-4 px-4 rounded-lg ${
-                  isLightTheme 
-                    ? 'bg-gray-50 text-gray-800 border border-gray-200' 
-                    : 'bg-gray-700/50 text-gray-200 border border-gray-600'
-                }`}
+                className="text-sm text-center py-4 px-4 rounded-lg"
+                style={{
+                  background: 'var(--hover-bg)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-color)'
+                }}
               >
                 {transcriptionProgress}
               </div>
@@ -2017,13 +2048,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
             {/* Информационное сообщение */}
             <div 
-              className={`text-xs text-center p-3 rounded-lg ${
-                isLightTheme 
-                  ? 'bg-blue-50 text-blue-800 border border-blue-200' 
-                  : 'bg-blue-900/20 text-blue-300 border border-blue-800/30'
-              }`}
+              className="text-xs text-center p-3 rounded-lg"
+              style={{
+                background: 'var(--hover-bg)',
+                color: 'var(--text-primary)',
+                borderColor: 'var(--border-color)',
+                border: '1px solid'
+              }}
             >
-              💡 Транскрибация может занять несколько минут в зависимости от длины аудио. Модель Whisper анализирует вашу запись...
+              <span className="material-symbols-outlined align-middle mr-1">lightbulb</span> Транскрибация может занять несколько минут в зависимости от длины аудио. Модель Whisper анализирует вашу запись...
             </div>
           </div>
         </div>
@@ -2032,11 +2065,17 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       {/* Свернутое окно транскрибации (справа снизу) */}
       {isTranscribing && transcriptionMinimized && (
         <div 
-          className={`fixed bottom-4 right-4 z-50 rounded-xl shadow-2xl p-4 w-80 cursor-pointer hover:shadow-3xl transition-all duration-300 border-2 ${
-            isLightTheme 
-              ? 'bg-white border-gray-200 hover:border-gray-300' 
-              : 'bg-gray-800 border-gray-700 hover:border-gray-600'
-          }`}
+          className="fixed bottom-4 right-4 z-50 rounded-xl shadow-2xl p-4 w-80 cursor-pointer transition-all duration-300"
+          style={{
+            background: 'var(--bg-primary)',
+            border: '1px solid var(--border-color)'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = 'var(--text-secondary)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'var(--border-color)';
+          }}
           onClick={() => setTranscriptionMinimized(false)}
         >
           <div className="flex items-center gap-3">
@@ -2046,7 +2085,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
                 className="w-8 h-8 animate-spin" 
                 fill="none" 
                 viewBox="0 0 24 24"
-                style={{ color: '#3b82f6' }}
+                style={{ color: 'var(--text-primary)' }}
               >
                 <circle 
                   className="opacity-25" 
@@ -2067,17 +2106,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             {/* Информация */}
             <div className="flex-1 min-w-0">
               <h4 
-                className={`text-sm font-semibold mb-1 ${
-                  isLightTheme ? 'text-gray-900' : 'text-white'
-                }`}
+                className="text-sm font-semibold mb-1"
+                style={{ color: 'var(--text-primary)' }}
               >
                 Транскрибация аудио
               </h4>
               
               <p 
-                className={`text-xs truncate ${
-                  isLightTheme ? 'text-gray-600' : 'text-gray-400'
-                }`}
+                className="text-xs truncate"
+                style={{ color: 'var(--text-secondary)' }}
               >
                 {transcriptionProgress}
               </p>
@@ -2093,53 +2130,45 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
           onClick={() => setTranscriptionError(null)}
         >
           <div 
-            className={`rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 relative border-2 ${
-              isLightTheme 
-                ? 'bg-white border-gray-200' 
-                : 'bg-gray-800 border-gray-700'
-            }`}
+            className="rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 relative"
+            style={{
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)'
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Кнопка закрытия */}
             <button
               onClick={() => setTranscriptionError(null)}
-              className={`absolute top-4 right-4 p-2 rounded-full transition-colors ${
-                isLightTheme 
-                  ? 'hover:bg-gray-100 text-gray-600' 
-                  : 'hover:bg-gray-700 text-gray-300'
-              }`}
+              className="absolute top-4 right-4 p-2 rounded-full transition-colors"
+              style={{
+                color: 'var(--text-secondary)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--hover-bg)';
+                e.currentTarget.style.color = 'var(--text-primary)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-secondary)';
+              }}
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <span className="material-symbols-outlined text-2xl">close</span>
             </button>
 
             {/* Иконка ошибки */}
             <div className="text-center mb-6">
-              <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${
-                isLightTheme 
-                  ? 'bg-red-50' 
-                  : 'bg-red-900/20'
-              }`}>
-                <svg 
-                  className="w-8 h-8" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
-                  style={{ color: '#ef4444' }}
-                >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={2} 
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
-                  />
-                </svg>
+              <div 
+                className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4"
+                style={{
+                  background: isLightTheme ? 'rgba(181, 132, 136, 0.1)' : 'rgba(181, 132, 136, 0.15)'
+                }}
+              >
+                <span className="material-symbols-outlined text-4xl" style={{ color: '#B58488' }}>error</span>
               </div>
               <h3 
-                className={`text-xl font-semibold mb-2 ${
-                  isLightTheme ? 'text-gray-900' : 'text-white'
-                }`}
+                className="text-xl font-semibold mb-2"
+                style={{ color: 'var(--text-primary)' }}
               >
                 Ошибка транскрибации
               </h3>
@@ -2147,11 +2176,12 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
             {/* Сообщение об ошибке */}
             <div 
-              className={`text-sm mb-6 p-4 rounded-lg border ${
-                isLightTheme 
-                  ? 'bg-red-50 text-red-800 border-red-200' 
-                  : 'bg-red-900/20 text-red-300 border-red-800/30'
-              }`}
+              className="text-sm mb-6 p-4 rounded-lg border-2"
+              style={{
+                background: isLightTheme ? 'rgba(181, 132, 136, 0.1)' : 'rgba(181, 132, 136, 0.15)',
+                color: 'var(--text-primary)',
+                borderColor: '#B58488'
+              }}
             >
               {transcriptionError}
             </div>

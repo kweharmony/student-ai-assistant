@@ -137,14 +137,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       onClick={onClick}
       className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-xs md:text-sm font-medium rounded-md transition-all duration-200 hover:scale-110 ${
         isActive
-          ? 'bg-blue-500 text-white shadow-lg transform scale-105'
+          ? 'shadow-lg transform scale-105'
           : 'bg-transparent border hover:bg-hover'
       }`}
       style={{
         borderColor: isActive ? 'transparent' : 'var(--border-color)',
-        color: isActive ? 'white' : 'var(--text-secondary)',
-        background: isActive ? '#3b82f6' : 'var(--hover-bg)',
-        boxShadow: isActive ? '0 4px 12px rgba(59, 130, 246, 0.4)' : 'none',
+        color: isActive ? 'var(--bg-primary)' : 'var(--text-secondary)',
+        background: isActive ? 'var(--text-primary)' : 'var(--hover-bg)',
+        boxShadow: isActive ? '0 4px 12px rgba(0, 0, 0, 0.15)' : 'none',
         fontWeight: isActive ? '600' : '500'
       }}
       title={title}
@@ -166,9 +166,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 : ''
             }`}
             style={{
-              borderColor: currentMode === 'original' ? '#3b82f6' : 'var(--border-color)',
-              color: 'var(--text-primary)',
-              background: currentMode === 'original' ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)'
+              borderColor: currentMode === 'original' ? 'var(--text-primary)' : 'var(--border-color)',
+              color: currentMode === 'original' ? 'var(--bg-primary)' : 'var(--text-primary)',
+              background: currentMode === 'original' ? 'var(--text-primary)' : 'var(--hover-bg)'
             }}
           >
             Исходный текст
@@ -182,9 +182,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 : 'hover:-translate-y-1'
             } ${!processedText || isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             style={{
-              borderColor: currentMode === 'processed' ? '#3b82f6' : 'var(--border-color)',
-              color: 'var(--text-primary)',
-              background: currentMode === 'processed' ? 'rgba(59, 130, 246, 0.1)' : 'var(--hover-bg)'
+              borderColor: currentMode === 'processed' ? 'var(--text-primary)' : 'var(--border-color)',
+              color: currentMode === 'processed' ? 'var(--bg-primary)' : 'var(--text-primary)',
+              background: currentMode === 'processed' ? 'var(--text-primary)' : 'var(--hover-bg)'
             }}
           >
             {isProcessing ? 'Обрабатывается...' : 'Обработанный текст'}

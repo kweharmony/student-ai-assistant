@@ -94,7 +94,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
                 className="flex items-center gap-2 text-sm font-normal mb-2 tracking-wide opacity-80 transition-all duration-300"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                <span>👤</span>
+                <span className="material-symbols-outlined">person</span>
                 <span>Логин</span>
               </label>
               <input
@@ -124,7 +124,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
                   className="flex items-center gap-2 text-sm font-normal mb-2 tracking-wide opacity-80 transition-all duration-300"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  <span>📧</span>
+                  <span className="material-symbols-outlined">email</span>
                   <span>Email</span>
                 </label>
                 <input
@@ -154,7 +154,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
                 className="flex items-center gap-2 text-sm font-normal mb-2 tracking-wide opacity-80 transition-all duration-300"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                <span>🔒</span>
+                <span className="material-symbols-outlined">lock</span>
                 <span>Пароль</span>
               </label>
               <input
@@ -203,7 +203,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
                 style={{ color: 'var(--text-secondary)' }}
               >
                 <span className="text-sm">
-                  {isLogin ? '🔄' : '↩️'}
+                  {isLogin ? <span className="material-symbols-outlined">refresh</span> : <span className="material-symbols-outlined">arrow_back</span>}
                 </span>
                 <span className="relative z-10">
                   {isLogin 

@@ -24,7 +24,7 @@ const UploadDemo: React.FC = () => {
 
   return (
     <section 
-      className="mt-40 max-w-4xl mx-auto py-20 px-15 border text-center rounded-xl"
+      className="mt-20 sm:mt-30 md:mt-40 max-w-4xl mx-auto py-10 sm:py-15 md:py-20 px-4 sm:px-8 md:px-15 border text-center rounded-xl"
       style={{ 
         borderColor: 'var(--border-color)',
         background: 'var(--hover-bg)'
@@ -51,7 +51,7 @@ const UploadDemo: React.FC = () => {
       </div>
 
       <h3 
-        className="text-3xl font-normal opacity-80 text-primary mb-5 transition-all duration-200 hover:opacity-100 cursor-pointer"
+        className="text-xl sm:text-2xl md:text-3xl font-normal opacity-80 text-primary mb-3 sm:mb-5 transition-all duration-200 hover:opacity-100 cursor-pointer"
         style={{ color: 'var(--text-primary)' }}
         tabIndex={0}
       >
@@ -59,7 +59,7 @@ const UploadDemo: React.FC = () => {
       </h3>
       
       <p 
-        className="text-lg text-secondary opacity-80 mb-10 transition-all duration-200 hover:opacity-100 cursor-pointer"
+        className="text-sm sm:text-base md:text-lg text-secondary opacity-80 mb-6 sm:mb-10 transition-all duration-200 hover:opacity-100 cursor-pointer"
         style={{ color: 'var(--text-secondary)' }}
         title="Загрузите файл, чтобы увидеть результат"
       >
@@ -87,8 +87,8 @@ const UploadDemo: React.FC = () => {
       {isUploading && (
         <div className="w-full max-w-xs bg-gray-200 rounded-full h-2 mt-4 mx-auto">
           <div 
-            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${uploadProgress}%` }}
+            className="h-2 rounded-full transition-all duration-300"
+            style={{ background: 'var(--text-primary)', width: `${uploadProgress}%` }}
           />
         </div>
       )}

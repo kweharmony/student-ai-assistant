@@ -12,7 +12,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleTheme, isLightTheme }) => {
   const isAuthPage = location.pathname === '/auth';
   return (
     <header 
-      className="bg-transparent px-15 sticky top-0 z-50 border-b"
+      className="bg-transparent px-4 sm:px-8 md:px-15 sticky top-0 z-50 border-b"
       style={{ 
         borderColor: 'var(--border-color)',
         backdropFilter: 'blur(10px)'

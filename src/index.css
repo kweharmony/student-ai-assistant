@@ -7,21 +7,21 @@
 
 /* Custom CSS variables for theme switching */
 :root {
-  --bg-primary: #0a0e1f;
-  --bg-secondary: #13265c;
-  --text-primary: #e9effa;
-  --text-secondary: #99b5ea;
-  --border-color: rgba(153, 181, 234, 0.1);
-  --hover-bg: rgba(153, 181, 234, 0.03);
+  --bg-primary: #1f1516;
+  --bg-secondary: #2a1d1e;
+  --text-primary: #fffff0;
+  --text-secondary: #e0e0d0;
+  --border-color: rgba(255, 255, 240, 0.1);
+  --hover-bg: rgba(255, 255, 240, 0.03);
 }
 
 .light-theme {
-  --bg-primary: #e9effa;
-  --bg-secondary: #99b5ea;
-  --text-primary: #13265c;
-  --text-secondary: #090f2a;
-  --border-color: rgba(19, 38, 92, 0.15);
-  --hover-bg: rgba(19, 38, 92, 0.05);
+  --bg-primary: #fffff0;
+  --bg-secondary: #e0e0d0;
+  --text-primary: #44292b;
+  --text-secondary: #2d1c1e;
+  --border-color: rgba(68, 41, 43, 0.15);
+  --hover-bg: rgba(68, 41, 43, 0.05);
 }
 
 /* Atmospheric background */
@@ -89,15 +89,16 @@ body::before {
 }
 
 .calendar-day.selected {
-  background: linear-gradient(135deg, var(--text-secondary), var(--bg-secondary));
-  color: var(--bg-primary);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: transparent;
+  color: var(--text-primary);
+  border: 2px solid var(--text-primary);
+  box-shadow: none;
 }
 
 .calendar-day.today {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  color: white;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .record-card {
@@ -112,8 +113,8 @@ body::before {
 }
 
 .profile-avatar {
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  background: var(--text-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* Smooth scrolling for records section */
@@ -166,11 +167,11 @@ body::before {
   }
   
   .calendar-day.today {
-    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
   }
-  
+
   .calendar-day.selected {
-    box-shadow: 0 8px 25px rgba(153, 181, 234, 0.4);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
   }
   
   .record-card {
@@ -188,7 +189,7 @@ body::before {
   
   .profile-avatar:hover {
     transform: scale(1.05);
-    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
   }
 }
 
@@ -296,12 +297,12 @@ body::before {
 }
 
 .prose a {
-  color: #3b82f6;
+  color: var(--text-primary);
   text-decoration: underline;
 }
 
 .prose a:hover {
-  color: #2563eb;
+  color: var(--text-secondary);
 }
 
 /* Темная тема для prose */
