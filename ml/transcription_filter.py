@@ -9,6 +9,7 @@ import os
 import logging
 from typing import Optional
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from dotenv import load_dotenv
 import time
 from pathlib import Path
@@ -89,7 +90,7 @@ class TranscriptionFilter:
                 logger.info(f"🔄 Начинаем фильтрацию текста ({len(transcribed_text)} символов)")
                 logger.info(f"📝 Первые 150 символов ДО фильтрации: {transcribed_text[:150]}")
                 
-                # Генерация с настройками из конфига и таймаутом
+                # Генерация с настройками из конфига, таймаутом и отключенными safety фильтрами
                 response = self.model.generate_content(
                     prompt,
                     generation_config=genai.GenerationConfig(
@@ -97,8 +98,20 @@ class TranscriptionFilter:
                         max_output_tokens=TRANSCRIPTION_FILTER_CONFIG["max_tokens"],
                         top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"],
                     ),
+                    safety_settings={
+                        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                    },
                     request_options={'timeout': 120}  # Таймаут 2 минуты вместо 10
                 )
+                
+                # Проверяем, есть ли текст в ответе
+                if not response.parts:
+                    logger.error(f"❌ Gemini не вернул текст. Finish reason: {response.candidates[0].finish_reason}")
+                    logger.error(f"📋 Safety ratings: {response.candidates[0].safety_ratings}")
+                    raise ValueError(f"Контент заблокирован (finish_reason={response.candidates[0].finish_reason})")
                 
                 filtered_text = response.text.strip()
                 
