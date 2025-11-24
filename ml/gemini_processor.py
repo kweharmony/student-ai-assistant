@@ -7,6 +7,7 @@ import os
 import logging
 from typing import Dict, Optional, List
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from dotenv import load_dotenv
 
 from .prompts import PROMPTS, PROCESSING_CONFIGS
@@ -25,7 +26,7 @@ class GeminiProcessor:
     def __init__(self):
         """Инициализация клиента Gemini"""
         self.api_key = os.getenv('GEMINI_API_KEY')
-        self.model_name = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash-exp')
+        self.model_name = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
         
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY не найден в переменных окружения!")
@@ -33,10 +34,34 @@ class GeminiProcessor:
         # Конфигурируем Gemini API
         genai.configure(api_key=self.api_key)
         
-        # Инициализируем модель
-        self.model = genai.GenerativeModel(self.model_name)
+        # Отключаем safety фильтры для обработки учебного контента
+        self.safety_settings = [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE",
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE",
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE",
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE",
+            },
+        ]
         
-        logger.info(f"Gemini клиент инициализирован. Модель: {self.model_name}")
+        # Инициализируем модель с safety settings
+        self.model = genai.GenerativeModel(
+            model_name=self.model_name,
+            safety_settings=self.safety_settings
+        )
+        
+        logger.info(f"✅ Gemini клиент инициализирован. Модель: {self.model_name}")
+        logger.info(f"✅ Safety settings: BLOCK_NONE для всех категорий")
     
     def _make_request(self, prompt: str, config: Dict) -> str:
         """
@@ -55,14 +80,21 @@ class GeminiProcessor:
                 'temperature': config.get('temperature', 0.3),
                 'top_p': config.get('top_p', 0.95),
                 'top_k': config.get('top_k', 40),
-                'max_output_tokens': config.get('max_tokens', 2048),
+                'max_output_tokens': config.get('max_tokens', 8192),
             }
             
-            # Отправляем запрос
+            # Отправляем запрос с ЯВНЫМ указанием safety_settings в каждом запросе
             response = self.model.generate_content(
                 prompt,
-                generation_config=generation_config
+                generation_config=generation_config,
+                safety_settings=self.safety_settings  # Передаем явно!
             )
+            
+            # Проверяем, есть ли текст в ответе
+            if not response.parts:
+                logger.error(f"❌ Gemini не вернул текст. Finish reason: {response.candidates[0].finish_reason}")
+                logger.error(f"📋 Safety ratings: {response.candidates[0].safety_ratings}")
+                raise ValueError(f"Контент заблокирован (finish_reason={response.candidates[0].finish_reason})")
             
             result = response.text
             logger.info(f"Успешный запрос к Gemini. Токенов в ответе: {len(result.split())}")
