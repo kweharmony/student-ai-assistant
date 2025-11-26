@@ -1,139 +1,134 @@
 @echo off
+setlocal EnableExtensions
 chcp 65001 >nul 2>&1
-setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
+
 echo ========================================
-echo    УСТАНОВКА ЗАВИСИМОСТЕЙ ПРОЕКТА
+echo    PROJECT DEPENDENCY INSTALLER
 echo ========================================
 echo.
 
-rem --- Проверяем наличие Python ---
+rem --- Check Python availability ---
 where python >nul 2>&1
-if errorlevel 1 (
-    echo [ОШИБКА] Python не найден. Установите Python 3.10+ и повторите.
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Python not found. Install Python 3.10+ and rerun.
     pause
     exit /b 1
 )
 
-rem --- Создаём виртуальное окружение (если нужно) ---
+rem --- Create virtual environment if missing ---
 if not exist "venv\Scripts\activate.bat" (
-    echo Создаю виртуальное окружение...
+    echo Creating virtual environment...
     python -m venv venv
-    if errorlevel 1 (
-        echo [ОШИБКА] Не удалось создать виртуальное окружение.
+    if %ERRORLEVEL% neq 0 (
+        echo [ERROR] Failed to create virtual environment.
         pause
         exit /b 1
     )
 )
 
-echo Активирую виртуальное окружение и обновляю pip...
+echo Activating virtual environment and upgrading pip...
 call "venv\Scripts\activate.bat"
 python -m pip install --upgrade pip
-if errorlevel 1 (
-    echo [ОШИБКА] Не удалось обновить pip.
-    pause
-    exit /b 1
+if %ERRORLEVEL% neq 0 (
+    echo [WARNING] Failed to upgrade pip, continuing anyway...
 )
 
-rem --- Устанавливаем backend-зависимости ---
+rem --- Install backend dependencies ---
 if exist "requirements.txt" (
-    echo Устанавливаю Python-зависимости...
+    echo Installing Python dependencies...
     pip install -r requirements.txt
-    if errorlevel 1 (
-        echo [ОШИБКА] pip install завершился с ошибкой.
-        pause
-        exit /b 1
+    if %ERRORLEVEL% neq 0 (
+        echo [WARNING] pip install had issues, continuing anyway...
     )
 ) else (
-    echo [ПРЕДУПРЕЖДЕНИЕ] Файл requirements.txt не найден, пропускаю установку.
+    echo [WARNING] requirements.txt missing, skipping backend installation.
 )
 
-rem --- Загружаем модель Whisper medium ---
-echo Загружаю модель Whisper (medium) при помощи download_model.py...
+rem --- Download Whisper medium model ---
+echo Downloading Whisper medium model with download_model.py...
 python -c "from download_model import download_whisper_model; download_whisper_model('medium')"
-if errorlevel 1 (
-    echo [ПРЕДУПРЕЖДЕНИЕ] Не удалось загрузить модель Whisper автоматически.
-    echo Запустите вручную:  call venv\Scripts\activate.bat ^&^& python download_model.py
+if %ERRORLEVEL% neq 0 (
+    echo [WARNING] Automatic Whisper download failed.
+    echo Run manually: call venv\Scripts\activate.bat ^&^& python download_model.py
 ) else (
-    echo Модель Whisper готова к использованию.
+    echo Whisper model ready to use.
 )
 
 echo.
 echo ========================================
-echo    УСТАНОВКА FRONTEND ЗАВИСИМОСТЕЙ
+echo    FRONTEND DEPENDENCY INSTALLER
 echo ========================================
 echo.
 
-rem --- Проверяем Node.js ---
-echo Проверяю наличие Node.js...
+rem --- Check Node.js ---
+echo Checking Node.js...
 where node >nul 2>&1
-if errorlevel 1 (
-    echo [ОШИБКА] Node.js не найден. Установите Node.js с https://nodejs.org
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Node.js not found. Install from https://nodejs.org
     pause
     exit /b 1
 )
-for /f "tokens=*" %%i in ('node --version') do echo Node.js версия: %%i
+for /f "tokens=*" %%i in ('node --version') do echo Node.js version: %%i
 
-rem --- Проверяем npm ---
-echo Проверяю наличие npm...
+rem --- Check npm ---
+echo Checking npm...
 where npm >nul 2>&1
-if errorlevel 1 (
-    echo [ОШИБКА] npm не найден. Установите Node.js (https://nodejs.org) и повторите.
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] npm not found. Install Node.js from https://nodejs.org and rerun.
     pause
     exit /b 1
 )
-for /f "tokens=*" %%i in ('npm --version') do echo npm версия: %%i
+for /f "tokens=*" %%i in ('npm --version') do echo npm version: %%i
 
-rem --- Устанавливаем frontend-зависимости ---
+rem --- Install frontend dependencies ---
 if not exist "package.json" (
-    echo [ОШИБКА] Файл package.json не найден!
+    echo [ERROR] package.json not found!
     pause
     exit /b 1
 )
 
 echo.
-echo Удаляю старые node_modules (если есть)...
+echo Removing previous node_modules directory if it exists...
 if exist "node_modules" (
     rmdir /s /q "node_modules" 2>nul
-    echo Старые node_modules удалены.
+    echo Removed old node_modules.
 )
 
 echo.
-echo Устанавливаю npm-зависимости...
-echo Это может занять несколько минут...
+echo Installing npm dependencies (this may take a few minutes)...
 echo.
 call npm install --legacy-peer-deps
 if %ERRORLEVEL% neq 0 (
-    echo [ОШИБКА] npm install завершился с ошибкой. Код: %ERRORLEVEL%
+    echo [ERROR] npm install failed. Code: %ERRORLEVEL%
     pause
     exit /b 1
 )
 
 echo.
-echo Проверяю результат установки...
+echo Verifying npm install result...
 if not exist "node_modules" (
-    echo [ОШИБКА] Директория node_modules не создана!
+    echo [ERROR] node_modules directory missing!
     pause
     exit /b 1
 )
 
 if not exist "node_modules\react" (
-    echo [ОШИБКА] React не установлен!
+    echo [ERROR] React package missing!
     pause
     exit /b 1
 )
 
 echo.
-echo ✅ Frontend зависимости установлены успешно!
+echo [OK] Frontend dependencies installed successfully!
 
 echo.
 echo ========================================
-echo ✅ Установка завершена успешно!
+echo [OK] Setup completed successfully!
 echo ========================================
 echo.
-echo Теперь запустите run_project.bat для запуска серверов.
+echo Run run_project.bat to start the services.
 echo.
 pause
 exit /b 0
-

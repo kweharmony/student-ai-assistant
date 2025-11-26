@@ -1,27 +1,33 @@
 @echo off
-chcp 65001 >nul 2>&1
 setlocal EnableExtensions
+chcp 65001 >nul 2>&1
 
 cd /d "%~dp0"
+if errorlevel 1 (
+    echo [ERROR] Failed to switch to the script directory.
+    pause
+    exit /b 1
+)
+
 echo ========================================
-echo        ЗАПУСК BACKEND И FRONTEND
+echo        STARTING BACKEND AND FRONTEND
 echo ========================================
 echo.
 
 if not exist "venv\Scripts\activate.bat" (
-    echo [ОШИБКА] Виртуальное окружение не найдено. Сначала запустите setup_project.bat
+    echo [ERROR] Virtual environment not found. Run setup_project.bat first.
     pause
     exit /b 1
 )
 
 if not exist "start_api_medium.bat" (
-    echo [ОШИБКА] Файл start_api_medium.bat не найден.
+    echo [ERROR] File start_api_medium.bat not found.
     pause
     exit /b 1
 )
 
 if not exist "package.json" (
-    echo [ОШИБКА] package.json не найден. Проверьте целостность проекта.
+    echo [ERROR] package.json not found. Check project integrity.
     pause
     exit /b 1
 )
@@ -29,31 +35,30 @@ if not exist "package.json" (
 if not exist "node_modules" (
     echo.
     echo ========================================
-    echo [ОШИБКА] Зависимости не установлены!
+    echo [ERROR] Dependencies not installed!
     echo ========================================
     echo.
-    echo Директория node_modules не найдена.
+    echo Directory node_modules not found.
     echo.
-    echo Сначала запустите setup_project.bat для установки зависимостей:
-    echo   1. Откройте setup_project.bat
-    echo   2. Дождитесь завершения установки
-    echo   3. Затем запустите run_project.bat снова
+    echo Run setup_project.bat first to install dependencies:
+    echo   1. Open setup_project.bat
+    echo   2. Wait for installation to complete
+    echo   3. Then run run_project.bat again
     echo.
     pause
     exit /b 1
 )
 
 echo.
-echo Запускаю API сервер в отдельном окне...
+echo Starting API server in a separate window...
 start "API Server" cmd /k "cd /d "%~dp0" && call start_api_medium.bat"
 timeout /t 2 /nobreak >nul
 
-echo Запускаю frontend (npm start) в отдельном окне...
+echo Starting frontend (npm start) in a separate window...
 start "Frontend" cmd /k "cd /d "%~dp0" && npm start"
 timeout /t 2 /nobreak >nul
 
 echo.
-echo ✅ Оба процесса запущены. Используйте открытые окна для остановки (Ctrl+C).
+echo [OK] Both processes started. Use the opened windows to stop them (Ctrl+C).
 pause
 exit /b 0
-
