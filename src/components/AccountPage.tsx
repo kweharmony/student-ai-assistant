@@ -86,6 +86,125 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [transcribedText, setTranscribedText] = useState('');
   const [isFiltering, setIsFiltering] = useState(false);
+
+  const filterBenefits = [
+    'Орфографические ошибки распознавания',
+    'Фразы-паразиты (эээ, ну, вот)',
+    'Пунктуацию и форматирование',
+    'Разделение на абзацы'
+  ];
+
+  const errorRecoverySteps = [
+    'Проверьте стабильность интернет-соединения',
+    'Убедитесь, что формат файла поддерживается',
+    'Попробуйте загрузить запись ещё раз'
+  ];
+
+  const filterModalSurface = isLightTheme
+    ? {
+        background: 'linear-gradient(145deg, rgba(255, 255, 240, 0.98), rgba(248, 235, 220, 0.96))',
+        border: '1px solid rgba(68, 41, 43, 0.12)',
+        boxShadow: '0 40px 140px rgba(31, 21, 22, 0.25)'
+      }
+    : {
+        background: 'linear-gradient(145deg, rgba(33, 24, 25, 0.97), rgba(18, 12, 14, 0.92))',
+        border: '1px solid rgba(255, 255, 240, 0.08)',
+        boxShadow: '0 40px 140px rgba(0, 0, 0, 0.65)'
+      };
+
+  const filterBadgeStyles = isLightTheme
+    ? {
+        background: 'rgba(68, 41, 43, 0.08)',
+        color: '#6d3d3f'
+      }
+    : {
+        background: 'rgba(255, 255, 240, 0.08)',
+        color: '#f5ead8'
+      };
+
+  const filterInfoSurface = isLightTheme
+    ? {
+        background: 'rgba(68, 41, 43, 0.04)',
+        border: '1px solid rgba(68, 41, 43, 0.12)'
+      }
+    : {
+        background: 'rgba(255, 255, 240, 0.03)',
+        border: '1px solid rgba(255, 255, 240, 0.08)'
+      };
+
+  const primaryFilterButton = isLightTheme
+    ? {
+        background: '#44292b',
+        color: '#fff9f1',
+        boxShadow: '0 20px 45px rgba(68, 41, 43, 0.35)'
+      }
+    : {
+        background: '#fff8f0',
+        color: '#1f1516',
+        boxShadow: '0 25px 45px rgba(0, 0, 0, 0.45)'
+      };
+
+  const secondaryFilterButton = isLightTheme
+    ? {
+        background: 'rgba(68, 41, 43, 0.06)',
+        color: '#4e2e30',
+        border: '1px solid rgba(68, 41, 43, 0.2)'
+      }
+    : {
+        background: 'rgba(255, 255, 240, 0.02)',
+        color: '#f1e6d7',
+        border: '1px solid rgba(255, 255, 240, 0.08)'
+      };
+
+  const filterHeadingColor = isLightTheme ? '#2a1918' : '#fff7ec';
+  const filterBodyColor = isLightTheme ? '#4b2d2f' : '#f3e7d8';
+  const filterMutedColor = isLightTheme ? '#7a5a5c' : '#c6b7a7';
+
+  const errorModalSurface = isLightTheme
+    ? {
+        background: 'linear-gradient(145deg, rgba(255, 255, 240, 0.98), rgba(250, 238, 230, 0.96))',
+        border: '1px solid rgba(68, 41, 43, 0.15)',
+        boxShadow: '0 40px 120px rgba(34, 23, 24, 0.35)'
+      }
+    : {
+        background: 'linear-gradient(145deg, rgba(31, 21, 22, 0.96), rgba(15, 10, 12, 0.92))',
+        border: '1px solid rgba(255, 255, 240, 0.1)',
+        boxShadow: '0 45px 120px rgba(0, 0, 0, 0.65)'
+      };
+
+  const errorAccentBadge = isLightTheme
+    ? {
+        background: 'rgba(181, 132, 136, 0.15)',
+        color: '#7f4c52'
+      }
+    : {
+        background: 'rgba(255, 232, 225, 0.08)',
+        color: '#f8d7cd'
+      };
+
+  const errorInfoSurface = isLightTheme
+    ? {
+        background: 'rgba(181, 132, 136, 0.08)',
+        border: '1px solid rgba(181, 132, 136, 0.3)',
+        color: '#4b2d2f'
+      }
+    : {
+        background: 'rgba(255, 248, 240, 0.04)',
+        border: '1px solid rgba(255, 232, 225, 0.15)',
+        color: '#f3d6cf'
+      };
+
+  const errorPrimaryButton = isLightTheme
+    ? {
+        background: '#44292b',
+        color: '#fff9f2',
+        boxShadow: '0 20px 45px rgba(68, 41, 43, 0.35)'
+      }
+    : {
+        background: '#fff8f0',
+        color: '#1f1516',
+        boxShadow: '0 25px 45px rgba(0, 0, 0, 0.45)'
+      };
   
   // Описания режимов ML для UI
   const mlModes: MLModeInfo[] = [
@@ -2203,73 +2322,95 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
       {/* Модальное окно ошибки транскрибации */}
       {transcriptionError && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           onClick={() => setTranscriptionError(null)}
         >
-          <div 
-            className="rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 relative"
-            style={{
-              background: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)'
-            }}
+          <div
+            className="relative max-w-lg w-full rounded-[32px] border px-8 py-10 overflow-hidden"
+            style={errorModalSurface}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Кнопка закрытия */}
+            <div
+              className="absolute inset-x-10 top-6 h-px opacity-35"
+              style={{
+                background: isLightTheme
+                  ? 'linear-gradient(90deg, transparent, rgba(181, 132, 136, 0.5), transparent)'
+                  : 'linear-gradient(90deg, transparent, rgba(255, 232, 225, 0.4), transparent)'
+              }}
+            />
+
             <button
               onClick={() => setTranscriptionError(null)}
-              className="absolute top-4 right-4 p-2 rounded-full transition-colors"
-              style={{
-                color: 'var(--text-secondary)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--hover-bg)';
-                e.currentTarget.style.color = 'var(--text-primary)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }}
+              className="absolute top-5 right-5 p-2 rounded-full transition-all duration-300"
+              style={errorAccentBadge}
             >
-              <span className="material-symbols-outlined text-2xl">close</span>
+              <span className="material-symbols-outlined text-xl">close</span>
             </button>
 
-            {/* Иконка ошибки */}
-            <div className="text-center mb-6">
-              <div 
-                className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4"
-                style={{
-                  background: isLightTheme ? 'rgba(181, 132, 136, 0.1)' : 'rgba(181, 132, 136, 0.15)'
-                }}
+            <div className="flex flex-col items-center text-center mb-8">
+              <div
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-xs tracking-[0.3em] uppercase mb-5"
+                style={errorAccentBadge}
               >
-                <span className="material-symbols-outlined text-4xl" style={{ color: '#B58488' }}>error</span>
+                <span className="material-symbols-outlined text-base">warning</span>
+                Ошибка
               </div>
-              <h3 
-                className="text-xl font-semibold mb-2"
-                style={{ color: 'var(--text-primary)' }}
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                style={errorAccentBadge}
+              >
+                <span className="material-symbols-outlined text-3xl">error</span>
+              </div>
+              <h3
+                className="text-2xl font-semibold mb-3 tracking-tight"
+                style={{ color: filterHeadingColor }}
               >
                 Ошибка транскрибации
               </h3>
+              <p className="text-base max-w-md" style={{ color: filterBodyColor }}>
+                Не удалось обработать запись. Попробуйте снова или воспользуйтесь рекомендациями ниже.
+              </p>
             </div>
 
-            {/* Сообщение об ошибке */}
-            <div 
-              className="text-sm mb-6 p-4 rounded-lg border-2"
-              style={{
-                background: isLightTheme ? 'rgba(181, 132, 136, 0.1)' : 'rgba(181, 132, 136, 0.15)',
-                color: 'var(--text-primary)',
-                borderColor: '#B58488'
-              }}
-            >
-              {transcriptionError}
+            <div className="mb-6">
+              <div
+                className="rounded-2xl p-5 border text-sm leading-relaxed"
+                style={errorInfoSurface}
+              >
+                {transcriptionError}
+              </div>
             </div>
 
-            {/* Кнопка закрытия */}
+            <div className="mb-6">
+              <p className="text-sm font-semibold mb-3" style={{ color: filterMutedColor }}>
+                Что можно сделать:
+              </p>
+              <ul className="space-y-2">
+                {errorRecoverySteps.map((step) => (
+                  <li
+                    key={step}
+                    className="flex items-start gap-3 text-sm"
+                    style={{ color: filterBodyColor }}
+                  >
+                    <span
+                      className="mt-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px]"
+                      style={errorAccentBadge}
+                    >
+                      !
+                    </span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
             <button
               onClick={() => setTranscriptionError(null)}
-              className="btn-upload w-full"
+              className="w-full py-3.5 rounded-2xl font-semibold transition-all duration-300 hover:-translate-y-0.5"
+              style={errorPrimaryButton}
             >
-              Понятно
+              Попробовать снова
             </button>
           </div>
         </div>
@@ -2277,123 +2418,122 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       
       {/* Модальное окно выбора фильтрации транскрибированного текста */}
       {showFilterModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div 
-            className={`max-w-md w-full rounded-2xl shadow-2xl p-8 ${
-              isLightTheme 
-                ? 'bg-white' 
-                : 'bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700'
-            }`}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div
+            className="relative max-w-xl w-full rounded-[32px] border px-8 py-10 overflow-hidden"
+            style={filterModalSurface}
           >
-            {/* Иконка */}
-            <div className="flex justify-center mb-6">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                isLightTheme 
-                  ? 'bg-blue-100' 
-                  : 'bg-blue-900/30'
-              }`}>
-                <svg 
-                  className={`w-8 h-8 ${isLightTheme ? 'text-blue-600' : 'text-blue-400'}`}
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={2} 
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" 
-                  />
-                </svg>
+            <div
+              className="absolute inset-x-10 top-6 h-px opacity-40"
+              style={{
+                background: isLightTheme
+                  ? 'linear-gradient(90deg, transparent, rgba(68, 41, 43, 0.35), transparent)'
+                  : 'linear-gradient(90deg, transparent, rgba(255, 255, 240, 0.35), transparent)'
+              }}
+            />
+
+            <div className="flex flex-col items-center text-center relative">
+              <div
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs tracking-[0.2em] uppercase mb-5"
+                style={filterBadgeStyles}
+              >
+                <span className="material-symbols-outlined text-base">auto_fix_high</span>
+                AI-фильтр
               </div>
+              <h3
+                className="text-2xl font-semibold mb-3 tracking-tight"
+                style={{ color: filterHeadingColor }}
+              >
+                Транскрибация завершена!
+              </h3>
+              <p className="text-base mb-8 max-w-md" style={{ color: filterBodyColor }}>
+                Хотите дополнительно обработать текст с помощью ИИ для исправления ошибок транскрибации?
+              </p>
             </div>
 
-            {/* Заголовок */}
-            <h3 
-              className={`text-2xl font-bold mb-3 text-center ${
-                isLightTheme ? 'text-gray-900' : 'text-white'
-              }`}
-            >
-              Транскрибация завершена!
-            </h3>
-
-            {/* Описание */}
-            <p 
-              className={`text-center mb-6 ${
-                isLightTheme ? 'text-gray-600' : 'text-gray-300'
-              }`}
-            >
-              Хотите дополнительно обработать текст с помощью ИИ для исправления ошибок транскрибации?
-            </p>
-
-            {/* Информация о фильтре */}
-            <div 
-              className={`p-4 rounded-lg mb-6 ${
-                isLightTheme 
-                  ? 'bg-blue-50 border border-blue-200' 
-                  : 'bg-blue-900/20 border border-blue-800/30'
-              }`}
-            >
-              <p className={`text-sm font-semibold mb-2 ${
-                isLightTheme ? 'text-blue-900' : 'text-blue-300'
-              }`}>
-                🤖 AI-фильтр исправит:
+            <div className="p-5 rounded-2xl mb-6 border" style={filterInfoSurface}>
+              <p
+                className="text-sm font-semibold mb-3 flex items-center justify-center gap-2"
+                style={{ color: filterMutedColor }}
+              >
+                🤖 AI-фильтр исправит
               </p>
-              <ul className={`text-sm space-y-1 ${
-                isLightTheme ? 'text-blue-800' : 'text-blue-200'
-              }`}>
-                <li>• Орфографические ошибки распознавания</li>
-                <li>• Фразы-паразиты (эээ, ну, вот)</li>
-                <li>• Пунктуацию и форматирование</li>
-                <li>• Разделение на абзацы</li>
+              <ul className="space-y-2">
+                {filterBenefits.map((benefit) => (
+                  <li
+                    key={benefit}
+                    className="flex items-start gap-3 text-sm leading-relaxed"
+                    style={{ color: filterBodyColor }}
+                  >
+                    <span
+                      className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px]"
+                      style={filterBadgeStyles}
+                    >
+                      ✦
+                    </span>
+                    <span>{benefit}</span>
+                  </li>
+                ))}
               </ul>
             </div>
 
-            {/* Кнопки выбора */}
             <div className="space-y-3">
               <button
                 onClick={handleApplyFilter}
                 disabled={isFiltering}
-                className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 ${
-                  isFiltering
-                    ? 'opacity-50 cursor-not-allowed bg-gray-400'
-                    : isLightTheme
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl'
-                    : 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl'
+                className={`w-full py-3.5 px-5 rounded-2xl font-semibold flex items-center justify-center gap-2 transition-all duration-300 ${
+                  isFiltering ? 'opacity-80 cursor-not-allowed' : 'hover:-translate-y-0.5'
                 }`}
+                style={primaryFilterButton}
               >
                 {isFiltering ? (
                   <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <svg
+                      className="animate-spin -ml-1 mr-3 h-5 w-5"
+                      style={{ color: primaryFilterButton.color }}
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
                     </svg>
                     Обработка...
                   </span>
                 ) : (
-                  '✨ Обработать с помощью ИИ'
+                  <>
+                    <span className="text-lg" aria-hidden="true">
+                      ✨
+                    </span>
+                    Обработать с помощью ИИ
+                  </>
                 )}
               </button>
 
               <button
                 onClick={handleSkipFilter}
                 disabled={isFiltering}
-                className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 ${
-                  isFiltering
-                    ? 'opacity-50 cursor-not-allowed'
-                    : isLightTheme
-                    ? 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-                    : 'bg-slate-700 hover:bg-slate-600 text-gray-300'
+                className={`w-full py-3.5 px-5 rounded-2xl font-semibold transition-all duration-300 ${
+                  isFiltering ? 'opacity-60 cursor-not-allowed' : 'hover:-translate-y-0.5'
                 }`}
+                style={secondaryFilterButton}
               >
                 Пропустить обработку
               </button>
             </div>
 
-            {/* Подсказка */}
-            <p className={`text-xs text-center mt-4 ${
-              isLightTheme ? 'text-gray-500' : 'text-gray-400'
-            }`}>
+            <p className="text-xs text-center mt-5" style={{ color: filterMutedColor }}>
               Обработка займет 5-15 секунд
             </p>
           </div>
