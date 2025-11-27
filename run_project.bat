@@ -4,13 +4,13 @@ chcp 65001 >nul 2>&1
 
 cd /d "%~dp0"
 if errorlevel 1 (
-    echo [ERROR] Failed to switch to the script directory.
+    echo [ERROR] Failed to switch to script directory.
     pause
     exit /b 1
 )
 
 echo ========================================
-echo        STARTING BACKEND AND FRONTEND
+echo   STARTING BACKEND AND FRONTEND
 echo ========================================
 echo.
 
@@ -20,7 +20,7 @@ if not exist ".venv\Scripts\activate.bat" (
         pause
         exit /b 1
     ) else (
-        echo [WARNING] Found old 'venv' directory. Consider using '.venv' instead.
+        echo [WARNING] Found old venv directory. Consider using .venv instead.
     )
 )
 
@@ -54,15 +54,15 @@ if not exist "node_modules" (
 )
 
 echo.
-echo Starting API server in a separate window...
+echo Starting API server in separate window...
 start "API Server" cmd /k "cd /d "%~dp0" && call start_api_medium.bat"
 timeout /t 2 /nobreak >nul
 
-echo Starting frontend (npm start) in a separate window...
+echo Starting frontend in separate window...
 start "Frontend" cmd /k "cd /d "%~dp0" && npm start"
 timeout /t 2 /nobreak >nul
 
 echo.
-echo [OK] Both processes started. Use the opened windows to stop them (Ctrl+C).
+echo [OK] Both processes started. Use opened windows to stop them with Ctrl+C.
 pause
 exit /b 0
