@@ -160,19 +160,18 @@ async def transcribe_audio(audio: UploadFile = File(...)):
             verbose=True  # Показывать прогресс
         )
         
-        # Удаляем временный файл
-        os.unlink(temp_file_path)
-        
         # Извлекаем результаты
         transcribed_text = result['text']
         detected_language = result.get('language', 'unknown')
         
         # Удаляем временный файл после успешной обработки
         try:
-            os.unlink(temp_file_path)
-            logger.info(f"🗑️ Временный файл удален")
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+                logger.info(f"🗑️ Временный файл удален: {temp_file_path}")
         except Exception as cleanup_error:
-            logger.warning(f"⚠️ Не удалось удалить временный файл: {cleanup_error}")
+            # Это не критично - файл мог быть уже удален системой
+            logger.debug(f"Временный файл уже удален: {cleanup_error}")
         
         processing_time = time.time() - start_time
         
@@ -204,7 +203,8 @@ async def transcribe_audio(audio: UploadFile = File(...)):
                 os.unlink(temp_file_path)
                 logger.info(f"🗑️ Временный файл удален после ошибки")
             except Exception as cleanup_error:
-                logger.warning(f"⚠️ Не удалось удалить временный файл: {cleanup_error}")
+                # Файл может быть уже удален - это не критично
+                logger.debug(f"Временный файл уже удален: {cleanup_error}")
         
         raise HTTPException(
             status_code=500,

@@ -18,9 +18,9 @@ if %ERRORLEVEL% neq 0 (
 )
 
 rem --- Create virtual environment if missing ---
-if not exist "venv\Scripts\activate.bat" (
-    echo Creating virtual environment...
-    python -m venv venv
+if not exist ".venv\Scripts\activate.bat" (
+    echo Creating virtual environment (.venv)...
+    python -m venv .venv
     if %ERRORLEVEL% neq 0 (
         echo [ERROR] Failed to create virtual environment.
         pause
@@ -29,7 +29,7 @@ if not exist "venv\Scripts\activate.bat" (
 )
 
 echo Activating virtual environment and upgrading pip...
-call "venv\Scripts\activate.bat"
+call ".venv\Scripts\activate.bat"
 python -m pip install --upgrade pip
 if %ERRORLEVEL% neq 0 (
     echo [WARNING] Failed to upgrade pip, continuing anyway...
@@ -46,12 +46,29 @@ if exist "requirements.txt" (
     echo [WARNING] requirements.txt missing, skipping backend installation.
 )
 
+rem --- Check CUDA and recommend GPU installation ---
+echo.
+echo Checking CUDA availability...
+python -c "import torch; cuda = torch.cuda.is_available(); print('CUDA available:', cuda); print('Device:', torch.cuda.get_device_name(0) if cuda else 'CPU'); print(''); print('RECOMMENDATION:' if not cuda else 'GPU DETECTED:'); print('  For RTX GPUs, install CUDA version:' if not cuda else '  Using GPU acceleration'); print('  pip uninstall torch torchaudio' if not cuda else ''); print('  pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118' if not cuda else '')"
+
+echo.
+set /p "install_cuda=Do you want to install PyTorch with CUDA support now? (y/N): "
+if /i "%install_cuda%"=="y" (
+    echo Installing PyTorch with CUDA 11.8...
+    pip uninstall -y torch torchaudio
+    pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+    echo.
+    echo Verifying CUDA installation...
+    python -c "import torch; print('CUDA now available:', torch.cuda.is_available())"
+)
+
 rem --- Download Whisper medium model ---
+echo.
 echo Downloading Whisper medium model with download_model.py...
 python -c "from download_model import download_whisper_model; download_whisper_model('medium')"
 if %ERRORLEVEL% neq 0 (
     echo [WARNING] Automatic Whisper download failed.
-    echo Run manually: call venv\Scripts\activate.bat ^&^& python download_model.py
+    echo Run manually: call .venv\Scripts\activate.bat ^&^& python download_model.py
 ) else (
     echo Whisper model ready to use.
 )

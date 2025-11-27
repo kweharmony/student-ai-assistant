@@ -8,13 +8,17 @@ echo Starting API server with Whisper Medium model
 echo ========================================
 echo.
 
-REM Check virtual environment
-if exist "venv\Scripts\activate.bat" (
+REM Check virtual environment (.venv)
+if exist ".venv\Scripts\activate.bat" (
+    echo Activating .venv...
+    call .venv\Scripts\activate.bat
+) else if exist "venv\Scripts\activate.bat" (
+    echo WARNING: Found old 'venv' directory, but using '.venv' is recommended!
     echo Activating venv...
     call venv\Scripts\activate.bat
 ) else (
-    echo WARNING: Virtual environment not found!
-    echo Create it using: python -m venv venv
+    echo ERROR: Virtual environment not found!
+    echo Create it using: python -m venv .venv
     pause
     exit /b 1
 )
@@ -24,6 +28,16 @@ set WHISPER_MODEL=medium
 
 echo.
 echo Using model: %WHISPER_MODEL%
+echo.
+
+REM Check CUDA availability
+echo Checking CUDA availability...
+python -c "import torch; cuda_available = torch.cuda.is_available(); print('CUDA available:', cuda_available); print('Device:', torch.cuda.get_device_name(0) if cuda_available else 'CPU only'); print('PyTorch version:', torch.__version__)"
+if %ERRORLEVEL% neq 0 (
+    echo WARNING: Failed to check CUDA status!
+)
+
+echo.
 echo API will be available at: http://localhost:8000
 echo Frontend will be available at: http://localhost:3000
 echo.

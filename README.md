@@ -51,6 +51,9 @@
 
 ## 🔧 Установка (пошаговая инструкция)
 
+> **⚡ ВНИМАНИЕ для владельцев RTX GPU:**
+> Если вы уже установили проект и транскрибация работает медленно - см. раздел [Быстрое исправление CUDA](#-быстрое-исправление-cuda-для-существующих-установок) ниже.
+
 ### Шаг 1: Клонирование репозитория
 
 **Вариант А: С помощью Git (рекомендуется)**
@@ -82,7 +85,7 @@ cd student-ai-assistant
 **Windows (PowerShell):**
 
 ```powershell
-# 1. Создать виртуальное окружение
+# 1. Создать виртуальное окружение (ВАЖНО: используйте .venv, НЕ venv!)
 python -m venv .venv
 
 # 2. Разрешить выполнение скриптов (если появляется ошибка)
@@ -127,7 +130,7 @@ pip install -r requirements.txt
 
 #### 2.3. Установка PyTorch с GPU (опционально, для ускорения)
 
-Если у вас **NVIDIA GPU с CUDA**:
+**⚠️ ВАЖНО для RTX GPU:** Если у вас **NVIDIA GPU (RTX 2060, 3060, 4060 и выше)**, установка CUDA версии PyTorch **обязательна** для быстрой транскрибации! Без этого транскрибация будет в **10-15 раз медленнее**.
 
 ```bash
 # Удалить CPU версию PyTorch
@@ -141,7 +144,16 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```bash
 python -c "import torch; print('CUDA доступна:', torch.cuda.is_available())"
 # Должно вывести: CUDA доступна: True
+
+python -c "import torch; print('GPU:', torch.cuda.get_device_name(0))"
+# Должно вывести: GPU: NVIDIA GeForce RTX 3060 (или ваша модель)
 ```
+
+**⏱️ Сравнение скорости транскрибации:**
+- **CPU only:** 30 минут аудио → ~15-20 минут обработки
+- **CUDA GPU (RTX):** 30 минут аудио → ~1-2 минуты обработки ⚡
+
+**Примечание:** Скрипт `setup_project.bat` автоматически предложит установить CUDA версию при обнаружении GPU.
 
 ---
 
@@ -351,13 +363,59 @@ ffmpeg -version
 
 # 5. Проверка .env файла
 # Откройте .env и убедитесь, что GEMINI_API_KEY заполнен
+
+# 6. Проверка CUDA (для RTX GPU)
+# Windows: запустите check_cuda.bat
+# Или вручную:
+.venv\Scripts\Activate.ps1  # Windows
+python -c "import torch; print('CUDA:', torch.cuda.is_available())"
+# Должно вывести: CUDA: True (если у вас RTX GPU)
 ```
+
+---
+
+## ⚡ Быстрое исправление CUDA (для существующих установок)
+
+**Проблема:** Транскрибация работает медленно при запуске через `run_project.bat`, хотя у вас RTX GPU.
+
+**Причина:** Используется CPU версия PyTorch вместо GPU версии.
+
+**Быстрое решение (2 минуты):**
+
+```powershell
+# 1. Откройте PowerShell в папке проекта
+cd C:\Users\ВашеИмя\Desktop\student-ai-assistant
+
+# 2. Активируйте виртуальное окружение
+.venv\Scripts\Activate.ps1
+# Если ошибка "venv not found" - используйте: venv\Scripts\Activate.ps1
+
+# 3. Переустановите PyTorch с CUDA
+pip uninstall -y torch torchaudio
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# 4. Проверьте CUDA (должно вывести True)
+python -c "import torch; print('CUDA:', torch.cuda.is_available())"
+
+# 5. Проверьте GPU (должна показаться ваша видеокарта)
+python -c "import torch; print('GPU:', torch.cuda.get_device_name(0))"
+
+# 6. Перезапустите backend
+.\start_api_medium.bat
+# В логах должно быть: "CUDA available: True"
+```
+
+**Результат:** Транскрибация ускорится в **10-15 раз** ⚡
+
+Подробнее: `CUDA_SETUP.md`
 
 ---
 
 ## ▶️ Запуск проекта
 
 ### Способ 1: Быстрый запуск через скрипты (рекомендуется)
+
+**⚠️ ВАЖНО:** Скрипты автоматически используют виртуальное окружение `.venv` и проверяют доступность CUDA перед запуском.
 
 **Windows:**
 
@@ -366,6 +424,8 @@ ffmpeg -version
    ```powershell
    .\start_api_medium.bat
    ```
+   - Скрипт выведет информацию о CUDA: `CUDA available: True` или `False`
+   - Если CUDA недоступна, но у вас RTX GPU - см. [Шаг 2.3](#23-установка-pytorch-с-gpu-опционально-для-ускорения)
    - Должно появиться: `INFO: Uvicorn running on http://0.0.0.0:8000`
    - Backend доступен: [http://localhost:8000](http://localhost:8000)
    - **НЕ ЗАКРЫВАЙТЕ** этот терминал!
@@ -732,6 +792,34 @@ Set-ExecutionPolicy RemoteSigned -Scope Process
 
 ### Проблемы с транскрибацией
 
+**Транскрибация очень медленная (САМАЯ ЧАСТАЯ ПРОБЛЕМА)**
+
+```
+Причина: Используется CPU вместо GPU
+Симптомы: 
+  - 5 минут аудио обрабатывается 5-10 минут (вместо 30 секунд)
+  - В start_api_medium.bat показывает "CUDA available: False"
+  - У вас есть RTX GPU, но она не используется
+
+Решение:
+1. Проверьте CUDA в вашем виртуальном окружении:
+   .venv\Scripts\Activate.ps1  # Windows
+   python -c "import torch; print('CUDA:', torch.cuda.is_available())"
+
+2. Если вывод "False", переустановите PyTorch с CUDA:
+   pip uninstall torch torchaudio
+   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+3. Проверьте снова:
+   python -c "import torch; print('CUDA:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0))"
+   # Должно вывести: CUDA: True, GPU: NVIDIA GeForce RTX xxxx
+
+4. Перезапустите backend (Ctrl+C → .\start_api_medium.bat)
+
+КРИТИЧНО: Убедитесь, что вы устанавливаете PyTorch в ТО ЖЕ виртуальное окружение (.venv),
+которое используют скрипты! Если у вас несколько venv/venv/.venv - удалите лишние.
+```
+
 **Ошибка: `moov atom not found`**
 
 ```
@@ -742,14 +830,14 @@ Set-ExecutionPolicy RemoteSigned -Scope Process
 3. Используйте другой аудиофайл для теста
 ```
 
-**Транскрибация очень медленная**
+**Транскрибация всё ещё медленная (с CUDA)**
 
 ```
-Причина: Используется CPU вместо GPU
+Причина: Используется слишком большая модель или слабая GPU
 Решение:
-1. Установите PyTorch с CUDA (см. Шаг 2.3 установки)
-2. Используйте меньшую модель: WHISPER_MODEL=small в .env
-3. Разбейте длинное аудио на части
+1. Используйте меньшую модель: WHISPER_MODEL=small в .env
+2. Разбейте длинное аудио на части (до 30 минут)
+3. Закройте другие программы, использующие GPU
 ```
 
 **Текст распознался с ошибками**
@@ -871,5 +959,6 @@ ERROR: Ошибка обработки текста: Контент заблок
 - 🤖 **ML модуль:** `ML_documentation.md`
 - 🚀 **Быстрый старт:** `QUICK_START_TRANSCRIPTION.md`
 - ⚙️ **Настройка ML:** `ML_SETUP_GUIDE.md`
+- ⚡ **Настройка CUDA/GPU:** `CUDA_SETUP.md` ⭐ **ВАЖНО для RTX GPU**
 
 ---

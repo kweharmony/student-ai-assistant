@@ -14,10 +14,14 @@ echo        STARTING BACKEND AND FRONTEND
 echo ========================================
 echo.
 
-if not exist "venv\Scripts\activate.bat" (
-    echo [ERROR] Virtual environment not found. Run setup_project.bat first.
-    pause
-    exit /b 1
+if not exist ".venv\Scripts\activate.bat" (
+    if not exist "venv\Scripts\activate.bat" (
+        echo [ERROR] Virtual environment not found. Run setup_project.bat first.
+        pause
+        exit /b 1
+    ) else (
+        echo [WARNING] Found old 'venv' directory. Consider using '.venv' instead.
+    )
 )
 
 if not exist "start_api_medium.bat" (
