@@ -2,7 +2,7 @@
 # Google Gemini API
 google-generativeai==0.8.3
 
-# Веб-фреймворк (для будущей интеграции)
+# Веб-фреймворк
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 
@@ -18,7 +18,7 @@ aiofiles==23.2.1
 pytest==7.4.0
 httpx==0.25.0
 
-# Дополнительные библиотеки (опционально)
+# Дополнительные библиотеки
 numpy>=1.26.2
 
 # Для работы с документами (опционально)
@@ -28,19 +28,23 @@ python-docx==0.8.11
 # Для продакшена
 gunicorn==21.2.0
 
-# Транскрибация
-requests
+# HTTP запросы
+requests>=2.31.0
 
 # ===== ЛОКАЛЬНАЯ ТРАНСКРИБАЦИЯ =====
 # Whisper от OpenAI (локальная версия)
-openai-whisper
+openai-whisper>=20231117
 
 # FFmpeg wrapper (для обработки аудио)
-ffmpeg-python
+ffmpeg-python>=0.2.0
 
-# Для ускорения на GPU (опционально, но рекомендуется)
-torch
-torchaudio
+# Для ускорения на GPU (опционально, но рекомендуется для Windows с CUDA)
+# Установка: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+torch>=2.0.0
+torchaudio>=2.0.0
 
 # Для отображения прогресса
-tqdm
+tqdm>=4.65.0
+
+# CORS middleware (уже включен в FastAPI)
+# fastapi уже включает starlette, который предоставляет CORSMiddleware
