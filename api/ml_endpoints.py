@@ -1,6 +1,6 @@
 """
 FastAPI эндпоинты для ML обработки текста
-Интеграция Google Gemini с веб-приложением
+Интеграция DeepSeek API через VseLLM провайдер
 """
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, FastAPI
@@ -11,14 +11,14 @@ import logging
 import asyncio
 from datetime import datetime
 
-# Импортируем наш процессор
+# Импортируем DeepSeek процессор
 try:
-    from ..ml.gemini_processor import GeminiProcessor
+    from ..ml.deepseek_processor import DeepSeekProcessor
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from ml.gemini_processor import GeminiProcessor
+    from ml.deepseek_processor import DeepSeekProcessor
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
@@ -26,14 +26,14 @@ logger = logging.getLogger(__name__)
 # Создаем роутер
 router = APIRouter(prefix="/api/ml", tags=["ML Text Processing"])
 
-# Глобальный экземпляр процессора
+# Глобальный экземпляр процессора (stateless, безопасен для параллельных запросов)
 processor = None
 
 def get_processor():
     """Получение глобального экземпляра процессора"""
     global processor
     if processor is None:
-        processor = GeminiProcessor()
+        processor = DeepSeekProcessor()
     return processor
 
 
@@ -84,8 +84,8 @@ async def health_check():
         
         return HealthResponse(
             status="healthy" if is_available else "unhealthy",
-            gemini_api_available=is_available,
-            message="Gemini API работает корректно" if is_available else "Проблемы с Gemini API",
+            gemini_api_available=is_available,  # Оставляем поле для совместимости
+            message="DeepSeek API работает корректно" if is_available else "Проблемы с DeepSeek API",
             timestamp=datetime.now()
         )
     except Exception as e:
@@ -108,7 +108,7 @@ async def process_text(request: ProcessRequest):
     - extract_terms: извлечение терминов
     - expand_topic: расширение темы
     - generate_questions: вопросы для самопроверки
-    - detailed_notes: расширенный конспект с подробным разбором терминов
+    - detailed_notes: расширенный конспект с подробным разбором терминов (использует Multi-Step)
     - cheat_sheet: сжатая шпаргалка по лекции
     """
     start_time = datetime.now()
@@ -129,16 +129,16 @@ async def process_text(request: ProcessRequest):
                 detail="Для режима expand_topic требуется указать параметр 'topic'"
             )
         
-        # Получаем процессор и обрабатываем текст
+        # Получаем процессор и обрабатываем текст (async!)
         proc = get_processor()
         
         if request.mode == "expand_topic":
-            result = proc.expand_topic(
+            result = await proc.expand_topic(
                 topic=request.topic,
                 context=request.context or request.text
             )
         else:
-            result = proc.process_text(request.text, request.mode)
+            result = await proc.process_text(request.text, request.mode)
         
         # Вычисляем время обработки
         processing_time = (datetime.now() - start_time).total_seconds()
@@ -188,9 +188,9 @@ async def batch_process_text(request: BatchProcessRequest):
                 detail=f"Неверные режимы: {', '.join(invalid_modes)}. Доступны: {', '.join(valid_modes)}"
             )
         
-        # Получаем процессор и обрабатываем
+        # Получаем процессор и обрабатываем (ASYNC!)
         proc = get_processor()
-        results = proc.batch_process(request.text, request.modes)
+        results = await proc.batch_process(request.text, request.modes)
         
         # Вычисляем общее время обработки
         total_time = (datetime.now() - start_time).total_seconds()
@@ -274,7 +274,7 @@ async def quick_summary(request: ProcessRequest):
     """Быстрое создание конспекта (упрощенный эндпоинт)"""
     try:
         proc = get_processor()
-        result = proc.summarize(request.text)
+        result = await proc.summarize(request.text)  # ASYNC!
         
         return JSONResponse({
             "success": True,

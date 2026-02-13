@@ -3,12 +3,12 @@ ML модуль для обработки текста студенческих 
 
 РАЗДЕЛЕНИЕ ФУНКЦИОНАЛА:
 
-1. gemini_processor.py - AI-обработка конспектов
+1. deepseek_processor.py - AI-обработка конспектов через DeepSeek API
    - Создание конспектов
    - Извлечение терминов
    - Генерация вопросов
    - Расширение тем
-   - Подробные заметки
+   - Подробные заметки (Multi-Step Generation)
    - Шпаргалки
 
 2. transcription_filter.py - AI-фильтрация транскрибаций
@@ -18,18 +18,18 @@ ML модуль для обработки текста студенческих 
    - Удаление фраз-паразитов
 """
 
-from .gemini_processor import GeminiProcessor, quick_process
+from .deepseek_processor import DeepSeekProcessor, sync_process
 from .transcription_filter import TranscriptionFilter, quick_filter
-from .prompts import PROMPTS, PROCESSING_CONFIGS
+from .prompts import PROMPTS, PROCESSING_CONFIGS, CHUNKING_PROMPTS
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 __author__ = "Student AI Assistant Team"
 
 # Экспортируем основные классы и функции
 __all__ = [
-    # Обработка конспектов
-    "GeminiProcessor",
-    "quick_process",
+    # Обработка конспектов (DeepSeek)
+    "DeepSeekProcessor",
+    "sync_process",
     
     # Фильтрация транскрибаций
     "TranscriptionFilter",
@@ -37,5 +37,6 @@ __all__ = [
     
     # Конфигурации
     "PROMPTS",
-    "PROCESSING_CONFIGS"
+    "PROCESSING_CONFIGS",
+    "CHUNKING_PROMPTS"
 ]

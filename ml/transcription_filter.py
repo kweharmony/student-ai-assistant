@@ -1,6 +1,6 @@
 """
 AI-фильтратор для очистки транскрибированного текста
-Отдельный модуль от gemini_processor.py (обработка конспектов)
+Переписан для работы с DeepSeek API через VseLLM провайдер
 
 Этот модуль отвечает ТОЛЬКО за исправление ошибок транскрибации
 """
@@ -8,8 +8,7 @@ AI-фильтратор для очистки транскрибированно
 import os
 import logging
 from typing import Optional
-import google.generativeai as genai
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from openai import OpenAI
 from dotenv import load_dotenv
 import time
 from pathlib import Path
@@ -31,37 +30,33 @@ logger = logging.getLogger(__name__)
 
 class TranscriptionFilter:
     """
-    Класс для фильтрации и очистки транскрибированного текста
+    Класс для фильтрации и очистки транскрибированного текста через DeepSeek API
     
-    ОТЛИЧИЕ от GeminiProcessor (обработка конспектов):
-    - GeminiProcessor: создаёт конспекты, термины, вопросы (структурирует)
+    ОТЛИЧИЕ от DeepSeekProcessor (обработка конспектов):
+    - DeepSeekProcessor: создаёт конспекты, термины, вопросы (структурирует)
     - TranscriptionFilter: только исправляет ошибки распознавания речи
     """
     
     def __init__(self):
-        """Инициализация клиента Gemini для фильтрации"""
-        # Используем отдельные переменные окружения для фильтрации
-        # Можно использовать тот же ключ или отдельный
-        self.api_key = os.getenv('GEMINI_API_KEY')
-        # Используем более стабильную модель gemini-1.5-flash вместо экспериментальной
-        self.model_name = os.getenv('GEMINI_FILTER_MODEL', 'gemini-1.5-flash')
+        """Инициализация клиента DeepSeek для фильтрации"""
+        # API ключ и настройки
+        self.api_key = os.getenv('DEEPSEEK_API_KEY')
+        self.base_url = os.getenv('DEEPSEEK_BASE_URL', 'https://api.vsellm.ru/v1')
+        self.model_name = os.getenv('DEEPSEEK_MODEL', 'deepseek/deepseek-v3.2')
         
-        logger.info(f"🔍 GEMINI_FILTER_MODEL из .env: {os.getenv('GEMINI_FILTER_MODEL')}")
+        logger.info(f"🔍 Base URL: {self.base_url}")
         logger.info(f"📌 Используемая модель фильтратора: {self.model_name}")
         
         if not self.api_key:
-            raise ValueError("GEMINI_API_KEY не найден в переменных окружения!")
+            raise ValueError("DEEPSEEK_API_KEY не найден в переменных окружения!")
         
-        # Конфигурируем Gemini API
-        genai.configure(api_key=self.api_key)
-        
-        # Инициализируем модель с системным промптом для фильтрации
-        self.model = genai.GenerativeModel(
-            self.model_name,
-            system_instruction=FILTER_SYSTEM_PROMPT
+        # Инициализируем OpenAI-compatible клиент
+        self.client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url
         )
         
-        logger.info(f"TranscriptionFilter инициализирован. Модель: {self.model_name}")
+        logger.info(f"✅ TranscriptionFilter инициализирован через DeepSeek API")
     
     def filter_text(self, transcribed_text: str, max_retries: int = 3) -> str:
         """
@@ -90,30 +85,20 @@ class TranscriptionFilter:
                 logger.info(f"🔄 Начинаем фильтрацию текста ({len(transcribed_text)} символов)")
                 logger.info(f"📝 Первые 150 символов ДО фильтрации: {transcribed_text[:150]}")
                 
-                # Генерация с настройками из конфига, таймаутом и отключенными safety фильтрами
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config=genai.GenerationConfig(
-                        temperature=TRANSCRIPTION_FILTER_CONFIG["temperature"],
-                        max_output_tokens=TRANSCRIPTION_FILTER_CONFIG["max_tokens"],
-                        top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"],
-                    ),
-                    safety_settings={
-                        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-                    },
-                    request_options={'timeout': 120}  # Таймаут 2 минуты вместо 10
+                # Генерация с настройками из конфига
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {"role": "system", "content": FILTER_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=TRANSCRIPTION_FILTER_CONFIG["temperature"],
+                    max_tokens=TRANSCRIPTION_FILTER_CONFIG["max_tokens"],
+                    top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"]
                 )
                 
-                # Проверяем, есть ли текст в ответе
-                if not response.parts:
-                    logger.error(f"❌ Gemini не вернул текст. Finish reason: {response.candidates[0].finish_reason}")
-                    logger.error(f"📋 Safety ratings: {response.candidates[0].safety_ratings}")
-                    raise ValueError(f"Контент заблокирован (finish_reason={response.candidates[0].finish_reason})")
-                
-                filtered_text = response.text.strip()
+                # Получаем отфильтрованный текст
+                filtered_text = response.choices[0].message.content.strip()
                 
                 logger.info(f"✅ Фильтрация завершена. Результат: {len(filtered_text)} символов")
                 logger.info(f"📊 Изменение размера: {len(transcribed_text)} → {len(filtered_text)} ({len(filtered_text) - len(transcribed_text):+d})")
@@ -121,22 +106,22 @@ class TranscriptionFilter:
                 
                 # Проверяем, изменился ли текст
                 if transcribed_text.strip() == filtered_text.strip():
-                    logger.warning("⚠️ ПРЕДУПРЕЖДЕНИЕ: Текст не изменился после фильтрации! Возможно, текст уже был чистым или модель вернула то же самое.")
+                    logger.warning("⚠️ ПРЕДУПРЕЖДЕНИЕ: Текст не изменился после фильтрации! Возможно, текст уже был чистым.")
                 
                 return filtered_text
                 
             except Exception as e:
                 error_message = str(e)
                 
-                # Проверяем, является ли это ошибкой перегрузки API
-                if "503" in error_message or "overloaded" in error_message.lower():
+                # Проверяем тип ошибки
+                if "503" in error_message or "overloaded" in error_message.lower() or "rate_limit" in error_message.lower():
                     if attempt < max_retries - 1:
                         wait_time = (attempt + 1) * 5  # Увеличивающаяся задержка: 5, 10, 15 секунд
-                        logger.warning(f"⚠️ API перегружен. Ждем {wait_time}с перед повторной попыткой...")
+                        logger.warning(f"⚠️ API перегружен или rate limit. Ждем {wait_time}с перед повторной попыткой...")
                         time.sleep(wait_time)
                         continue
                     else:
-                        logger.error(f"❌ API перегружен после {max_retries} попыток")
+                        logger.error(f"❌ API недоступен после {max_retries} попыток")
                 elif "timeout" in error_message.lower():
                     logger.error(f"❌ Таймаут запроса к API (попытка {attempt + 1}/{max_retries})")
                     if attempt < max_retries - 1:
@@ -146,7 +131,7 @@ class TranscriptionFilter:
                 else:
                     logger.error(f"❌ Ошибка фильтрации: {error_message}")
                 
-                # Если это последняя попытка или неизвестная ошибка
+                # Если это последняя попытка
                 if attempt == max_retries - 1:
                     logger.warning("⚠️ Возвращаем оригинальный текст без фильтрации")
                     return transcribed_text
@@ -159,14 +144,17 @@ class TranscriptionFilter:
         """Проверка работоспособности API"""
         try:
             # Простой тест с коротким текстом
-            test_text = "Привет это тест фильтра"
-            response = self.model.generate_content(
-                f"Исправь ошибки: {test_text}",
-                generation_config=genai.GenerationConfig(max_output_tokens=50)
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "user", "content": "Исправь ошибки: Привет ето тест"}
+                ],
+                max_tokens=50,
+                temperature=0.1
             )
-            return bool(response.text)
+            return bool(response.choices[0].message.content)
         except Exception as e:
-            logger.error(f"Health check failed: {e}")
+            logger.error(f"❌ Health check failed: {e}")
             return False
 
 
@@ -194,7 +182,7 @@ if __name__ == "__main__":
     они работают следующим образом обрабатывают изображения изображения
     """
     
-    print("🧪 Тестирование TranscriptionFilter")
+    print("🧪 Тестирование TranscriptionFilter с DeepSeek")
     print("=" * 60)
     print("Оригинал:")
     print(test_text)
