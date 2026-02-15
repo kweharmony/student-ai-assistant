@@ -14,6 +14,14 @@ import time
 import sys
 from pathlib import Path
 
+# Импорт профанити-фильтра для безопасной обработки текста
+try:
+    from ..ml.profanity_filter import filter_profanity
+except ImportError:
+    import sys
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from ml.profanity_filter import filter_profanity
+
 # ===== НАСТРОЙКА FFMPEG PATH =====
 # Ищем FFmpeg в стандартных местах установки для Windows
 def setup_ffmpeg_path():
@@ -164,6 +172,12 @@ async def transcribe_audio(audio: UploadFile = File(...)):
         transcribed_text = result['text']
         detected_language = result.get('language', 'unknown')
         
+        # ===== ПРОФАНИТИ-ФИЛЬТР (ОБЯЗАТЕЛЬНАЯ ОЧИСТКА) =====
+        # Применяется ВСЕГДА для предотвращения блокировки Gemini API
+        logger.info("🔒 Применяем профанити-фильтр к транскрипции...")
+        transcribed_text = filter_profanity(transcribed_text)
+        logger.info("✅ Профанити-фильтр применён")
+        
         # Удаляем временный файл после успешной обработки
         try:
             if os.path.exists(temp_file_path):
@@ -297,9 +311,15 @@ async def filter_transcription(request: FilterRequest):
         logger.info(f"🔄 Начинаем AI-фильтрацию текста ({len(request.text)} символов)")
         logger.info(f"📝 Первые 200 символов входного текста: {request.text[:200]}")
         
-        # Создаём фильтр и обрабатываем
+        # ===== ПРОФАНИТИ-ФИЛЬТР (ОБЯЗАТЕЛЬНАЯ ПРЕДОБРАБОТКА) =====
+        # Применяется ВСЕГДА перед отправкой в Gemini API
+        logger.info("🔒 Применяем профанити-фильтр перед AI-обработкой...")
+        safe_text = filter_profanity(request.text)
+        logger.info("✅ Профанити-фильтр применён")
+        
+        # Создаём фильтр и обрабатываем БЕЗОПАСНЫЙ текст
         filter_instance = TranscriptionFilter()
-        filtered_text = filter_instance.filter_text(request.text)
+        filtered_text = filter_instance.filter_text(safe_text)
         
         processing_time = time.time() - start_time
         
