@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul 2>&1
 
-cd /d "%~dp0"
+cd /d "%~dp0\.."
 
 echo ========================================
 echo    PROJECT DEPENDENCY INSTALLER
@@ -69,7 +69,7 @@ if !ERRORLEVEL! neq 0 (
 rem Download Whisper model
 echo.
 echo Downloading Whisper model...
-python -c "from download_model import download_whisper_model; download_whisper_model('medium')" 2>nul
+python -c "from scripts.download_model import download_whisper_model; download_whisper_model('medium')" 2>nul
 if !ERRORLEVEL! neq 0 (
     echo [WARNING] Whisper download failed - will download on first use
 )

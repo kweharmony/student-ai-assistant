@@ -1,18 +1,10 @@
 import React from 'react';
 import { useFileUpload } from '../hooks/useFileUpload';
-// @ts-ignore
 import { useNavigate } from 'react-router-dom';
 
 const UploadDemo: React.FC = () => {
-  const { isUploading, uploadProgress, error, success, uploadFile } = useFileUpload();
+  const { isUploading, uploadProgress, error, success } = useFileUpload();
   const navigate = useNavigate();
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      uploadFile(file);
-    }
-  };
 
   const handleUploadClick = () => {
     navigate('/account');

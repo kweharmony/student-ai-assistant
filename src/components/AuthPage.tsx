@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-// @ts-ignore
-import { Link } from 'react-router-dom';
 import Header from './Header';
 import Footer from './Footer';
 
@@ -33,12 +31,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
     
     // Имитация загрузки
     await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    if (isLogin) {
-      console.log('Вход:', formData);
-    } else {
-      console.log('Регистрация:', formData);
-    }
     
     setIsLoading(false);
   };

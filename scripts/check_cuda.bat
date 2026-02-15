@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul 2>&1
+cd /d "%~dp0\.."
 REM Script to check CUDA availability for Whisper transcription
 
 echo ========================================

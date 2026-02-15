@@ -1,17 +1,31 @@
-declare module 'file-saver' {
-  export function saveAs(blob: Blob, filename: string): void;
+declare module 'mammoth' {
+  interface ExtractRawTextOptions {
+    arrayBuffer: ArrayBuffer;
+  }
+
+  interface ExtractRawTextResult {
+    value: string;
+  }
+
+  export function extractRawText(options: ExtractRawTextOptions): Promise<ExtractRawTextResult>;
 }
 
-declare module 'html2canvas' {
-  interface Html2CanvasOptions {
-    scale?: number;
-    useCORS?: boolean;
-    allowTaint?: boolean;
-    backgroundColor?: string;
+declare module 'pdf-parse' {
+  interface PDFData {
+    text: string;
+    numpages: number;
+    numrender: number;
+    info: any;
+    metadata: any;
+    version: string;
   }
-  
-  function html2canvas(element: HTMLElement, options?: Html2CanvasOptions): Promise<HTMLCanvasElement>;
-  export default html2canvas;
+
+  function pdfParse(buffer: ArrayBuffer): Promise<PDFData>;
+  export = pdfParse;
+}
+
+declare module 'file-saver' {
+  export function saveAs(blob: Blob, filename: string): void;
 }
 
 declare module 'jspdf' {

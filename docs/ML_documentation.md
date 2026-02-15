@@ -2,7 +2,7 @@
 
 ## 📖 **Обзор проекта**
 
-ML модуль для обработки студенческих лекций с помощью Google Gemini API. Система автоматически создает конспекты, извлекает ключевые термины, генерирует вопросы для самопроверки и выполняет другие задачи обработки текста.
+ML модуль для обработки студенческих лекций с помощью DeepSeek v3.2 API через VseLLM. Система автоматически создает конспекты, извлекает ключевые термины, генерирует вопросы для самопроверки и выполняет другие задачи обработки текста.
 
 ---
 
@@ -14,14 +14,14 @@ student-ai-assistant/
 ├── requirements.txt        # Python зависимости
 ├── scripts/
 │   ├── test_cheat_sheet_advanced.py # Тест режима шпаргалки
-│   └── (другие тесты требуют обновления для Gemini)
+│   └── (другие тесты требуют обновления для DeepSeek)
 ├── ML_SETUP_GUIDE.md     # Руководство по установке
 ├── ML_documentation.md    # Этот файл
 │
 ├── ml/                    # Основной ML модуль
 │   ├── __init__.py       # Экспорт классов
 │   │
-│   ├── gemini_processor.py     # AI-обработчик конспектов
+│   ├── deepseek_processor.py     # AI-обработчик конспектов
 │   ├── prompts.py             # Промпты для обработки конспектов
 │   │
 │   ├── transcription_filter.py # AI-фильтратор транскрибаций (НОВОЕ!)
@@ -38,7 +38,7 @@ student-ai-assistant/
 ML модуль разделен на **два независимых компонента** с четкими обязанностями:
 
 #### **1. AI-обработчик конспектов** (создание учебных материалов)
-- **Файлы:** `gemini_processor.py`, `prompts.py`, `ml_endpoints.py`
+- **Файлы:** `deepseek_processor.py`, `prompts.py`, `ml_endpoints.py`
 - **Цель:** Структурирование текста в учебные материалы
 - **Операции:** Создание конспектов, извлечение терминов, генерация вопросов
 
@@ -55,12 +55,10 @@ ML модуль разделен на **два независимых компо
 
 #### `.env` - Настройки API
 ```bash
-# Google Gemini API Configuration
-GEMINI_API_KEY=your_api_key_here  # Получить на: https://aistudio.google.com/apikey
-GEMINI_MODEL=gemini-2.0-flash-exp
-
-# Модель для фильтрации транскрибаций (опционально, использует GEMINI_MODEL если не указана)
-GEMINI_FILTER_MODEL=gemini-2.0-flash-exp
+# DeepSeek API Configuration (via VseLLM)
+DEEPSEEK_API_KEY=vsellm_your_api_key_here  # Получить на: https://vsellm.ru
+DEEPSEEK_BASE_URL=https://api.vsellm.ru/v1
+DEEPSEEK_MODEL=deepseek/deepseek-v3.2
 
 # ML Processing Settings
 MAX_TOKENS=2048          # Максимум токенов в ответе
@@ -72,18 +70,18 @@ WHISPER_MODEL=medium
 ```
 
 #### `requirements.txt` - Python зависимости
-Содержит все необходимые библиотеки: google-generativeai, fastapi, pydantic и др.
+Содержит все необходимые библиотеки: openai (OpenAI-compatible клиент), fastapi, pydantic и др.
 
 ---
 
 ### **2. ML модуль (`ml/` папка)**
 
-#### `ml/gemini_processor.py` - 🧠 Главный класс
-**Назначение**: Основной класс для работы с Google Gemini API
+#### `ml/deepseek_processor.py` - 🧠 Главный класс
+**Назначение**: Основной класс для работы с DeepSeek API через VseLLM
 
 **Главные методы**:
 ```python
-class GeminiProcessor:
+class DeepSeekProcessor:
     def __init__(self)                    # Инициализация API клиента
     def summarize(text)                   # Создание конспекта
     def extract_terms(text)               # Извлечение терминов
@@ -97,7 +95,7 @@ class GeminiProcessor:
 
 **Пример использования**:
 ```python
-from ml.gemini_processor import GeminiProcessor
+from ml.deepseek_processor import DeepSeekProcessor
 
 processor = GeminiProcessor()
 summary = processor.summarize("Текст лекции...")
@@ -108,14 +106,14 @@ summary = processor.summarize("Текст лекции...")
 #### `ml/transcription_filter.py` - 🧹 AI-фильтратор транскрибаций (НОВОЕ!)
 **Назначение**: Очистка и исправление ошибок в транскрибированном тексте после Whisper
 
-**ВАЖНО:** Это отдельный модуль от `GeminiProcessor`!
-- `GeminiProcessor` — создаёт конспекты, термины, вопросы (структурирует)
+**ВАЖНО:** Это отдельный модуль от `DeepSeekProcessor`!
+- `DeepSeekProcessor` — создаёт конспекты, термины, вопросы (структурирует)
 - `TranscriptionFilter` — только исправляет ошибки распознавания речи
 
 **Главные методы**:
 ```python
 class TranscriptionFilter:
-    def __init__(self)                    # Инициализация Gemini для фильтрации
+    def __init__(self)                    # Инициализация DeepSeek для фильтрации
     def filter_text(text)                 # Фильтрация транскрибированного текста
     def health_check()                    # Проверка API
 ```
@@ -186,7 +184,7 @@ SUMMARIZE_PROMPT = """
 #### `ml/__init__.py` - 📦 Экспорт модулей
 **Назначение**: Позволяет импортировать классы простым способом
 ```python
-from ml import GeminiProcessor  # Вместо длинного пути
+from ml import DeepSeekProcessor  # Вместо длинного пути
 ```
 
 ---
@@ -197,7 +195,7 @@ from ml import GeminiProcessor  # Вместо длинного пути
 **Назначение**: Тестирование режима создания шпаргалок
 
 **Что тестирует**:
-- ✅ Подключение к Gemini API
+- ✅ Подключение к DeepSeek API
 - ✅ Создание компактных шпаргалок
 - ✅ Форматирование Markdown
 - ✅ Сохранение результатов
@@ -332,7 +330,7 @@ print(result['filtered_text'])  # Чистый текст без ошибок
                   │
                   ▼
          ┌──────────────────┐
-         │ GeminiProcessor  │  ← ml/gemini_processor.py
+         │ DeepSeekProcessor  │  ← ml/deepseek_processor.py
          │ (обработка)      │
          └────────┬─────────┘
                   │
@@ -357,8 +355,9 @@ pip install -r requirements.txt
 
 3. **Добавьте API ключ в `.env`**:
 ```bash
-GEMINI_API_KEY=your-key-here
-GEMINI_MODEL=gemini-2.0-flash-exp
+DEEPSEEK_API_KEY=vsellm_your-key-here
+DEEPSEEK_BASE_URL=https://api.vsellm.ru/v1
+DEEPSEEK_MODEL=deepseek/deepseek-v3.2
 ```
 
 ### **Шаг 2: Тестирование**
@@ -707,7 +706,7 @@ python scripts/test_detailed_notes.py
 
 ### **Частые проблемы и решения**:
 
-#### **1. "GEMINI_API_KEY не найден"**
+#### **1. "DEEPSEEK_API_KEY не найден"**
 **Причина**: API ключ не установлен
 **Решение**: Добавьте ключ в файл `.env` (получить: https://aistudio.google.com/apikey)
 
@@ -724,7 +723,7 @@ python scripts/test_detailed_notes.py
 **Решение**: Подождите 1 минуту и попробуйте снова
 
 #### **5. "Module 'google.generativeai' not found"**
-**Причина**: Библиотека Gemini не установлена
+**Причина**: Библиотека OpenAI (для DeepSeek) не установлена
 **Решение**: `pip install google-generativeai==0.8.3`
 
 ### **Проверка работоспособности**:
@@ -847,9 +846,9 @@ print(result)
 
 ## 🔗 **Полезные ссылки**
 
-- [Google Gemini API Documentation](https://ai.google.dev/docs)
-- [Gemini API Key](https://aistudio.google.com/apikey)
-- [Gemini Playground](https://aistudio.google.com/)
+- [DeepSeek API через VseLLM](https://vsellm.ru)
+- [DeepSeek Documentation](https://docs.deepseek.com/)
+- [VseLLM API Documentation](https://vsellm.ru/docs)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [Prompt Engineering Guide](https://www.promptingguide.ai/)
 
@@ -922,8 +921,8 @@ Google Gemini API (Cloud)
 1. Пользователь вводит текст в TipTap редактор
 2. Выбирает один из 6 режимов обработки
 3. Frontend отправляет POST запрос на `/api/ml/process`
-4. Backend вызывает соответствующий метод `GeminiProcessor`
-5. Gemini API обрабатывает текст и возвращает результат
+4. Backend вызывает соответствующий метод `DeepSeekProcessor`
+5. DeepSeek API обрабатывает текст и возвращает результат
 6. Frontend отображает результат с Markdown форматированием
 7. Пользователь может вставить результат обратно в редактор
 
@@ -931,8 +930,9 @@ Google Gemini API (Cloud)
 
 **Backend (`.env`):**
 ```bash
-GEMINI_API_KEY=your-api-key-here
-GEMINI_MODEL=gemini-2.0-flash-exp
+DEEPSEEK_API_KEY=vsellm_your-api-key-here
+DEEPSEEK_BASE_URL=https://api.vsellm.ru/v1
+DEEPSEEK_MODEL=deepseek/deepseek-v3.2
 MAX_TOKENS=2048
 TEMPERATURE=0.3
 TOP_P=0.95
@@ -958,13 +958,13 @@ Swagger UI доступен по адресу: http://localhost:8000/docs
 Подробная документация по интеграции находится в:
 - **Frontend/Backend**: `student-ai-docs.md` - полная техническая документация React компонентов, хуков, API endpoints
 - **Установка**: `README.md` - инструкции по запуску и troubleshooting
-- **ML Setup**: `ML_SETUP_GUIDE.md` - настройка Google Gemini API
+- **ML Setup**: `ML_SETUP_GUIDE.md` - настройка DeepSeek API через VseLLM
 
 ---
 
 ## 🎓 **Сравнение AI-фильтратора и AI-обработчика конспектов**
 
-| Критерий | AI-фильтратор (TranscriptionFilter) | AI-обработчик конспектов (GeminiProcessor) |
+| Критерий | AI-фильтратор (TranscriptionFilter) | AI-обработчик конспектов (DeepSeekProcessor) |
 |----------|-------------------------------------|-------------------------------------------|
 | **Цель** | Исправление ошибок транскрибации | Структурирование текста в учебные материалы |
 | **Вход** | Сырая транскрибация после Whisper | Чистый, исправленный текст |
@@ -972,7 +972,7 @@ Swagger UI доступен по адресу: http://localhost:8000/docs
 | **Temperature** | 0.2 (низкая - точность) | 0.3-0.7 (средняя - креативность) |
 | **Max Tokens** | 8000 | 2048-16384 (зависит от режима) |
 | **Операция** | Корректировка | Трансформация |
-| **Файлы** | `transcription_filter.py`, `filter_prompts.py` | `gemini_processor.py`, `prompts.py` |
+| **Файлы** | `transcription_filter.py`, `filter_prompts.py` | `deepseek_processor.py`, `prompts.py` |
 | **API** | `/api/transcribe/filter` | `/api/ml/process` |
 | **Когда использовать** | После Whisper транскрибации | Для создания учебных материалов |
 
@@ -980,7 +980,7 @@ Swagger UI доступен по адресу: http://localhost:8000/docs
 
 1. **Аудиофайл** → Whisper (`/api/transcribe/audio`)
 2. **Сырая транскрибация** → `TranscriptionFilter` (`/api/transcribe/filter`) [опционально]
-3. **Чистый текст** → `GeminiProcessor` (`/api/ml/process`)
+3. **Чистый текст** → `DeepSeekProcessor` (`/api/ml/process`)
 4. **Конспект/Термины/Вопросы** → Экспорт в PDF/DOCX
 
 ---
@@ -989,8 +989,8 @@ Swagger UI доступен по адресу: http://localhost:8000/docs
 
 Пользователи могут:
 - ✅ Транскрибировать аудио лекций (Whisper, локально)
-- ✅ Фильтровать транскрибированный текст от ошибок (TranscriptionFilter, Gemini API)
-- ✅ Обрабатывать тексты в 6 режимах через удобный веб-интерфейс (GeminiProcessor, Gemini API)
+- ✅ Фильтровать транскрибированный текст от ошибок (TranscriptionFilter, DeepSeek API)
+- ✅ Обрабатывать тексты в 6 режимах через удобный веб-интерфейс (DeepSeekProcessor, DeepSeek API)
 - ✅ Получать результаты с красивым Markdown форматированием
 - ✅ Вставлять результаты в редактор и экспортировать в различные форматы
-- ✅ Использовать бесплатный API от Google (15 req/min, 1500 req/день)
+- ✅ Использовать DeepSeek v3.2 для высококачественной обработки текста

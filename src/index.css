@@ -40,27 +40,6 @@ body::before {
   pointer-events: none;
 }
 
-/* Connection lines between steps */
-.steps::before {
-  content: '';
-  position: absolute;
-  top: 120px;
-  left: 20%;
-  right: 20%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--border-color), var(--border-color), transparent);
-  z-index: -1;
-}
-
-/* Logo pseudo-element */
-.logo::before {
-  content: '◐';
-  margin-right: 12px;
-  opacity: 0.5;
-  font-size: 24px;
-}
-
-
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
@@ -115,11 +94,6 @@ body::before {
 .profile-avatar {
   background: var(--text-primary);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* Smooth scrolling for records section */
-.records-section {
-  scroll-behavior: smooth;
 }
 
 /* Mobile calendar optimizations */
@@ -305,15 +279,3 @@ body::before {
   color: var(--text-secondary);
 }
 
-/* Темная тема для prose */
-.dark-theme .prose {
-  color: var(--text-primary);
-}
-
-.dark-theme .prose code {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.dark-theme .prose pre {
-  background: rgba(255, 255, 255, 0.05);
-}

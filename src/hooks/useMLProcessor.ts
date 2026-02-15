@@ -53,13 +53,6 @@ export const useMLProcessor = () => {
         ...(topic && { topic })
       };
 
-      console.log('🚀 Отправка запроса к ML API:', {
-        url: `${API_BASE_URL}/api/ml/process`,
-        mode,
-        textLength: text.length,
-        topic
-      });
-
       const response = await fetch(`${API_BASE_URL}/api/ml/process`, {
         method: 'POST',
         headers: {
@@ -98,15 +91,6 @@ export const useMLProcessor = () => {
 
       const data: MLProcessResponse = await response.json();
 
-      console.log('✅ Полный ответ от API:', data);
-      console.log('✅ Успешная обработка:', {
-        mode: data.mode,
-        inputLength: data.input_length,
-        outputLength: data.output_length,
-        processingTime: data.processing_time,
-        hasProcessedText: !!data.processed_text
-      });
-
       // Проверяем наличие обработанного текста
       if (!data.processed_text) {
         throw new Error('API вернул пустой результат обработки');
@@ -125,7 +109,6 @@ export const useMLProcessor = () => {
     } catch (error: any) {
       // Проверяем, была ли отмена запроса
       if (error.name === 'AbortError') {
-        console.log('🛑 Обработка отменена пользователем');
         setState({
           isProcessing: false,
           currentMode: mode,
@@ -154,113 +137,6 @@ export const useMLProcessor = () => {
   };
 
   /**
-   * Пакетная обработка текста несколькими режимами
-   */
-  const batchProcess = async (text: string, modes: MLMode[]) => {
-    if (!text.trim()) {
-      setState(prev => ({ ...prev, error: 'Текст не может быть пустым' }));
-      return null;
-    }
-
-    setState({
-      isProcessing: true,
-      currentMode: null,
-      result: null,
-      error: null
-    });
-
-    try {
-      console.log('🚀 Пакетная обработка:', { modes, textLength: text.length });
-
-      const response = await fetch(`${API_BASE_URL}/api/ml/batch-process`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text, modes })
-      });
-
-      if (!response.ok) {
-        throw new Error('Ошибка пакетной обработки');
-      }
-
-      const data = await response.json();
-
-      console.log('✅ Пакетная обработка завершена:', data);
-
-      setState({
-        isProcessing: false,
-        currentMode: null,
-        result: JSON.stringify(data.results, null, 2),
-        error: null
-      });
-
-      return data.results;
-
-    } catch (error: any) {
-      console.error('❌ Ошибка пакетной обработки:', error);
-      
-      setState({
-        isProcessing: false,
-        currentMode: null,
-        result: null,
-        error: error.message
-      });
-      
-      return null;
-    }
-  };
-
-  /**
-   * Получение списка доступных режимов обработки
-   */
-  const getModes = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/ml/modes`);
-      
-      if (!response.ok) {
-        throw new Error('Не удалось получить список режимов');
-      }
-      
-      const data = await response.json();
-      console.log('📋 Доступные режимы:', data.modes);
-      
-      return data.modes;
-    } catch (error) {
-      console.error('❌ Ошибка получения режимов:', error);
-      return [];
-    }
-  };
-
-  /**
-   * Проверка работоспособности ML API
-   */
-  const checkHealth = async (): Promise<boolean> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/ml/health`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      if (!response.ok) {
-        return false;
-      }
-      
-      const data = await response.json();
-      const isHealthy = data.status === 'healthy';
-      
-      console.log(isHealthy ? '✅ ML API работает' : '❌ ML API недоступен');
-      
-      return isHealthy;
-    } catch (error) {
-      console.error('❌ ML API недоступен:', error);
-      return false;
-    }
-  };
-
-  /**
    * Сброс состояния обработки
    */
   const reset = () => {
@@ -277,7 +153,6 @@ export const useMLProcessor = () => {
    */
   const cancelProcessing = () => {
     if (abortControllerRef.current) {
-      console.log('🛑 Отмена обработки...');
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
@@ -292,9 +167,7 @@ export const useMLProcessor = () => {
     
     // Методы
     processText,
-    batchProcess,
-    getModes,
     reset,
-    cancelProcessing  // Новый метод отмены
+    cancelProcessing
   };
 };

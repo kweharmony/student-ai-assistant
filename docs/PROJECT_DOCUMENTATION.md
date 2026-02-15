@@ -2,7 +2,7 @@
 
 ## 📖 Обзор проекта
 
-**Student AI Assistant** — веб-платформа для автоматической обработки студенческих лекций с использованием искусственного интеллекта. Система объединяет транскрибацию аудио (Whisper AI), фильтрацию текста и создание учебных материалов (Google Gemini API).
+**Student AI Assistant** — веб-платформа для автоматической обработки студенческих лекций с использованием искусственного интеллекта. Система объединяет транскрибацию аудио (Whisper AI), фильтрацию текста и создание учебных материалов (DeepSeek v3.2 API через VseLLM).
 
 ### 🎯 Основные возможности
 
@@ -40,8 +40,8 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                     ML МОДУЛЬ (Python)                      │
 │  ┌──────────────────┐        ┌──────────────────┐          │
-│  │  Whisper AI      │        │  Gemini API      │          │
-│  │  (локально)      │        │  (Google)        │          │
+│  │  Whisper AI      │        │  DeepSeek API     │          │
+│  │  (локально)      │        │  (via VseLLM)     │          │
 │  │                  │        │                  │          │
 │  │ • Транскрибация  │        │ • Фильтрация     │          │
 │  │   аудио          │        │ • Конспекты      │          │
@@ -116,7 +116,7 @@ student-ai-assistant/
 │   └── ml/
 │       ├── __init__.py            # Экспорт классов
 │       │
-│       ├── gemini_processor.py    # Обработчик конспектов ⭐
+│       ├── deepseek_processor.py    # Обработчик конспектов ⭐
 │       ├── prompts.py             # Промпты для конспектов
 │       │
 │       ├── transcription_filter.py # Фильтратор транскрибаций ⭐
@@ -408,7 +408,7 @@ const handleProcess = async () => {
 
 #### `useMLProcessor.ts` - Взаимодействие с ML API
 
-**Назначение:** обработка текста через Gemini API
+**Назначение:** обработка текста через DeepSeek API
 
 **Интерфейс:**
 ```typescript
@@ -979,7 +979,7 @@ app.include_router(transcribe_router)
 
 #### `ml_endpoints.py` - API обработки текста
 
-REST API для обработки текстовых данных через Gemini.
+REST API для обработки текстовых данных через DeepSeek v3.2.
 
 **Префикс роутера:** `/api/ml`
 
@@ -1235,7 +1235,7 @@ aiofiles==23.2.1          # Асинхронная работа с файлам�
 gunicorn==21.2.0          # Production WSGI сервер
 pytest==7.4.0             # Тестирование
 httpx==0.25.0             # HTTP клиент для тестов
-google-generativeai==0.8.3 # Gemini API
+openai>=1.0.0                  # DeepSeek API (OpenAI-compatible)
 openai-whisper            # Транскрибация
 torch                     # ML фреймворк
 requests>=2.31.0          # HTTP запросы
@@ -1267,7 +1267,7 @@ ML модуль разделен на **два независимых компо
 │              ML МОДУЛЬ                               │
 │                                                      │
 │  ┌────────────────────┐  ┌─────────────────────┐   │
-│  │  TranscriptionFilter│  │  GeminiProcessor    │   │
+│  │  TranscriptionFilter│  │  DeepSeekProcessor   │   │
 │  │  (фильтрация)      │  │  (конспекты)        │   │
 │  │                    │  │                     │   │
 │  │ • Исправление      │  │ • Создание          │   │
@@ -1344,19 +1344,19 @@ TRANSCRIPTION_FILTER_CONFIG = {
 - Автоматический fallback на оригинальный текст при ошибке
 - Логирование первых 150 символов до/после фильтрации
 
-### 2. GeminiProcessor - Обработка конспектов
+### 2. DeepSeekProcessor - Обработка конспектов
 
 **Файлы:**
-- `ml/gemini_processor.py` - Класс процессора
+- `ml/deepseek_processor.py` - Класс процессора
 - `ml/prompts.py` - Промпты для обработки
 
 **Назначение:** Создание учебных материалов из текста лекций
 
 **Основной класс:**
 ```python
-from ml.gemini_processor import GeminiProcessor
+from ml.deepseek_processor import DeepSeekProcessor
 
-processor = GeminiProcessor()
+processor = DeepSeekProcessor()
 
 # Создание конспекта
 summary = processor.summarize("Текст лекции...")
@@ -1507,7 +1507,7 @@ SUMMARIZE_PROMPT = """
 │         AI-ФИЛЬТРАЦИЯ (опционально)                │
 │                                                    │
 │  Пользователь выбирает:                           │
-│  • Применить AI-фильтр (Gemini) - очистка текста  │
+│  • Применить AI-фильтр (DeepSeek) - очистка текста  │
 │  • Пропустить - использовать как есть             │
 └────────────────────────────────────────────────────┘
 ```
@@ -1709,7 +1709,7 @@ result = model.transcribe(
 │ Пользователю предлагается:                          │
 │ ┌──────────────────┐   ┌──────────────────┐        │
 │ │ Обработать с ИИ  │   │    Пропустить    │        │
-│ │ (Gemini API)     │   │ (оставить как есть)│      │
+│ │ (DeepSeek API)    │   │ (оставить как есть)│      │
 │ └──────────────────┘   └──────────────────┘        │
 └────────────────┬────────────────┬───────────────────┘
                  │                │
@@ -1854,7 +1854,7 @@ async def health_check():
 {
   "status": "healthy",
   "message": "✅ AI-фильтр готов к работе",
-  "uses_gemini": true
+  "uses_deepseek": true
 }
 ```
 
@@ -1991,16 +1991,16 @@ async def transcribe_async(audio: UploadFile, background_tasks: BackgroundTasks)
 
 ```bash
 # ============================================
-# GOOGLE GEMINI API
+# DEEPSEEK API (via VseLLM)
 # ============================================
-# Получить ключ: https://aistudio.google.com/apikey
-GEMINI_API_KEY=your_api_key_here
+# Получить ключ: https://vsellm.ru
+DEEPSEEK_API_KEY=vsellm_your_api_key_here
 
-# Модель для создания конспектов
-GEMINI_MODEL=gemini-2.5-flash
+# Base URL провайдера VseLLM
+DEEPSEEK_BASE_URL=https://api.vsellm.ru/v1
 
-# Модель для фильтрации транскрибаций (опционально)
-GEMINI_FILTER_MODEL=gemini-1.5-flash
+# Модель DeepSeek
+DEEPSEEK_MODEL=deepseek/deepseek-v3.2
 
 # ============================================
 # ML PROCESSING SETTINGS
@@ -2210,15 +2210,14 @@ python download_model.py
 - Превышен лимит 15 запросов/минуту
 - Подождите 1 минуту и повторите
 
-#### Ошибка: "503 The model is overloaded"
-- Сервер Google перегружен
+#### Ошибка: "503 Service Unavailable"
+- Сервер VseLLM временно недоступен
 - Retry логика автоматически повторит (3 попытки)
-- Попробуйте другую модель (`gemini-1.5-flash`)
+- Проверьте баланс на https://vsellm.ru
 
-#### Ошибка: "finish_reason=2" (SAFETY)
-- Контент заблокирован фильтром безопасности
-- Safety фильтры уже отключены в `transcription_filter.py`
-- Если повторяется - сообщите о проблеме
+#### Ошибка: "Rate limit exceeded"
+- Превышен лимит запросов API
+- Подождите несколько минут и повторите
 
 ---
 
@@ -2227,8 +2226,8 @@ python download_model.py
 ### Python (requirements.txt)
 
 ```txt
-# Google Gemini API
-google-generativeai==0.8.3
+# DeepSeek API (OpenAI-compatible)
+openai>=1.0.0
 
 # Веб-фреймворк
 fastapi==0.104.1

@@ -1,7 +1,8 @@
 /* Минималистичные стили для кнопок */
 
-/* Базовые стили для кнопок */
-.btn {
+/* Базовые стили для кнопок (.btn-upload is an alias) */
+.btn,
+.btn-upload {
   position: relative;
   padding: 1rem 2rem;
   font-size: 1rem;
@@ -18,16 +19,25 @@
   text-align: center;
 }
 
-.btn:hover {
+.btn:hover,
+.btn-upload:hover {
   border-color: var(--text-secondary);
   background: var(--hover-bg);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.btn:active {
+.btn:active,
+.btn-upload:active {
   transform: translateY(0);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn:disabled,
+.btn-upload:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
 }
 
 /* Стили для градиентных кнопок */
@@ -56,26 +66,6 @@
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
-/* Стили для кнопок без анимации */
-.btn-simple {
-  position: relative;
-  padding: 0.75rem 1.5rem;
-  font-size: 0.9rem;
-  font-weight: 400;
-  color: var(--text-secondary);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: color 0.2s ease;
-  font-family: 'Georgia, serif';
-  text-decoration: none;
-  display: inline-block;
-}
-
-.btn-simple:hover {
-  color: var(--text-primary);
-}
-
 /* Стили для кнопок переключения темы */
 .btn-theme {
   position: relative;
@@ -98,42 +88,6 @@
   color: var(--text-primary);
   border-color: var(--text-secondary);
   background: var(--hover-bg);
-}
-
-/* Стили для кнопок загрузки файлов */
-.btn-upload {
-  position: relative;
-  padding: 1rem 2rem;
-  font-size: 1rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: 'Georgia, serif';
-  text-decoration: none;
-  display: inline-block;
-  text-align: center;
-}
-
-.btn-upload:hover {
-  border-color: var(--text-secondary);
-  background: var(--hover-bg);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.btn-upload:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
-
-.btn-upload:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none !important;
 }
 
 /* Стили для кнопок обработки ИИ */
@@ -191,6 +145,7 @@
 /* Адаптивные стили */
 @media (max-width: 768px) {
   .btn,
+  .btn-upload,
   .btn-gradient {
     padding: 10px 20px;
     font-size: 14px;

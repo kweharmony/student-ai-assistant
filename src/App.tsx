@@ -6,10 +6,9 @@ import UploadDemo from './components/UploadDemo';
 import Features from './components/Features';
 import Footer from './components/Footer';
 import AuthPage from './components/AuthPage';
-import AccountPage from './components/AccountPage';
+import AccountPage from './components/account/AccountPage';
 import PricingPage from './components/PricingPage';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
-// @ts-ignore
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 // Компонент для главной страницы

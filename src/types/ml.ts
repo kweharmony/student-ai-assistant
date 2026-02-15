@@ -43,14 +43,3 @@ export interface MLProcessingState {
   error: string | null;
 }
 
-// Результат пакетной обработки
-export interface BatchProcessResult {
-  mode: MLMode;
-  result: string;
-  error?: string;
-}
-
-export interface BatchProcessResponse {
-  results: Record<MLMode, string>;
-  total_processing_time: number;
-}

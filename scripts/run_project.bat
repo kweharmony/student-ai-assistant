@@ -2,9 +2,9 @@
 setlocal EnableExtensions
 chcp 65001 >nul 2>&1
 
-cd /d "%~dp0"
+cd /d "%~dp0\.."
 if errorlevel 1 (
-    echo [ERROR] Failed to switch to script directory.
+    echo [ERROR] Failed to switch to project directory.
     pause
     exit /b 1
 )
@@ -24,8 +24,8 @@ if not exist ".venv\Scripts\activate.bat" (
     )
 )
 
-if not exist "start_api_medium.bat" (
-    echo [ERROR] File start_api_medium.bat not found.
+if not exist "scripts\start_api_medium.bat" (
+    echo [ERROR] File scripts\start_api_medium.bat not found.
     pause
     exit /b 1
 )
@@ -55,11 +55,11 @@ if not exist "node_modules" (
 
 echo.
 echo Starting API server in separate window...
-start "API Server" cmd /k "cd /d "%~dp0" && call start_api_medium.bat"
+start "API Server" cmd /k "cd /d "%~dp0\.." && call scripts\start_api_medium.bat"
 timeout /t 2 /nobreak >nul
 
 echo Starting frontend in separate window...
-start "Frontend" cmd /k "cd /d "%~dp0" && npm start"
+start "Frontend" cmd /k "cd /d "%~dp0\.." && npm start"
 timeout /t 2 /nobreak >nul
 
 echo.

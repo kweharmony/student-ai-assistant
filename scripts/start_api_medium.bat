@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul 2>&1
+cd /d "%~dp0\.."
 REM Script to run API with Whisper Medium model
 REM For Windows
 

@@ -27,7 +27,7 @@
 - Pydantic 2.9.0
 
 **AI/ML:**
-- Google Gemini API (обработка конспектов + фильтрация)
+- DeepSeek v3.2 API через VseLLM (обработка конспектов + фильтрация)
 - OpenAI Whisper (локальная транскрибация)
 - FFmpeg (обработка аудио)
 
@@ -37,7 +37,7 @@
 - **Node.js** 16.0 или выше ([скачать](https://nodejs.org/))
 - **Python** 3.10 или выше ([скачать](https://www.python.org/downloads/))
 - **FFmpeg** ([инструкция ниже](#4-установка-ffmpeg))
-- **Google Gemini API ключ** (бесплатно, [получить](https://aistudio.google.com/apikey))
+- **DeepSeek API ключ** через VseLLM ([получить](https://vsellm.ru))
 
 ### Рекомендуется:
 - **Git** ([скачать](https://git-scm.com/downloads))
@@ -119,7 +119,7 @@ pip install -r requirements.txt
 
 # Это установит:
 # - FastAPI, Uvicorn (веб-сервер)
-# - Google Gemini API (AI обработка)
+# - DeepSeek API клиент через OpenAI-compatible интерфейс (AI обработка)
 # - OpenAI Whisper (транскрибация)
 # - PyTorch, torchaudio (ML фреймворк)
 # - ffmpeg-python (обработка аудио)
@@ -267,16 +267,16 @@ touch .env
 
 ```env
 # ============================================
-# GOOGLE GEMINI API (ОБЯЗАТЕЛЬНО)
+# DEEPSEEK API (ОБЯЗАТЕЛЬНО)
 # ============================================
-# Получить ключ: https://aistudio.google.com/apikey
-GEMINI_API_KEY=ваш_ключ_сюда
+# Получить ключ: https://vsellm.ru
+DEEPSEEK_API_KEY=vsellm_ваш_ключ_сюда
 
-# Модель для создания конспектов
-GEMINI_MODEL=gemini-2.5-flash
+# Base URL провайдера VseLLM
+DEEPSEEK_BASE_URL=https://api.vsellm.ru/v1
 
-# Модель для фильтрации транскрибаций
-GEMINI_FILTER_MODEL=gemini-1.5-flash
+# Модель DeepSeek (рекомендуется v3.2)
+DEEPSEEK_MODEL=deepseek/deepseek-v3.2
 
 # ============================================
 # WHISPER TRANSCRIPTION
@@ -303,18 +303,19 @@ LOG_LEVEL=INFO
 REACT_APP_API_URL=http://localhost:8000
 ```
 
-#### 5.3. Получение Google Gemini API ключа
+#### 5.3. Получение DeepSeek API ключа через VseLLM
 
-1. Перейдите: [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-2. Войдите с Google аккаунтом
-3. Нажмите **"Create API Key"**
-4. Скопируйте ключ
-5. Вставьте в `.env` вместо `ваш_ключ_сюда`
+1. Перейдите: [https://vsellm.ru](https://vsellm.ru)
+2. Зарегистрируйтесь или войдите в аккаунт
+3. Перейдите в раздел **"API ключи"**
+4. Нажмите **"Создать новый ключ"**
+5. Скопируйте ключ (начинается с `vsellm_`)
+6. Вставьте в `.env` вместо `vsellm_ваш_ключ_сюда`
 
-**Важно:** Ключ бесплатный, лимиты:
-- 15 запросов/минуту
-- 1,500 запросов/день
-- 1M токенов/минуту
+**Важно:** 
+- DeepSeek v3.2 обеспечивает высокое качество обработки текста
+- Поддержка Multi-Step Generation для длинных документов
+- Проверьте баланс на платформе VseLLM
 
 ---
 
@@ -362,7 +363,7 @@ ffmpeg -version
 # Должно быть (.venv) в начале строки терминала
 
 # 5. Проверка .env файла
-# Откройте .env и убедитесь, что GEMINI_API_KEY заполнен
+# Откройте .env и убедитесь, что DEEPSEEK_API_KEY заполнен
 
 # 6. Проверка CUDA (для RTX GPU)
 # Windows: запустите check_cuda.bat
@@ -651,7 +652,7 @@ You can now view student-ai-assistant in the browser.
         ↓
 5. Выбрать режим: "Краткий конспект"
         ↓
-6. Обработка AI (Gemini)
+6. Обработка AI (DeepSeek v3.2)
         ↓
 7. Вставить результат в редактор
         ↓
@@ -690,13 +691,14 @@ You can now view student-ai-assistant in the browser.
 pip install -r requirements.txt
 ```
 
-**Ошибка: `GEMINI_API_KEY не найден в .env`**
+**Ошибка: `DEEPSEEK_API_KEY не найден в .env`**
 
 ```bash
 # Решение: проверьте файл .env
 # 1. Убедитесь, что файл существует
-# 2. Убедитесь, что GEMINI_API_KEY заполнен
-# 3. Нет лишних пробелов: GEMINI_API_KEY=ваш_ключ (БЕЗ пробелов вокруг =)
+# 2. Убедитесь, что DEEPSEEK_API_KEY заполнен
+# 3. Нет лишних пробелов: DEEPSEEK_API_KEY=vsellm_ваш_ключ (БЕЗ пробелов вокруг =)
+# 4. Ключ должен начинаться с vsellm_
 ```
 
 **Ошибка: `FFmpeg not found`**
@@ -856,32 +858,35 @@ Set-ExecutionPolicy RemoteSigned -Scope Process
 
 ### Проблемы с AI обработкой
 
-**Ошибка: `Resource exhausted`**
+**Ошибка: `Resource exhausted` или `Rate limit exceeded`**
 
 ```
-Причина: Превышен лимит 15 запросов/минуту
-Решение: Подождите 1 минуту и повторите запрос
+Причина: Превышен лимит запросов или токенов
+Решение: 
+1. Проверьте баланс на платформе VseLLM
+2. Подождите несколько минут и повторите запрос
+3. Система автоматически повторит запрос (до 3 попыток)
 ```
 
-**Ошибка: `503 The model is overloaded`**
+**Ошибка: `503 Service Unavailable`**
 
 ```
-Причина: Сервер Google перегружен
+Причина: Сервер VseLLM временно недоступен
 Решение:
-1. Система автоматически повторит запрос (3 попытки)
+1. Система автоматически повторит запрос (3 попытки с задержкой)
 2. Если не помогло - попробуйте через 5-10 минут
-3. Смените модель в .env: GEMINI_MODEL=gemini-1.5-flash
+3. Проверьте статус сервиса на https://vsellm.ru
 ```
 
-**Ошибка: `finish_reason=2 (SAFETY)`**
+**Ошибка: `Invalid API key`**
 
 ```
-Причина: Контент заблокирован фильтром безопасности
+Причина: Неверный или истекший API ключ
 Решение:
-1. Это известная проблема с большими текстами (>50k символов)
-2. Разбейте текст на части (по 20-30k символов)
-3. Обработайте каждую часть отдельно
-4. Safety фильтры уже отключены в коде, но Gemini иногда все равно блокирует
+1. Проверьте, что ключ в .env начинается с vsellm_
+2. Создайте новый ключ на https://vsellm.ru
+3. Убедитесь, что нет лишних пробелов или символов
+4. Перезапустите backend после изменения .env
 ```
 
 **Обработка обрывается на середине**
