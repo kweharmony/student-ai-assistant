@@ -988,7 +988,8 @@ app.include_router(ml_router, prefix="/api/ml", tags=["ML Processing"])
 
 **Запуск:**
 ```bash
-uvicorn api.app:app --reload
+uvicorn api.app:app
+# Внимание: Не используйте флаг --reload в рабочих сценариях, так как создание/удаление временных аудиофайлов приведет к прерыванию процессов!
 ```
 
 После запуска API доступен на `http://localhost:8000`, документация на `http://localhost:8000/docs`.
@@ -1119,7 +1120,8 @@ DEEPSEEK_API_KEY=your_deepseek_key_here
 
 #### 1. Запуск Backend (в первом терминале)
 ```bash
-uvicorn api.app:app --reload
+uvicorn api.app:app
+# Внимание: Не используйте флаг --reload, так как создание/удаление временных файлов прерывает долгие процессы (например, транскрибацию)
 ```
 
 API будет доступен на `http://localhost:8000`

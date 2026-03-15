@@ -473,7 +473,7 @@ cd C:\Users\ВашеИмя\Desktop\student-ai-assistant
 $env:WHISPER_MODEL="medium"
 
 # 4. Запустите сервер
-.venv\Scripts\uvicorn.exe api.app:app --reload --host 0.0.0.0 --port 8000
+.venv\Scripts\uvicorn.exe api.app:app --host 0.0.0.0 --port 8000
 ```
 
 **macOS/Linux:**

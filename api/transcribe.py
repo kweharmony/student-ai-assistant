@@ -319,10 +319,11 @@ async def filter_transcription(request: FilterRequest):
         
         # Создаём фильтр и обрабатываем БЕЗОПАСНЫЙ текст
         filter_instance = TranscriptionFilter()
-        filtered_text = filter_instance.filter_text(safe_text)
-        
+        # ИСПОЛЬЗУЕМ АСИНХРОННУЮ ФИЛЬТРАЦИЮ ДЛЯ УСКОРЕНИЯ
+        filtered_text = await filter_instance.filter_text_async(safe_text)
+
         processing_time = time.time() - start_time
-        
+
         logger.info(f"✅ Фильтрация завершена за {processing_time:.2f}с")
         logger.info(f"📊 Размер: {len(request.text)} → {len(filtered_text)}")
         logger.info(f"📝 Первые 200 символов ОТФИЛЬТРОВАННОГО текста: {filtered_text[:200]}")
