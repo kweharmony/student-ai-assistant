@@ -329,7 +329,7 @@ REACT_APP_API_URL=http://localhost:8000
 source .venv/bin/activate    # macOS/Linux
 
 # Запустить скрипт загрузки
-python download_model.py
+python .\scripts\download_model.py
 
 # Выберите модель (рекомендуется: medium)
 # Модели:
