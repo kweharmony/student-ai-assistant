@@ -48,7 +48,7 @@
 ### Backend
 | Технология | Назначение |
 |-----------|-----------|
-| **Python** 3.10+ | Язык бэкенда |
+| **Python** 3.12 | Язык бэкенда |
 | **FastAPI** | Современный веб-фреймворк для REST API |
 | **uvicorn** | ASGI-сервер для запуска приложения |
 | **python-dotenv** | Загрузка переменных окружения из `.env` |
@@ -104,7 +104,17 @@ student-ai-assistant/
 ├── public/                    # Статические файлы
 │   └── index.html            # HTML шаблон
 │
-├── scripts/                   # Скрипты для тестирования
+├── scripts/                   # Вспомогательные скрипты
+│   ├── download_model.py     # Загрузка моделей Whisper
+│   ├── start_backend.bat     # Запуск бэкенда (Windows)
+│   └── start_frontend.bat    # Запуск фронтенда (Windows)
+│
+├── .venv/                     # Виртуальное окружение Python 3.12 (создаётся setup)
+├── tools/                     # FFmpeg, Node.js (скачивается setup)
+├── whisper_models/            # Модели Whisper (скачивается setup)
+│
+├── setup.bat / setup.sh       # Установка зависимостей
+├── run.bat / run.sh           # Запуск проекта
 ├── .env                       # Переменные окружения (не в git)
 ├── .env.example              # Пример файла .env
 ├── package.json              # npm зависимости

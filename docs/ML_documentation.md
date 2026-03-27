@@ -15,7 +15,6 @@ student-ai-assistant/
 ├── scripts/
 │   ├── test_cheat_sheet_advanced.py # Тест режима шпаргалки
 │   └── (другие тесты требуют обновления для DeepSeek)
-├── ML_SETUP_GUIDE.md     # Руководство по установке
 ├── ML_documentation.md    # Этот файл
 │
 ├── ml/                    # Основной ML модуль
@@ -97,7 +96,7 @@ class DeepSeekProcessor:
 ```python
 from ml.deepseek_processor import DeepSeekProcessor
 
-processor = GeminiProcessor()
+processor = DeepSeekProcessor()
 summary = processor.summarize("Текст лекции...")
 ```
 
@@ -351,7 +350,7 @@ print(result['filtered_text'])  # Чистый текст без ошибок
 pip install -r requirements.txt
 ```
 
-2. **Получите API ключ**: https://aistudio.google.com/apikey
+2. **Получите API ключ**: https://vsellm.ru
 
 3. **Добавьте API ключ в `.env`**:
 ```bash
@@ -364,9 +363,9 @@ DEEPSEEK_MODEL=deepseek/deepseek-v3.2
 
 #### **Тест ML процессора**:
 ```powershell
-python ml/gemini_processor.py
+python ml/deepseek_processor.py
 ```
-Результат: Проверка подключения к Gemini API
+Результат: Проверка подключения к DeepSeek API
 
 #### **Тест режима шпаргалки**:
 ```powershell
@@ -399,10 +398,10 @@ python scripts/test_detailed_notes.py
 
 #### **Базовое использование**:
 ```python
-from ml.gemini_processor import GeminiProcessor
+from ml.deepseek_processor import DeepSeekProcessor
 
 # Инициализация
-processor = GeminiProcessor()
+processor = DeepSeekProcessor()
 
 # Ваш текст лекции
 lecture_text = """
@@ -708,11 +707,11 @@ python scripts/test_detailed_notes.py
 
 #### **1. "DEEPSEEK_API_KEY не найден"**
 **Причина**: API ключ не установлен
-**Решение**: Добавьте ключ в файл `.env` (получить: https://aistudio.google.com/apikey)
+**Решение**: Добавьте ключ в файл `.env` (получить: https://vsellm.ru)
 
-#### **2. "API key not valid"** 
+#### **2. "API key not valid"**
 **Причина**: Неверный или истекший API ключ
-**Решение**: Проверьте ключ на https://aistudio.google.com/apikey
+**Решение**: Проверьте ключ на https://vsellm.ru
 
 #### **3. "Import could not be resolved"**
 **Причина**: Не установлены зависимости  
@@ -722,13 +721,13 @@ python scripts/test_detailed_notes.py
 **Причина**: Превышен лимит запросов (15 req/min)
 **Решение**: Подождите 1 минуту и попробуйте снова
 
-#### **5. "Module 'google.generativeai' not found"**
+#### **5. "Module 'openai' not found"**
 **Причина**: Библиотека OpenAI (для DeepSeek) не установлена
-**Решение**: `pip install google-generativeai==0.8.3`
+**Решение**: `pip install openai` или запустите `setup.bat` / `setup.sh`
 
 ### **Проверка работоспособности**:
 ```python
-processor = GeminiProcessor()
+processor = DeepSeekProcessor()
 if processor.health_check():
     print("✅ API работает")
 else:

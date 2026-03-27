@@ -39,7 +39,7 @@
 ### Минимальные требования:
 
 - **ОС:** Windows 10/11, macOS 10.15+, Linux (Ubuntu 20.04+)
-- **Python:** 3.8 или выше
+- **Python:** 3.12
 - **RAM:** минимум 4 ГБ (рекомендуется 8 ГБ+)
 - **Место на диске:**
   - Модель `base`: 500 МБ
@@ -59,7 +59,7 @@
 python --version
 ```
 
-Должно быть `Python 3.8.0` или выше.
+Должно быть `Python 3.12.0` или выше.
 
 Если Python не установлен: https://www.python.org/downloads/
 
@@ -74,13 +74,6 @@ python --version
 ```bash
 git clone https://github.com/kweharmony/student-ai-assistant.git
 cd student-ai-assistant
-```
-
-Если уже клонировали, обновите код:
-
-```bash
-git checkout audio-transcription
-git pull origin audio-transcription
 ```
 
 ---
@@ -192,7 +185,7 @@ pip install -r requirements.txt
 ### Шаг 4: Запуск скрипта загрузки модели
 
 ```bash
-python download_model.py
+python scripts/download_model.py
 ```
 
 **Что произойдёт:**
@@ -236,17 +229,14 @@ python download_model.py
 💡 Теперь можете запускать:
    python test_whisper_local.py
    или
-   uvicorn api.app:app --reload
+   uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 🎉 Установка завершена успешно!
 ```
 
 **Где хранятся модели:**
 
-- **Windows:** `C:\Users\YourName\.cache\whisper\`
-- **macOS/Linux:** `~/.cache/whisper/`
-
-Модели загружаются один раз и используются всеми проектами.
+Модели скачиваются в папку `whisper_models/` внутри проекта (не в системный кэш).
 
 ---
 
@@ -350,7 +340,7 @@ python test_whisper_local.py
 ### Шаг 6: Запуск FastAPI сервера
 
 ```bash
-uvicorn api.app:app --reload
+uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
 **Вы увидите:**
@@ -469,10 +459,10 @@ _model_name = os.getenv('WHISPER_MODEL', 'small')  # или 'medium'
 Вы можете иметь несколько моделей и менять их по необходимости:
 
 ```bash
-python download_model.py
+python scripts/download_model.py
 # Введите: small
 
-python download_model.py
+python scripts/download_model.py
 # Введите: medium
 ```
 
@@ -629,7 +619,7 @@ result = model.transcribe(
 **Решение:**
 
 ```bash
-python download_model.py
+python scripts/download_model.py
 ```
 
 Выберите модель (например, `base`) и дождитесь загрузки.
@@ -674,7 +664,7 @@ python download_model.py
 - `medium`: ~1.5 GB
 - `large`: ~3 GB
 
-Модели хранятся в `~/.cache/whisper/` и используются всеми проектами.
+Модели хранятся в `whisper_models/` внутри проекта.
 
 ---
 
@@ -742,7 +732,7 @@ language=None  # автоопределение
 1. **Проверьте разделы "Решение проблем" и "FAQ"** выше
 2. **Запустите тест:** `python test_whisper_local.py`
 3. **Проверьте FFmpeg:** `ffmpeg -version`
-4. **Проверьте модель:** `python download_model.py`
+4. **Проверьте модель:** `python scripts/download_model.py`
 
 Если ничего не помогло:
 
@@ -758,7 +748,6 @@ language=None  # автоопределение
 # 1. Клонирование/обновление проекта
 git clone https://github.com/kweharmony/student-ai-assistant.git
 cd student-ai-assistant
-git checkout audio-transcription
 
 # 2. Установка FFmpeg
 # Windows (Chocolatey):
@@ -772,15 +761,16 @@ sudo apt install ffmpeg
 pip install -r requirements.txt
 
 # 4. Загрузка модели
-python download_model.py
+python scripts/download_model.py
 # Нажмите Enter для 'base' или введите 'small'/'medium'
 
 # 5. Тестирование
 python test_whisper_local.py
 
-# 6. Запуск API
-uvicorn api.app:app --reload
-# Откройте: http://127.0.0.1:8000/docs
+# 6. Запуск проекта
+# Windows: run.bat
+# Linux/macOS: ./run.sh
+# Откройте: http://localhost:8000/docs
 ```
 
 ---
@@ -789,14 +779,14 @@ uvicorn api.app:app --reload
 
 Пройдитесь по списку и убедитесь, что всё выполнено:
 
-- [ ] Python 3.8+ установлен
+- [ ] Python 3.12 установлен
 - [ ] Репозиторий клонирован или обновлён
 - [ ] FFmpeg установлен (`ffmpeg -version` работает)
 - [ ] Python-зависимости установлены (`pip install -r requirements.txt`)
-- [ ] Модель Whisper загружена (`python download_model.py`)
+- [ ] Модель Whisper загружена (`python scripts/download_model.py`)
 - [ ] Тест пройден успешно (`python test_whisper_local.py`)
-- [ ] API сервер запускается (`uvicorn api.app:app --reload`)
-- [ ] Swagger UI доступен (http://127.0.0.1:8000/docs)
+- [ ] API сервер запускается (`run.bat` / `./run.sh`)
+- [ ] Swagger UI доступен (http://localhost:8000/docs)
 
 ---
 
@@ -804,60 +794,16 @@ uvicorn api.app:app --reload
 
 После установки и тестирования вы можете использовать транскрибацию прямо на сайте в личном кабинете.
 
-### Шаг 1: Запуск API сервера с моделью Small
+### Шаг 1: Запуск проекта
 
-Для работы с сайтом используйте модель `small` (лучше качество для длинных лекций).
+**Windows** — двойной клик по `run.bat`
 
-#### 🪟 Windows
-
-Запустите скрипт:
-
-```powershell
-start_api_small.bat
-```
-
-Или вручную:
-
-```powershell
-# Активация виртуального окружения
-venv\Scripts\activate
-
-# Запуск с моделью small
-set WHISPER_MODEL=small
-uvicorn api.app:app --reload
-```
-
-#### 🍎 macOS / 🐧 Linux
-
-Запустите скрипт:
-
+**Linux / macOS:**
 ```bash
-chmod +x start_api_small.sh
-./start_api_small.sh
+./run.sh
 ```
 
-Или вручную:
-
-```bash
-# Активация виртуального окружения
-source venv/bin/activate
-
-# Запуск с моделью small
-export WHISPER_MODEL=small
-uvicorn api.app:app --reload
-```
-
-**API будет доступен по адресу:** `http://localhost:8000`
-
-### Шаг 2: Запуск React фронтенда
-
-В новом терминале:
-
-```bash
-npm start
-```
-
-**Сайт будет доступен по адресу:** `http://localhost:3000`
+Скрипт автоматически запустит API сервер (http://localhost:8000) и фронтенд (http://localhost:3000).
 
 ### Шаг 3: Использование транскрибации
 
@@ -894,7 +840,7 @@ npm start
 2. Измените переменную окружения:
    - Windows: `set WHISPER_MODEL=medium`
    - Linux/Mac: `export WHISPER_MODEL=medium`
-3. Запустите API снова: `uvicorn api.app:app --reload`
+3. Запустите API снова: `run.bat` / `./run.sh`
 
 Доступные модели: `tiny`, `base`, `small`, `medium`, `large`
 
@@ -916,6 +862,6 @@ npm start
 ---
 
 **Версия документа:** 1.0  
-**Последнее обновление:** 2025-10-28  
+**Последнее обновление:** 2026-03-27  
 **Автор:** @Hobana9  
 **Лицензия:** MIT

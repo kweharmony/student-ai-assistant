@@ -1,12 +1,11 @@
-node_modules
-whisper_models/models--Systran--faster-whisper-medium/snapshots/08e178d48790749d25932bbc082711ddcfdfbc4f/model.bin
-
-# Environment variables
-.env
+# Environment variables (local overrides)
 .env.local
 .env.*.local
 
-# Python
+# Python virtual environment
+.venv/
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
@@ -16,9 +15,18 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Node.js
+node_modules/
+
 # Build output
 build/
 dist/
+
+# Whisper models (large binary files)
+whisper_models/
+
+# Local tools (FFmpeg, Node.js — downloaded by setup)
+tools/
 
 # Logs
 *.log
@@ -27,6 +35,12 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Whisper models (large binary files)
-whisper_models/
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
+# Claude Code
+.claude/

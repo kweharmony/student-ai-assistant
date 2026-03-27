@@ -22,41 +22,54 @@ except ImportError:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from ml.profanity_filter import filter_profanity
 
+# ===== ПУТИ ПРОЕКТА =====
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+WHISPER_MODELS_DIR = PROJECT_ROOT / "whisper_models"
+TOOLS_DIR = PROJECT_ROOT / "tools"
+
+
 # ===== НАСТРОЙКА FFMPEG PATH =====
-# Ищем FFmpeg в стандартных местах установки для Windows
 def setup_ffmpeg_path():
     """Добавляет FFmpeg в PATH если он не найден"""
     import shutil
-    
+
     # Проверяем, доступен ли ffmpeg
     if shutil.which('ffmpeg') is not None:
-        logger.info("✅ FFmpeg уже доступен в PATH")
+        logger.info("FFmpeg уже доступен в PATH")
         return
-    
-    # Возможные пути установки FFmpeg на Windows
-    possible_paths = [
-        Path(os.environ.get('LOCALAPPDATA', '')) / 'Microsoft' / 'WinGet' / 'Packages',
-        Path('C:/ProgramData/chocolatey/bin'),
-        Path('C:/ffmpeg/bin'),
-        Path(os.environ.get('PROGRAMFILES', '')) / 'ffmpeg' / 'bin',
-    ]
-    
-    for base_path in possible_paths:
-        if not base_path.exists():
-            continue
-            
-        # Ищем ffmpeg.exe рекурсивно
-        for ffmpeg_path in base_path.rglob('ffmpeg.exe'):
-            bin_dir = str(ffmpeg_path.parent)
-            logger.info(f"🔍 Найден FFmpeg: {bin_dir}")
-            
-            # Добавляем в PATH текущего процесса
-            if bin_dir not in os.environ['PATH']:
-                os.environ['PATH'] = bin_dir + os.pathsep + os.environ['PATH']
-                logger.info(f"✅ FFmpeg добавлен в PATH: {bin_dir}")
-            return
-    
-    logger.warning("⚠️ FFmpeg не найден автоматически. Установите FFmpeg: winget install ffmpeg")
+
+    # Сначала ищем в tools/ проекта
+    ffmpeg_dir = TOOLS_DIR / "ffmpeg"
+    if ffmpeg_dir.exists():
+        # Ищем бинарник ffmpeg внутри tools/ffmpeg/
+        for candidate in ffmpeg_dir.rglob('ffmpeg*'):
+            if candidate.is_file() and candidate.stem == 'ffmpeg':
+                bin_dir = str(candidate.parent)
+                if bin_dir not in os.environ.get('PATH', ''):
+                    os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')
+                    logger.info(f"FFmpeg добавлен в PATH из tools/: {bin_dir}")
+                return
+
+    # Возможные системные пути (Windows)
+    if sys.platform == 'win32':
+        possible_paths = [
+            Path(os.environ.get('LOCALAPPDATA', '')) / 'Microsoft' / 'WinGet' / 'Packages',
+            Path('C:/ProgramData/chocolatey/bin'),
+            Path('C:/ffmpeg/bin'),
+            Path(os.environ.get('PROGRAMFILES', '')) / 'ffmpeg' / 'bin',
+        ]
+
+        for base_path in possible_paths:
+            if not base_path.exists():
+                continue
+            for ffmpeg_path in base_path.rglob('ffmpeg.exe'):
+                bin_dir = str(ffmpeg_path.parent)
+                if bin_dir not in os.environ['PATH']:
+                    os.environ['PATH'] = bin_dir + os.pathsep + os.environ['PATH']
+                    logger.info(f"FFmpeg найден в системе: {bin_dir}")
+                return
+
+    logger.warning("FFmpeg не найден. Запустите setup скрипт или установите вручную.")
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
@@ -76,18 +89,23 @@ def get_whisper_model():
     """
     Получает или загружает модель Whisper
     Модель загружается только один раз и переиспользуется
+    Модели хранятся в whisper_models/ внутри проекта
     """
     global _whisper_model
-    
+
     if _whisper_model is None:
-        logger.info(f"🔄 Загружаем модель Whisper '{_model_name}'...")
+        logger.info(f"Загружаем модель Whisper '{_model_name}'...")
         try:
-            _whisper_model = whisper.load_model(_model_name)
-            logger.info(f"✅ Модель '{_model_name}' загружена успешно!")
+            WHISPER_MODELS_DIR.mkdir(exist_ok=True)
+            _whisper_model = whisper.load_model(
+                _model_name,
+                download_root=str(WHISPER_MODELS_DIR)
+            )
+            logger.info(f"Модель '{_model_name}' загружена из {WHISPER_MODELS_DIR}")
         except Exception as e:
-            logger.error(f"❌ Ошибка загрузки модели: {e}")
+            logger.error(f"Ошибка загрузки модели: {e}")
             raise Exception(f"Не удалось загрузить модель Whisper: {e}")
-    
+
     return _whisper_model
 
 
@@ -263,7 +281,7 @@ async def model_info():
         "model": _model_name,
         "size": model_sizes.get(_model_name, "unknown"),
         "loaded": _whisper_model is not None,
-        "cache_location": os.path.expanduser("~/.cache/whisper/"),
+        "cache_location": str(WHISPER_MODELS_DIR),
         "supported_formats": ['mp3', 'wav', 'm4a', 'flac', 'ogg', 'opus', 'mp4', 'mov', 'avi', 'mkv', 'webm']
     }
 

@@ -1,4 +1,3 @@
-
 # DeepSeek API (через VseLLM провайдер, OpenAI-compatible)
 openai>=1.0.0
 
@@ -10,31 +9,10 @@ uvicorn[standard]==0.24.0
 pydantic==2.9.0
 python-dotenv==1.0.0
 
-# Логирование и утилиты
+# Загрузка файлов через FastAPI
 python-multipart==0.0.6
-aiofiles==23.2.1
 
-# Для тестирования
-pytest==7.4.0
-httpx==0.25.0
-
-# Для продакшена
-gunicorn==21.2.0
-
-# ===== ЛОКАЛЬНАЯ ТРАНСКРИБАЦИЯ =====
-# Whisper от OpenAI (локальная версия)
+# Локальная транскрибация (Whisper от OpenAI)
+# torch и torchaudio устанавливаются автоматически как зависимости whisper
+# Для CUDA GPU: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 openai-whisper>=20231117
-
-# FFmpeg wrapper (для обработки аудио)
-ffmpeg-python>=0.2.0
-
-# Для ускорения на GPU (опционально, но рекомендуется для Windows с CUDA)
-# Установка: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
-torch>=2.0.0
-torchaudio>=2.0.0
-
-# Для отображения прогресса
-tqdm>=4.65.0
-
-# CORS middleware (уже включен в FastAPI)
-# fastapi уже включает starlette, который предоставляет CORSMiddleware

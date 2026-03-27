@@ -66,12 +66,15 @@ student-ai-assistant/
 │   └── tailwind.config.js         # Tailwind CSS настройки
 │
 ├── 📚 Документация
-│   ├── PROJECT_DOCUMENTATION.md    # Общая документация (этот файл)
-│   ├── ML_documentation.md         # Документация ML модуля
-│   ├── CHANGELOG_TRANSCRIPTION.md  # История транскрибатора
-│   ├── WHISPER_INSTALL.md         # Установка Whisper
-│   ├── QUICK_START_TRANSCRIPTION.md # Быстрый старт
-│   └── README.md                   # Основной README
+│   ├── docs/
+│   │   ├── PROJECT_DOCUMENTATION.md # Общая документация (этот файл)
+│   │   ├── ML_documentation.md      # Документация ML модуля
+│   │   ├── CUDA_SETUP.md           # Настройка CUDA/GPU
+│   │   ├── WHISPER_INSTALL.md      # Установка Whisper
+│   │   ├── FEATURES.md             # Описание возможностей
+│   │   ├── Wiki.md                 # Журнал разработки
+│   │   └── student-ai-docs.md      # Тех. документация frontend/backend
+│   └── README.md                    # Основной README
 │
 ├── 🎨 Frontend (React + TypeScript)
 │   ├── public/
@@ -122,16 +125,24 @@ student-ai-assistant/
 │       ├── transcription_filter.py # Фильтратор транскрибаций ⭐
 │       └── filter_prompts.py      # Промпты для фильтрации
 │
-├── 🧪 Скрипты и тесты
+├── 🧪 Скрипты
 │   ├── scripts/
-│   │   ├── test_cheat_sheet_advanced.py
-│   │   └── download_model.py      # Загрузка Whisper моделей
+│   │   ├── download_model.py          # Загрузка Whisper моделей
+│   │   ├── start_backend.bat          # Запуск бэкенда (Windows)
+│   │   ├── start_frontend.bat         # Запуск фронтенда (Windows)
+│   │   └── test_cheat_sheet_advanced.py
 │   │
-│   ├── start_api_medium.bat       # Запуск API (Windows)
-│   └── start_api_medium.sh        # Запуск API (macOS/Linux)
+│   ├── setup.bat / setup.sh           # Установка (Windows / Linux / macOS)
+│   └── run.bat / run.sh               # Запуск проекта (Windows / Linux / macOS)
+│
+├── 📦 Локальные инструменты (создаётся setup)
+│   ├── .venv/                         # Виртуальное окружение Python 3.12
+│   ├── tools/ffmpeg/                  # Портативный FFmpeg
+│   ├── tools/node/                    # Портативный Node.js
+│   └── whisper_models/                # Модели Whisper
 │
 └── 📦 Build
-    └── build/                     # Собранный фронтенд
+    └── build/                         # Собранный фронтенд
 ```
 
 ---
