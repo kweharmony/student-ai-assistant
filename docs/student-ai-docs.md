@@ -36,14 +36,14 @@
 
 **Библиотеки для экспорта:**
 - `file-saver` 2.0.5 — сохранение файлов в браузере
-- `jspdf` 2.5.1 — генерация PDF документов
+- `jspdf` 3.0.3 — генерация PDF документов
 - `html-docx-js` 0.3.1 — конвертация HTML → DOCX
-- `pdfmake` 0.2.7 — PDF с кастомными шрифтами
-- `docx` 8.5.0 — создание Word документов программно
-- `html2canvas` 1.4.1 — рендеринг HTML в canvas (для PDF)
+- `pdfmake` 0.2.20 — PDF с кастомными шрифтами
+- `mammoth` 1.11.0 — чтение DOCX файлов
+- `pdf-parse` 2.4.5 — парсинг PDF файлов
 
 **Библиотеки для ML интеграции:**
-- `marked` — парсинг Markdown в HTML для отображения результатов ML обработки
+- `marked` 16.4.1 — парсинг Markdown в HTML для отображения результатов ML обработки
 
 ### Backend
 | Технология | Назначение |
@@ -73,33 +73,50 @@ student-ai-assistant/
 │
 ├── ml/                         # ML модуль (документация в ML_documentation.md)
 │   ├── __init__.py
-│   ├── deepseek_processor.py
-│   └── prompts.py
+│   ├── deepseek_processor.py  # AI-обработчик конспектов
+│   ├── prompts.py             # Промпты для конспектов
+│   ├── transcription_filter.py # AI-фильтратор транскрибаций
+│   ├── filter_prompts.py      # Промпты для фильтрации
+│   └── profanity_filter.py    # Локальный фильтр нецензурной лексики
 │
 ├── src/                        # Frontend (React + TypeScript)
 │   ├── components/            # React компоненты
-│   │   ├── AccountPage.tsx   # Главная страница приложения (личный кабинет)
+│   │   ├── account/           # Компоненты личного кабинета
+│   │   │   ├── AccountPage.tsx       # Главный контейнер аккаунта
+│   │   │   ├── CalendarSection.tsx   # Секция календаря
+│   │   │   ├── ProfileSection.tsx    # Секция профиля
+│   │   │   ├── Sidebar.tsx           # Боковая навигация
+│   │   │   ├── TextProcessingSection.tsx # Обработка текста
+│   │   │   ├── TranscriberSection.tsx    # Транскрибация
+│   │   │   ├── TranscriptionModals.tsx   # Модальные окна
+│   │   │   └── types.ts              # Типы аккаунта
 │   │   ├── AuthPage.tsx      # Страница авторизации/регистрации
 │   │   ├── Features.tsx      # Блок "Возможности" (лендинг)
 │   │   ├── Footer.tsx        # Футер (лендинг)
 │   │   ├── Header.tsx        # Хедер с навигацией
 │   │   ├── Hero.tsx          # Главный экран (лендинг)
 │   │   ├── HowItWorks.tsx    # Блок "Как это работает"
+│   │   ├── PricingPage.tsx   # Страница тарифов
 │   │   ├── RichTextEditor.tsx # Текстовый редактор (TipTap)
+│   │   ├── RichTextEditor.css # Стили редактора
 │   │   └── UploadDemo.tsx    # Демо загрузки файлов (лендинг)
 │   │
 │   ├── hooks/                 # Custom React hooks
 │   │   ├── useExport.ts      # Логика экспорта (4 формата)
 │   │   ├── useFileUpload.ts  # Логика загрузки файлов
-│   │   └── useMLProcessor.ts # Взаимодействие с ML API (НОВОЕ!)
+│   │   └── useMLProcessor.ts # Взаимодействие с ML API
+│   │
+│   ├── contexts/              # React контексты
+│   │   └── ThemeContext.tsx  # Контекст темы (светлая/темная)
 │   │
 │   ├── types/                 # TypeScript типы
-│   │   ├── ml.ts             # Типы для ML интеграции (НОВОЕ!)
+│   │   ├── ml.ts             # Типы для ML интеграции
 │   │   └── modules.d.ts      # TypeScript декларации для модулей
 │   │
 │   ├── App.tsx               # Корневой компонент с роутингом
 │   ├── index.tsx             # Точка входа React-приложения
-│   └── index.css             # Глобальные стили + Tailwind
+│   ├── index.css             # Глобальные стили + Tailwind
+│   └── button-animations.css # Анимации кнопок
 │
 ├── public/                    # Статические файлы
 │   └── index.html            # HTML шаблон
@@ -509,11 +526,9 @@ const {
   result,          // string | null - результат обработки (Markdown)
   error,           // string | null - сообщение об ошибке
   currentMode,     // MLMode | null - текущий режим обработки
-  processText,     // (text, mode, topic?) => Promise<void> - обработать текст
-  batchProcess,    // (text, modes[]) => Promise<void> - обработка в нескольких режимах
-  getModes,        // () => Promise<MLMode[]> - получить доступные режимы
+  processText,     // (text, mode, topic?) => Promise<string | null> - обработать текст
   reset,           // () => void - сброс состояния
-  cancelProcessing // () => void - отмена текущей обработки (НОВОЕ!)
+  cancelProcessing // () => void - отмена текущей обработки
 } = useMLProcessor();
 ```
 
@@ -569,50 +584,13 @@ await processText(
 );
 ```
 
-#### Пакетная обработка: `batchProcess()`
-
-```typescript
-/**
- * Обработка текста в нескольких режимах одновременно
- * @param text - Текст для обработки
- * @param modes - Массив режимов (1-5 режимов)
- */
-await batchProcess(text: string, modes: MLMode[]): Promise<void>
-```
-
-**Пример:**
-
-```typescript
-const { batchProcess, result } = useMLProcessor();
-
-await batchProcess('Текст лекции...', [
-  'summarize',
-  'extract_terms',
-  'generate_questions'
-]);
-
-// result будет содержать объект с результатами для каждого режима
-console.log(result.summarize);
-console.log(result.extract_terms);
-```
-
-#### Получение доступных режимов: `getModes()`
-
-```typescript
-const { getModes } = useMLProcessor();
-
-const modes = await getModes();
-console.log(modes); 
-// ['summarize', 'extract_terms', 'expand_topic', ...]
-```
-
-#### Отмена обработки: `cancelProcessing()` ⭐ НОВОЕ!
+#### Отмена обработки: `cancelProcessing()`
 
 ```typescript
 /**
  * Отменяет текущую обработку текста
  * Прерывает HTTP-запрос через AbortController
- * Не тратит токены API, если отмена произошла до отправки запроса в Gemini
+ * Не тратит токены API, если отмена произошла до отправки запроса в DeepSeek
  */
 const { cancelProcessing, isProcessing } = useMLProcessor();
 
@@ -625,7 +603,7 @@ const handleCancel = () => {
 
 **Важно:**
 - ✅ Если отмена произошла **в первые 0.5-2 секунды** → запрос не дойдёт до backend → **токены НЕ потрачены**
-- ⚠️ Если backend уже начал обработку и вызвал Gemini API → **токены уже потрачены**
+- ⚠️ Если backend уже начал обработку и вызвал DeepSeek API → **токены уже потрачены**
 - ✅ После отмены редактор показывает **исходный текст** (не обработанный)
 - ✅ Состояние `isProcessing` автоматически становится `false`
 
@@ -642,7 +620,7 @@ const handleCancel = () => {
 
 #### Проверка здоровья API: `checkHealth()` (удалено)
 
-> **Примечание:** Метод `checkHealth()` был удалён из API хука, чтобы не расходовать токены Gemini API на проверки. Приложение работает без предварительных health checks.
+> **Примечание:** Метод `checkHealth()` был удалён из API хука, чтобы не расходовать токены DeepSeek API на проверки. Приложение работает без предварительных health checks.
 
 #### Внутренняя реализация
 
@@ -719,15 +697,16 @@ export const useMLProcessor = (): UseMLProcessorReturn => {
   };
 
   return {
+    // Состояние
     isProcessing: state.isProcessing,
     currentMode: state.currentMode,
     result: state.result,
     error: state.error,
+    
+    // Методы
     processText,
-    batchProcess,
-    getModes,
     reset,
-    cancelProcessing  // Экспортируем новый метод
+    cancelProcessing
   };
 };
 ```
@@ -745,7 +724,7 @@ const AccountPage = () => {
     error: mlError, 
     processText,
     reset: resetML,
-    cancelProcessing  // Добавляем функцию отмены
+    cancelProcessing
   } = useMLProcessor();
 
   // Состояние
@@ -963,37 +942,26 @@ app.add_middleware(
 ```python
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import logging
-from api.transcribe import router as transcribe_router
-from api.ml_endpoints import router as ml_router
+from .ml_endpoints import router, add_logging_middleware
+from .transcribe import router as transcribe_router
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+app = FastAPI(title="Student AI Assistant ML API")
 
-# Создание приложения
-app = FastAPI(title="Student AI Assistant API", version="1.0.0")
-
-# CORS для frontend
+# Настройка CORS для работы с React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В продакшене укажите конкретные домены
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Middleware для логирования запросов
-@app.middleware("http")
-async def log_requests(request, call_next):
-    logger.info(f"Incoming request: {request.method} {request.url}")
-    response = await call_next(request)
-    logger.info(f"Response status: {response.status_code}")
-    return response
-
-# Подключение роутеров
-app.include_router(transcribe_router, prefix="/api/transcribe", tags=["Transcription"])
-app.include_router(ml_router, prefix="/api/ml", tags=["ML Processing"])
+add_logging_middleware(app)
+app.include_router(router)
+app.include_router(transcribe_router)
 ```
 
 **Запуск:**
@@ -1008,7 +976,7 @@ uvicorn api.app:app
 
 ### `api/transcribe.py` - Транскрибация аудио
 
-**Описание:** Роутер для конвертации аудио/видео файлов в текст через **Nexara API**.
+**Описание:** Роутер для конвертации аудио/видео файлов в текст через **OpenAI Whisper (локально)**.
 
 #### Поддерживаемые форматы
 
@@ -1067,24 +1035,61 @@ interface TranscriptionResponse {
 ```json
 {
   "status": "healthy",
-  "message": "✅ Nexara API ключ найден",
+  "message": "Whisper model loaded",
+  "model": "medium"
+}
+```
+
+#### Эндпоинт: `GET /api/transcribe/model-info`
+
+**Описание:** Информация о загруженной модели Whisper.
+
+**Response:**
+```json
+{
+  "model": "medium",
+  "size": "~1.5 GB",
+  "loaded": true,
+  "cache_location": "/path/to/whisper_models",
+  "supported_formats": ["mp3", "wav", "m4a", "flac", "ogg", "opus", "mp4", "mov", "avi", "mkv", "webm"]
+}
+```
+
+#### Эндпоинт: `POST /api/transcribe/filter`
+
+**Описание:** AI-фильтрация транскрибированного текста для исправления ошибок распознавания.
+
+**Request:**
+```json
+{
+  "text": "транскрибированный текст для очистки..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "filtered_text": "Очищенный и отформатированный текст...",
+  "original_length": 1500,
+  "filtered_length": 1200,
+  "processing_time": 3.5
+}
+```
+
+#### Эндпоинт: `GET /api/transcribe/filter/health`
+
+**Описание:** Проверка работоспособности AI-фильтрации.
+
+**Response:**
+```json
+{
+  "status": "healthy",
   "api_configured": true
 }
 ```
 
 ---
-
-### Настройка Nexara API
-
-1. Получите API ключ на [nexara.ai](https://nexara.ai)
-2. Создайте файл `.env` в корне проекта:
-   ```bash
-   NEXARA_API_KEY=your_api_key_here
-   ```
-3. Пример `.env.example`:
-   ```
-   NEXARA_API_KEY=nsk_xxxxxxxxxxxxxxxxxxxxx
-   ```
 
 ---
 
@@ -1092,8 +1097,8 @@ interface TranscriptionResponse {
 
 ### Требования
 
-- **Node.js** 16+ и npm 8+
-- **Python** 3.10+
+- **Node.js** 18+ и npm
+- **Python** 3.12
 - **pip** для установки Python зависимостей
 
 ---
@@ -1117,9 +1122,6 @@ pip install -r requirements.txt
 Создайте файл `.env` в корне проекта:
 
 ```env
-# Nexara API (для транскрибации)
-NEXARA_API_KEY=your_nexara_key_here
-
 # DeepSeek API (для ML обработки, см. ML_documentation.md)
 DEEPSEEK_API_KEY=your_deepseek_key_here
 ```
@@ -1160,11 +1162,7 @@ npm run build
 
 Для развёртывания используйте:
 ```bash
-# Установка gunicorn (production ASGI server)
-pip install gunicorn
-
-# Запуск с несколькими воркерами
-gunicorn api.app:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
 ---
@@ -1173,7 +1171,7 @@ gunicorn api.app:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 
 ### Тестирование транскрибации
 
-Используйте скрипт `scripts/simple_trans_test.py`:
+Пример скрипта для тестирования транскрибации:
 
 ```python
 import requests
@@ -1194,10 +1192,21 @@ print(f"Текст: {result['text'][:200]}...")  # Первые 200 символ
 
 ### Тестирование ML обработки
 
-См. скрипты в `scripts/`:
-- `test_cheat_sheet.py` — тест режима создания шпаргалки
-- `test_detailed_notes.py` — тест режима детального конспекта
-- `test_large_text.py` — тест с большими текстами (18K токенов)
+Пример скрипта для тестирования ML обработки:
+
+```python
+import requests
+
+text = "Текст лекции для обработки..."
+
+response = requests.post(
+    'http://localhost:8000/api/ml/process',
+    json={'text': text, 'mode': 'summarize'}
+)
+
+result = response.json()
+print(f"Результат: {result['processed_text'][:500]}...")
+```
 
 ---
 
@@ -1215,7 +1224,7 @@ print(f"Текст: {result['text'][:200]}...")  # Первые 200 символ
 3. Backend (transcribe.py):
    ├─> Валидация формата файла
    ├─> Сохранение во временную директорию
-   ├─> Запрос к Nexara API
+   ├─> Локальная транскрибация через Whisper
    ├─> Получение JSON с text, duration, language
    └─> Возврат TranscriptionResponse
 
@@ -1252,7 +1261,7 @@ print(f"Текст: {result['text'][:200]}...")  # Первые 200 символ
 
 ### Текущие возможности
 - ✅ Полнофункциональный WYSIWYG редактор (TipTap)
-- ✅ Транскрибация аудио через Nexara API
+- ✅ Транскрибация аудио через OpenAI Whisper (локально)
 - ✅ ML обработка текста (6 режимов) через DeepSeek API
 - ✅ Экспорт в 4 форматах (TXT, MD, DOCX, PDF)
 - ✅ Календарь с записями и расписанием
@@ -1291,7 +1300,6 @@ print(f"Текст: {result['text'][:200]}...")  # Первые 200 символ
 - [TipTap](https://tiptap.dev/) — документация WYSIWYG редактора
 - [Tailwind CSS](https://tailwindcss.com/docs) — utility-first CSS фреймворк
 - [FastAPI](https://fastapi.tiangolo.com/) — современный Python веб-фреймворк
-- [Nexara API](https://nexara.ai/docs) — документация по транскрибации аудио
 
 ### Репозитории библиотек
 
@@ -1301,6 +1309,6 @@ print(f"Текст: {result['text'][:200]}...")  # Первые 200 символ
 
 ---
 
-**Версия документации:** 1.0  
-**Дата обновления:** 2025-01-15  
+**Версия документации:** 1.1  
+**Дата обновления:** 2026-03-27  
 **Автор:** Student AI Assistant Team

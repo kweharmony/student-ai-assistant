@@ -84,17 +84,28 @@ student-ai-assistant/
 │       ├── index.tsx              # Точка входа React
 │       ├── App.tsx                # Главный компонент
 │       ├── index.css              # Глобальные стили
+│       ├── button-animations.css  # Анимации кнопок
 │       │
 │       ├── components/            # React компоненты
+│       │   ├── account/           # Компоненты личного кабинета ⭐
+│       │   │   ├── AccountPage.tsx
+│       │   │   ├── CalendarSection.tsx
+│       │   │   ├── ProfileSection.tsx
+│       │   │   ├── Sidebar.tsx
+│       │   │   ├── TextProcessingSection.tsx
+│       │   │   ├── TranscriberSection.tsx
+│       │   │   ├── TranscriptionModals.tsx
+│       │   │   └── types.ts
 │       │   ├── Header.tsx         # Шапка сайта
 │       │   ├── Footer.tsx         # Подвал сайта
 │       │   ├── Hero.tsx           # Главный экран
 │       │   ├── Features.tsx       # Возможности
 │       │   ├── HowItWorks.tsx     # Как это работает
-│       │   ├── AccountPage.tsx    # Личный кабинет ⭐
 │       │   ├── RichTextEditor.tsx # WYSIWYG редактор
+│       │   ├── RichTextEditor.css # Стили редактора
 │       │   ├── AuthPage.tsx       # Авторизация
-│       │   └── PricingPage.tsx    # Тарифы
+│       │   ├── PricingPage.tsx    # Тарифы
+│       │   └── UploadDemo.tsx     # Демо загрузки
 │       │
 │       ├── hooks/                 # React хуки
 │       │   ├── useFileUpload.ts   # Загрузка файлов
@@ -123,7 +134,8 @@ student-ai-assistant/
 │       ├── prompts.py             # Промпты для конспектов
 │       │
 │       ├── transcription_filter.py # Фильтратор транскрибаций ⭐
-│       └── filter_prompts.py      # Промпты для фильтрации
+│       ├── filter_prompts.py      # Промпты для фильтрации
+│       └── profanity_filter.py    # Локальный фильтр нецензурной лексики
 │
 ├── 🧪 Скрипты
 │   ├── scripts/
@@ -185,7 +197,16 @@ student-ai-assistant/
 ```
 src/
 ├── components/          # React компоненты
-│   ├── AccountPage.tsx      # Страница аккаунта ⭐
+│   ├── account/             # Компоненты личного кабинета ⭐
+│   │   ├── AccountPage.tsx       # Главный контейнер аккаунта
+│   │   ├── CalendarSection.tsx   # Секция календаря
+│   │   ├── ProfileSection.tsx    # Секция профиля
+│   │   ├── Sidebar.tsx           # Боковая навигация
+│   │   ├── TextProcessingSection.tsx # Секция обработки текста
+│   │   ├── TranscriberSection.tsx    # Секция транскрибации ⭐
+│   │   ├── TranscriptionModals.tsx   # Модальные окна транскрибации
+│   │   └── types.ts              # Типы для компонентов аккаунта
+│   │
 │   ├── AuthPage.tsx         # Страница аутентификации
 │   ├── Features.tsx         # Секция особенностей
 │   ├── Footer.tsx           # Футер
@@ -194,6 +215,7 @@ src/
 │   ├── HowItWorks.tsx       # Секция "Как работает"
 │   ├── PricingPage.tsx      # Страница тарифов
 │   ├── RichTextEditor.tsx   # WYSIWYG редактор ⭐
+│   ├── RichTextEditor.css   # Стили редактора
 │   └── UploadDemo.tsx       # Демо загрузки файлов
 ├── contexts/            # React Context API
 │   └── ThemeContext.tsx     # Контекст темы (светлая/темная)
@@ -1204,11 +1226,10 @@ async def log_requests(request: Request, call_next):
 #### Development режим
 
 ```bash
-uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
+uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
 Параметры:
-- `--reload`: автоперезагрузка при изменении кода
 - `--host 0.0.0.0`: доступ из внешней сети
 - `--port 8000`: порт сервера
 
@@ -1219,20 +1240,9 @@ uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
 uvicorn api.app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-**Вариант 2: Gunicorn + Uvicorn workers**
-```bash
-gunicorn api.app:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-```
-
-Преимущества Gunicorn:
-- Управление процессами
-- Graceful restart
-- Автоматический перезапуск упавших workers
-
 #### Скрипты запуска
 
-**Windows:** `start_api_medium.bat`
-**Linux/Mac:** `start_api_medium.sh`
+Используйте `run.bat` (Windows) или `./run.sh` (Linux/macOS) для запуска проекта.
 
 ### 📦 Зависимости бэкенда
 
@@ -1243,7 +1253,6 @@ pydantic==2.9.0           # Валидация данных
 python-dotenv==1.0.0      # Переменные окружения
 python-multipart==0.0.6   # Обработка multipart/form-data
 aiofiles==23.2.1          # Асинхронная работа с файлами
-gunicorn==21.2.0          # Production WSGI сервер
 pytest==7.4.0             # Тестирование
 httpx==0.25.0             # HTTP клиент для тестов
 openai>=1.0.0                  # DeepSeek API (OpenAI-compatible)
@@ -1288,9 +1297,9 @@ ML модуль разделен на **два независимых компо
 │  │ • Форматирование   │  │ • Генерация         │   │
 │  │                    │  │   вопросов          │   │
 │  │ Модель:            │  │ • Шпаргалки         │   │
-│  │ gemini-1.5-flash   │  │                     │   │
+│  │ deepseek/deepseek-v3.2   │  │                     │   │
 │  │ Temperature: 0.2   │  │ Модель:             │   │
-│  │ Max tokens: 8000   │  │ gemini-2.5-flash    │   │
+│  │ Max tokens: 8000   │  │ deepseek/deepseek-v3.2    │   │
 │  │                    │  │ Temperature: 0.3-0.7│   │
 │  └────────────────────┘  └─────────────────────┘   │
 └──────────────────────────────────────────────────────┘
@@ -1896,13 +1905,13 @@ python download_model.py
 **5. Запуск backend:**
 ```bash
 # Windows
-start_api_medium.bat
+run.bat
 
 # macOS/Linux
-./start_api_medium.sh
+./run.sh
 
 # Или вручную
-python -m uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
 **6. Проверка:**
@@ -1991,7 +2000,7 @@ async def transcribe_async(audio: UploadFile, background_tasks: BackgroundTasks)
 
 ---
 # или
-./start_api_medium.sh  # macOS/Linux
+./run.sh  # macOS/Linux
 ```
 
 ---
@@ -2040,9 +2049,9 @@ REACT_APP_API_URL=http://localhost:8000
 
 | Переменная | Описание | Значение по умолчанию |
 |------------|----------|---------------------|
-| `GEMINI_API_KEY` | API ключ Google Gemini | - (обязательно) |
-| `GEMINI_MODEL` | Модель для конспектов | `gemini-2.5-flash` |
-| `GEMINI_FILTER_MODEL` | Модель для фильтрации | `gemini-1.5-flash` |
+| `DEEPSEEK_API_KEY` | API ключ DeepSeek через VseLLM | - (обязательно) |
+| `DEEPSEEK_BASE_URL` | URL провайдера VseLLM | `https://api.vsellm.ru/v1` |
+| `DEEPSEEK_MODEL` | Модель DeepSeek | `deepseek/deepseek-v3.2` |
 | `WHISPER_MODEL` | Модель Whisper | `medium` |
 | `MAX_TOKENS` | Макс. токенов | `10000` |
 | `TEMPERATURE` | Креативность | `0.3` |
@@ -2057,7 +2066,7 @@ REACT_APP_API_URL=http://localhost:8000
 ### Требования
 
 - **Node.js** 16+ (для фронтенда)
-- **Python** 3.10+ (для бэкенда)
+- **Python** 3.12 (для бэкенда)
 - **FFmpeg** (для транскрибации)
 - **Git** (опционально)
 
@@ -2080,7 +2089,7 @@ pip install -r requirements.txt
 npm install
 
 # 4. Настройка .env
-# Создайте файл .env и добавьте GEMINI_API_KEY
+# Создайте файл .env и добавьте DEEPSEEK_API_KEY
 
 # 5. Установка FFmpeg
 winget install ffmpeg  # Windows
@@ -2102,11 +2111,11 @@ python download_model.py
 set WHISPER_MODEL=medium
 
 # Запустить API
-python -m uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 # Или через скрипт
-start_api_medium.bat  # Windows
-./start_api_medium.sh  # macOS/Linux
+run.bat  # Windows
+./run.sh  # macOS/Linux
 ```
 
 **API доступен:** http://localhost:8000  
@@ -2147,10 +2156,8 @@ serve -s build
 
 ### Лимиты API
 
-**Google Gemini (бесплатный тариф):**
-- 15 запросов/минуту
-- 1,500 запросов/день
-- 1M токенов/минуту
+**DeepSeek v3.2 (через VseLLM):**
+- Лимиты зависят от тарифа на https://vsellm.ru
 
 **Whisper (локально):**
 - Без лимитов (зависит от CPU)
@@ -2184,13 +2191,13 @@ npm install --save-dev @types/node @types/react @types/react-dom
 
 ### Backend
 
-#### Ошибка: "GEMINI_API_KEY не найден"
+#### Ошибка: "DEEPSEEK_API_KEY не найден"
 - Добавьте ключ в `.env`
-- Получите ключ: https://aistudio.google.com/apikey
+- Получите ключ: https://vsellm.ru
 
-#### Ошибка: "Module 'google.generativeai' not found"
+#### Ошибка: "Module 'openai' not found"
 ```bash
-pip install google-generativeai==0.8.3
+pip install openai
 ```
 
 #### Ошибка: "FFmpeg not found"
@@ -2214,7 +2221,7 @@ python download_model.py
 ### ML модуль
 
 #### Ошибка: "API key not valid"
-- Проверьте правильность ключа на https://aistudio.google.com/apikey
+- Проверьте правильность ключа на https://vsellm.ru
 - Убедитесь, что в `.env` нет пробелов после `=`
 
 #### Ошибка: "Resource exhausted"
@@ -2265,9 +2272,6 @@ python-docx==0.8.11
 # Тестирование
 pytest==7.4.0
 httpx==0.25.0
-
-# Продакшен
-gunicorn==21.2.0
 ```
 
 ### Node.js (package.json)
@@ -2298,15 +2302,12 @@ gunicorn==21.2.0
 
 - **PROJECT_DOCUMENTATION.md** (этот файл) - Полная документация проекта
 - **ML_documentation.md** - Подробная документация ML модуля
-- **CHANGELOG_TRANSCRIPTION.md** - История изменений транскрибатора
 - **WHISPER_INSTALL.md** - Установка и настройка Whisper
-- **QUICK_START_TRANSCRIPTION.md** - Быстрый старт (5 минут)
 - **README.md** - Краткое описание проекта
 
 ### Полезные ссылки
 
-- **Google Gemini API:** https://ai.google.dev/
-- **API ключ:** https://aistudio.google.com/apikey
+- **DeepSeek v3.2 (via VseLLM):** https://vsellm.ru
 - **OpenAI Whisper:** https://github.com/openai/whisper
 - **FFmpeg:** https://ffmpeg.org/
 - **FastAPI:** https://fastapi.tiangolo.com/

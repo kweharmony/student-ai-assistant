@@ -158,18 +158,23 @@ ffmpeg version 8.0-essentials_build-www.gyan.dev Copyright (c) 2000-2025 the FFm
 pip install -r requirements.txt
 ```
 
-⏳ **Это займёт 5-15 минут**, так как устанавливается PyTorch (~1-2 ГБ).
+⏳ **Это займёт 5-15 минут**, так как openai-whisper устанавливает PyTorch как зависимость (~1-2 ГБ).
 
 **Вы увидите:**
 
 ```
+Collecting openai
+Collecting fastapi
+Collecting uvicorn
+Collecting pydantic
+Collecting python-dotenv
+Collecting python-multipart
 Collecting openai-whisper
-Collecting torch
-Collecting torchaudio
-Collecting ffmpeg-python
 ...
-Successfully installed openai-whisper-... torch-... torchaudio-... ffmpeg-python-...
+Successfully installed openai-... fastapi-... uvicorn-... pydantic-... python-dotenv-... python-multipart-... openai-whisper-...
 ```
+
+> **Примечание:** PyTorch (`torch`) будет установлен автоматически как зависимость `openai-whisper`.
 
 **Если возникла ошибка**, попробуйте обновить pip:
 
@@ -222,13 +227,11 @@ python scripts/download_model.py
 ✅ МОДЕЛЬ УСПЕШНО ЗАГРУЖЕНА!
 ======================================================================
 
-📂 Модель сохранена в: C:\Users\YourName\.cache\whisper\
+📂 Модель сохранена в: whisper_models/
 
 ✅ Всё готово к транскрибации!
 
 💡 Теперь можете запускать:
-   python test_whisper_local.py
-   или
    uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 🎉 Установка завершена успешно!
@@ -255,83 +258,23 @@ python scripts/download_model.py
 - Видео (mp4, mov)
 - Или запишите голосовое сообщение на телефоне и перенесите на ПК
 
-#### 5.2 Откройте `test_whisper_local.py`
-
-Найдите строки (примерно 80-85):
-
-```python
-# ========== НАСТРОЙКИ ==========
-# Укажите путь к вашему аудиофайлу
-audio_file = "ПУТЬ/К/ВАШЕМУ/ФАЙЛУ.mp3"
-
-# Модель (tiny, base, small, medium, large)
-model = "base"
-# ================================
-```
-
-Замените на реальный путь к вашему файлу:
-
-```python
-audio_file = "C:/Users/User/Downloads/lecture.mp3"
-model = "base"
-```
-
-**Важно:** Используйте прямые слэши `/` (не `\`).
-
-#### 5.3 Запустите тест
+#### 5.2 Убедитесь, что модель загружена
 
 ```bash
-python test_whisper_local.py
+python scripts/download_model.py
 ```
 
-**Что вы увидите:**
+Если модель уже загружена, скрипт сообщит об этом. Если нет — загрузит выбранную модель.
 
-```
-╔══════════════════════════════════════════════════════════════╗
-║       ТЕСТЕР ЛОКАЛЬНОГО WHISPER ДЛЯ ТРАНСКРИБАЦИИ            ║
-╚══════════════════════════════════════════════════════════════╝
+#### 5.3 Запустите API сервер и протестируйте через Swagger
 
-======================================================================
-🎙️  ТЕСТ ЛОКАЛЬНОЙ ТРАНСКРИБАЦИИ WHISPER
-======================================================================
-
-✅ Файл найден: C:/Users/Hobana9/Downloads/lecture.mp3
-📦 Размер: 5.23 MB
-
-🔄 Загружаем модель 'base'...
-✅ Модель загружена за 3.45 сек
-
-🎙️ Начинаем транскрибацию...
-⏳ Это может занять время для длинных файлов...
-💡 Примерное время: ~2.6-5.2 минут
-
-[Прогресс транскрибации будет отображаться здесь]
-
-======================================================================
-✅ ТРАНСКРИБАЦИЯ ЗАВЕРШЕНА!
-======================================================================
-
-🌍 Определённый язык: ru
-⏱️  Время транскрибации: 145.32 сек (2.42 мин)
-📏 Длина текста: 3421 символов
-📝 Количество слов: 512
-
-📄 ТЕКСТ (первые 500 символов):
-----------------------------------------------------------------------
-Добро пожаловать на лекцию по программированию. Сегодня мы будем
-изучать основы работы с API...
-----------------------------------------------------------------------
-
-💾 Полный текст сохранён: transcription_local_lecture.mp3.txt
-
-📊 СТАТИСТИКА:
-   • Скорость: ~0.036 MB/сек
-   • Модель: base
+```bash
+uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
-✅ **Если вы увидели это — всё работает!**
+Откройте http://127.0.0.1:8000/docs в браузере и протестируйте endpoint **POST /api/transcribe/audio** с вашим аудиофайлом (см. Шаг 8 ниже).
 
-Откройте файл `transcription_local_lecture.mp3.txt` — там будет полный текст.
+✅ **Если транскрибация вернула текст — всё работает!**
 
 ---
 
@@ -347,8 +290,7 @@ uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 ```
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [12345]
-INFO:     Started server process [12346]
+INFO:     Started server process [12345]
 🔄 Загружаем модель Whisper 'base'...
 ✅ Модель 'base' загружена успешно!
 INFO:     Application startup complete.
@@ -514,28 +456,15 @@ python -c "import torch; print(f'CUDA доступна: {torch.cuda.is_available
 
 Для очень длинных лекций (2+ часа) рекомендуется разбить файл на части.
 
-**Использование `split_audio.py`:**
+Разбейте файл с помощью FFmpeg или онлайн-сервисов.
 
-1. Установите дополнительную библиотеку:
+**Пример с FFmpeg (разбить на части по 30 минут):**
 
-   ```bash
-   pip install pydub
-   ```
+```bash
+ffmpeg -i long_lecture.mp3 -f segment -segment_time 1800 -c copy part_%03d.mp3
+```
 
-2. Откройте `split_audio.py` и укажите путь к файлу:
-
-   ```python
-   file_path = "C:/path/to/long_lecture.mp3"
-   chunk_minutes = 30  # Разбить на части по 30 минут
-   ```
-
-3. Запустите:
-
-   ```bash
-   python split_audio.py
-   ```
-
-4. Транскрибируйте каждую часть отдельно.
+Затем транскрибируйте каждую часть отдельно.
 
 ---
 
@@ -572,7 +501,7 @@ pip install openai-whisper
 
 1. Используйте меньшую модель (`base` вместо `small`)
 2. Закройте другие программы
-3. Разбейте аудио на части (см. `split_audio.py`)
+3. Разбейте аудио на части с помощью FFmpeg или онлайн-сервисов
 4. Если на GPU — уменьшите batch size (по умолчанию уже минимальный)
 
 ---
@@ -646,7 +575,7 @@ python scripts/download_model.py
 
 **Решение:**
 
-1. Разбейте файл на части (используйте `split_audio.py`)
+1. Разбейте файл на части с помощью FFmpeg или онлайн-сервисов
 2. Увеличьте RAM (закройте другие программы)
 3. Используйте модель `base` (требует меньше памяти)
 
@@ -730,9 +659,8 @@ language=None  # автоопределение
 Если возникли проблемы:
 
 1. **Проверьте разделы "Решение проблем" и "FAQ"** выше
-2. **Запустите тест:** `python test_whisper_local.py`
-3. **Проверьте FFmpeg:** `ffmpeg -version`
-4. **Проверьте модель:** `python scripts/download_model.py`
+2. **Проверьте FFmpeg:** `ffmpeg -version`
+3. **Проверьте модель:** `python scripts/download_model.py`
 
 Если ничего не помогло:
 
@@ -764,8 +692,8 @@ pip install -r requirements.txt
 python scripts/download_model.py
 # Нажмите Enter для 'base' или введите 'small'/'medium'
 
-# 5. Тестирование
-python test_whisper_local.py
+# 5. Проверка модели
+python scripts/download_model.py
 
 # 6. Запуск проекта
 # Windows: run.bat
@@ -784,7 +712,6 @@ python test_whisper_local.py
 - [ ] FFmpeg установлен (`ffmpeg -version` работает)
 - [ ] Python-зависимости установлены (`pip install -r requirements.txt`)
 - [ ] Модель Whisper загружена (`python scripts/download_model.py`)
-- [ ] Тест пройден успешно (`python test_whisper_local.py`)
 - [ ] API сервер запускается (`run.bat` / `./run.sh`)
 - [ ] Swagger UI доступен (http://localhost:8000/docs)
 
