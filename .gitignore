@@ -2,6 +2,13 @@
 .env.local
 .env.*.local
 
+# VPN / WireGuard configs (private keys!)
+*.conf
+!nginx/*.conf
+
+# Prompt files (не нужны в репозитории)
+*_PROMPT.md
+
 # Python virtual environment
 .venv/
 

@@ -1,0 +1,16 @@
+node_modules
+build
+.venv
+.git
+.gitignore
+*.pyc
+__pycache__
+whisper_models
+tools
+.env
+.env.example
+*.md
+docker-compose.yml
+Dockerfile.*
+nginx/default.conf
+NorwaySandefjordS24.conf

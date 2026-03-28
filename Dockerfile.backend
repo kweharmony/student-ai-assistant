@@ -1,0 +1,37 @@
+# ============================================================
+# MindeSync Backend — Python 3.12 + FastAPI + Whisper (CPU)
+# ============================================================
+FROM python:3.12-slim
+
+# Системные зависимости: ffmpeg (для Whisper), gcc (для сборки пакетов)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ffmpeg \
+        gcc \
+        libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Сначала копируем только requirements.txt — кэширование слоёв Docker
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем код приложения
+COPY api/ ./api/
+COPY ml/ ./ml/
+COPY scripts/ ./scripts/
+COPY alembic/ ./alembic/
+COPY alembic.ini .
+
+# Директория для Whisper-моделей (монтируется как volume)
+ENV WHISPER_CACHE_DIR=/app/whisper_models
+RUN mkdir -p /app/whisper_models
+
+EXPOSE 8000
+
+# Скрипт запуска: миграции + uvicorn
+COPY scripts/start.sh .
+RUN chmod +x start.sh
+
+CMD ["./start.sh"]

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActiveSection } from './types';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface SidebarItem {
   id: ActiveSection | 'exit';
@@ -40,9 +41,27 @@ const Sidebar: React.FC<SidebarProps> = ({
   onThemeToggle,
   navigate,
 }) => {
+  const { logout, user } = useAuth();
+
+  // Динамически формируем пункты меню — "Админ-панель" видна только админам
+  const items: SidebarItem[] = [
+    ...sidebarItems,
+  ];
+  if (user?.role === 'admin') {
+    // Вставляем перед "Выход"
+    const exitIndex = items.findIndex(i => i.id === 'exit');
+    items.splice(exitIndex, 0, { id: 'admin', label: 'Админ-панель', icon: 'admin_panel_settings' });
+  }
+
+  const handleExit = () => {
+    logout();
+    navigate('/');
+    window.scrollTo(0, 0);
+  };
+
   return (
     <>
-      {/* Мобильное меню - оверлей */}
+      {/* Mobile overlay */}
       {mobileMenuOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
@@ -50,7 +69,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
-      {/* Боковая панель */}
+      {/* Sidebar panel */}
        <div
          className={`fixed left-0 top-0 h-full border-r transition-all duration-700 ease-in-out z-50 ${
            sidebarCollapsed ? 'w-24' : 'w-70'
@@ -66,7 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         onMouseLeave={() => !mobileMenuOpen && setSidebarCollapsed(true)}
       >
       <div className="flex flex-col h-full">
-        {/* Заголовок */}
+        {/* Logo */}
         <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-color)' }}>
           <div
             className="text-3xl font-normal text-primary no-underline tracking-wider transition-all duration-700 ease-in-out hover:opacity-60 bg-transparent border-none cursor-pointer relative block pb-10"
@@ -75,13 +94,11 @@ const Sidebar: React.FC<SidebarProps> = ({
               fontFamily: 'Georgia, serif'
             }}
             onClick={(e) => {
-              // Предотвращаем переход на мобильных устройствах при открытии меню
               if (window.innerWidth < 1024 && mobileMenuOpen) {
                 e.preventDefault();
                 e.stopPropagation();
                 return;
               }
-              // Переход на главную страницу только на десктопе или когда меню закрыто
               navigate('/');
               window.scrollTo(0, 0);
             }}
@@ -93,20 +110,16 @@ const Sidebar: React.FC<SidebarProps> = ({
               MS
             </span>
           </div>
-
         </div>
 
-        {/* Навигационные элементы */}
+        {/* Nav items */}
         <div className="flex-1 p-4 space-y-3">
-          {sidebarItems.map((item) => {
+          {items.map((item) => {
             if (item.id === 'exit') {
               return (
                 <button
                   key={item.id}
-                  onClick={() => {
-                    navigate('/');
-                    window.scrollTo(0, 0);
-                  }}
+                  onClick={handleExit}
                   className={`w-full flex items-center gap-4 p-4 rounded-lg transition-all duration-700 ease-in-out h-16`}
                   style={{
                     color: 'var(--text-secondary)',
@@ -162,7 +175,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           })}
         </div>
 
-        {/* Переключатель темы */}
+        {/* Theme toggle */}
         <div className="p-4 border-t" style={{ borderColor: 'var(--border-color)' }}>
           <button
             onClick={onThemeToggle}

@@ -4,9 +4,13 @@ import { AccountPageProps, ActiveSection } from './types';
 import Sidebar from './Sidebar';
 import ProfileSection from './ProfileSection';
 import CalendarSection from './CalendarSection';
-import TranscriberSection from './TranscriberSection';
+import TranscriberSection, { LectureMeta } from './TranscriberSection';
 import TextProcessingSection from './TextProcessingSection';
 import TranscriptionModals from './TranscriptionModals';
+import AdminDashboard from './AdminDashboard';
+import { useAuth } from '../../contexts/AuthContext';
+
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const filterBenefits = [
   'Орфографические ошибки распознавания',
@@ -23,6 +27,7 @@ const errorRecoverySteps = [
 
 const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }) => {
   const navigate = useNavigate();
+  const { token } = useAuth();
 
   // Sidebar state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -93,55 +98,48 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     onToggleTheme();
   };
 
-  // Функция транскрибации аудио
-  const handleAudioTranscription = async (file: File) => {
+  // Функция загрузки аудио + метаданных лекции на сервер
+  const handleAudioTranscription = async (file: File, meta: LectureMeta) => {
     setIsTranscribing(true);
     setTranscriptionError(null);
-    setTranscriptionProgress('Загрузка файла...');
+    setTranscriptionProgress('Загрузка лекции на сервер...');
     setTranscriptionMinimized(false);
 
     try {
-      // Создаем FormData для отправки файла
       const formData = new FormData();
       formData.append('audio', file);
+      formData.append('title', meta.title);
+      if (meta.subject) formData.append('subject', meta.subject);
+      if (meta.description) formData.append('description', meta.description);
+      if (meta.lecture_date) formData.append('lecture_date', meta.lecture_date);
+      formData.append('is_public', String(meta.is_public));
 
-      // Отправляем файл на сервер
-      const response = await fetch('http://localhost:8000/api/transcribe/audio', {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(`${API_BASE}/api/transcribe/upload`, {
         method: 'POST',
+        headers,
         body: formData,
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Ошибка транскрибации');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Ошибка загрузки файла');
       }
-
-      // Файл загружен, начинаем обработку
-      setTranscriptionProgress('Начало обработки...');
-
-      // Ждем ответ от сервера (это может занять много времени)
-      setTranscriptionProgress('Обработка аудио... Это может занять несколько минут.');
 
       const result = await response.json();
 
-      if (result.success) {
-        setTranscriptionProgress('Транскрибация завершена успешно!');
+      setTranscriptionProgress('Лекция создана и файл загружен!');
 
-        // Сохраняем транскрибированный текст
-        setTranscribedText(result.text);
+      setTimeout(() => {
+        setIsTranscribing(false);
+        setTranscriptionProgress('');
+      }, 2500);
 
-        // Небольшая задержка и показываем модальное окно выбора
-        setTimeout(() => {
-          setIsTranscribing(false);
-          setTranscriptionProgress('');
-          setShowFilterModal(true); // Показываем модальное окно выбора
-        }, 1000);
-      } else {
-        throw new Error('Транскрибация не удалась');
-      }
     } catch (error: any) {
-      console.error('Ошибка транскрибации:', error);
-      setTranscriptionError(error.message || 'Произошла ошибка при транскрибации');
+      console.error('Ошибка загрузки:', error);
+      setTranscriptionError(error.message || 'Произошла ошибка при загрузке');
       setIsTranscribing(false);
     }
   };
@@ -171,7 +169,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
     try {
       // Отправляем текст на фильтрацию
-      const response = await fetch('http://localhost:8000/api/transcribe/filter', {
+      const response = await fetch(`${API_BASE}/api/transcribe/filter`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -294,6 +292,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             editorMode={editorMode}
             setEditorMode={setEditorMode}
           />
+        )}
+
+        {activeSection === 'admin' && (
+          <AdminDashboard />
         )}
         </div>
       </main>

@@ -1,0 +1,177 @@
+"""
+Pydantic-схемы для валидации request/response всех эндпоинтов.
+"""
+
+from datetime import datetime
+from typing import List, Optional
+from uuid import UUID
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+# ==================== Auth ====================
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=6, max_length=128)
+    role: str = Field(..., pattern="^(student|teacher)$")
+    full_name: Optional[str] = Field(None, max_length=100)
+    # student fields
+    group_name: Optional[str] = Field(None, max_length=20)
+    course: Optional[int] = Field(None, ge=1, le=6)
+    faculty: Optional[str] = Field(None, max_length=100)
+    # teacher fields
+    department: Optional[str] = Field(None, max_length=150)
+    position: Optional[str] = Field(None, max_length=100)
+    academic_degree: Optional[str] = Field(None, max_length=100)
+
+
+class LoginRequest(BaseModel):
+    login: str
+    password: str
+
+
+class RegisterResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    generated_login: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+# ==================== User ====================
+
+class StudentProfileOut(BaseModel):
+    group_name: Optional[str] = None
+    course: Optional[int] = None
+    faculty: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class TeacherProfileOut(BaseModel):
+    department: Optional[str] = None
+    position: Optional[str] = None
+    academic_degree: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class UserOut(BaseModel):
+    id: UUID
+    login: str
+    email: str
+    role: str
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    last_login_at: Optional[datetime] = None
+    student_profile: Optional[StudentProfileOut] = None
+    teacher_profile: Optional[TeacherProfileOut] = None
+
+    model_config = {"from_attributes": True}
+
+
+class UserUpdateRequest(BaseModel):
+    full_name: Optional[str] = Field(None, max_length=100)
+    email: Optional[EmailStr] = None
+    # student fields
+    group_name: Optional[str] = Field(None, max_length=20)
+    course: Optional[int] = Field(None, ge=1, le=6)
+    faculty: Optional[str] = Field(None, max_length=100)
+    # teacher fields
+    department: Optional[str] = Field(None, max_length=150)
+    position: Optional[str] = Field(None, max_length=100)
+    academic_degree: Optional[str] = Field(None, max_length=100)
+
+
+# ==================== Lectures ====================
+
+class LectureCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=300)
+    description: Optional[str] = None
+    subject: Optional[str] = Field(None, max_length=100)
+    is_public: bool = False
+
+
+class LectureUpdateRequest(BaseModel):
+    title: Optional[str] = Field(None, max_length=300)
+    description: Optional[str] = None
+    subject: Optional[str] = Field(None, max_length=100)
+    is_public: Optional[bool] = None
+
+
+class AudioFileOut(BaseModel):
+    id: UUID
+    file_name: str
+    file_size: Optional[int] = None
+    duration_seconds: Optional[int] = None
+    mime_type: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TranscriptionOut(BaseModel):
+    id: UUID
+    audio_file_id: UUID
+    raw_text: str
+    processed_text: Optional[str] = None
+    whisper_model: Optional[str] = None
+    language: Optional[str] = None
+    confidence: Optional[float] = None
+    processing_time: Optional[float] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LectureOut(BaseModel):
+    id: UUID
+    title: str
+    description: Optional[str] = None
+    subject: Optional[str] = None
+    uploaded_by: UUID
+    status: str
+    is_public: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LectureDetailOut(LectureOut):
+    audio_files: List[AudioFileOut] = []
+    transcriptions: List[TranscriptionOut] = []
+
+
+# ==================== Admin ====================
+
+class BlockUserRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=300)
+
+
+class DeleteContentRequest(BaseModel):
+    reason: Optional[str] = Field(None, max_length=300)
+
+
+class AdminUserOut(UserOut):
+    is_deleted: bool = False
+    blocked_reason: Optional[str] = None
+    blocked_at: Optional[datetime] = None
+
+
+class AdminActionOut(BaseModel):
+    id: UUID
+    admin_id: UUID
+    action: str
+    target_type: str
+    target_id: UUID
+    reason: Optional[str] = None
+    details: Optional[dict] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
