@@ -11,11 +11,12 @@ import logging
 import uuid as uuid_mod
 from pathlib import Path
 from datetime import datetime
+import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .dependencies import get_db, get_current_user
-from .models import Lecture, AudioFile, LectureStatus, User
+from .models import Lecture, AudioFile, LectureStatus, TranscriptionTask, User
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class UploadResponse(BaseModel):
     file_id: str
     file_size_mb: float
     lecture_id: str
+    task_id: str
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -120,17 +122,24 @@ async def upload_audio(
             mime_type=mime_map.get(file_extension),
         )
         db.add(audio_record)
+        await db.flush()
+
+        # Создаём задачу на транскрибацию
+        task = TranscriptionTask(audio_file_id=audio_record.id)
+        db.add(task)
         await db.commit()
+        await db.refresh(task)
 
         logger.info(f"Лекция '{title}' создана, аудио сохранено: {file_path} ({file_size_mb:.1f} МБ)")
 
         return UploadResponse(
             success=True,
-            message="Лекция создана и аудиофайл загружен в очередь на обработку.",
+            message="Лекция создана. Файл поставлен в очередь на транскрибацию.",
             filename=audio.filename,
             file_id=file_id,
             file_size_mb=round(file_size_mb, 2),
             lecture_id=str(lecture.id),
+            task_id=str(task.id),
         )
 
     except HTTPException:
@@ -140,6 +149,37 @@ async def upload_audio(
         raise HTTPException(status_code=500, detail=f"Ошибка при сохранении: {str(e)}")
 
 
+class FilterRequest(BaseModel):
+    text: str
+
+
+class FilterResponse(BaseModel):
+    success: bool
+    filtered_text: str
+    error: Optional[str] = None
+
+
+@router.post("/filter", response_model=FilterResponse)
+async def filter_transcription(body: FilterRequest):
+    """
+    AI-фильтрация транскрибированного текста через DeepSeek.
+    Исправляет ошибки распознавания, удаляет слова-паразиты, форматирует текст.
+    """
+    if not body.text or len(body.text.strip()) < 5:
+        raise HTTPException(status_code=400, detail="Текст слишком короткий")
+
+    try:
+        from ml.transcription_filter import TranscriptionFilter
+        fltr = TranscriptionFilter()
+        filtered = await asyncio.get_event_loop().run_in_executor(
+            None, fltr.filter_text, body.text
+        )
+        return FilterResponse(success=True, filtered_text=filtered)
+    except Exception as e:
+        logger.error(f"Ошибка фильтрации: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка фильтрации: {str(e)}")
+
+
 @router.get("/health")
 async def health_check():
     """Проверка работоспособности"""
@@ -147,5 +187,5 @@ async def health_check():
         "status": "healthy",
         "message": "Сервис загрузки аудио работает. Транскрибация через очередь (в разработке).",
         "upload_enabled": True,
-        "transcription_enabled": False
+        "transcription_enabled": True
     }

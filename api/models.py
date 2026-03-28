@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Boolean, Column, DateTime, Enum, Float, ForeignKey, Index,
-    Integer, SmallInteger, String, Text, BigInteger,
+    Integer, SmallInteger, String, Text, BigInteger, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -116,6 +116,7 @@ class Lecture(Base):
     uploader = relationship("User", back_populates="lectures", foreign_keys=[uploaded_by])
     audio_files = relationship("AudioFile", back_populates="lecture")
     transcriptions = relationship("Transcription", back_populates="lecture")
+    notes = relationship("LectureNote", back_populates="lecture", cascade="all, delete-orphan")
 
 
 # ========== 5. audio_files ==========
@@ -149,6 +150,7 @@ class Transcription(Base):
     audio_file_id = Column(UUID(as_uuid=True), ForeignKey("audio_files.id", ondelete="CASCADE"), nullable=False)
     raw_text = Column(Text, nullable=False)
     processed_text = Column(Text, nullable=True)
+    is_ai_filtered = Column(Boolean, default=False, nullable=False)
     whisper_model = Column(String(20), nullable=True)
     language = Column(String(10), nullable=True)
     confidence = Column(Float, nullable=True)
@@ -162,7 +164,56 @@ class Transcription(Base):
     audio_file = relationship("AudioFile", back_populates="transcription")
 
 
-# ========== 7. admin_actions ==========
+# ========== 7. transcription_tasks ==========
+
+class TranscriptionTaskStatus(str, enum.Enum):
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    error = "error"
+    failed = "failed"
+
+
+class TranscriptionTask(Base):
+    __tablename__ = "transcription_tasks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    audio_file_id = Column(UUID(as_uuid=True), ForeignKey("audio_files.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(
+        Enum(TranscriptionTaskStatus, name="task_status", native_enum=False),
+        default=TranscriptionTaskStatus.pending,
+        nullable=False,
+        index=True,
+    )
+    worker_id = Column(String(100), nullable=True)
+    worker_name = Column(String(100), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    retry_count = Column(Integer, default=0, nullable=False)
+    last_heartbeat_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    audio_file = relationship("AudioFile", backref="transcription_task")
+
+
+# ========== 8. lecture_notes ==========
+
+class LectureNote(Base):
+    __tablename__ = "lecture_notes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    lecture_id = Column(UUID(as_uuid=True), ForeignKey("lectures.id", ondelete="CASCADE"), nullable=False, index=True)
+    mode = Column(String(50), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    lecture = relationship("Lecture", back_populates="notes")
+
+    __table_args__ = (UniqueConstraint("lecture_id", "mode", name="uq_lecture_note_mode"),)
+
+
+# ========== 9. admin_actions ==========
 
 class AdminAction(Base):
     __tablename__ = "admin_actions"

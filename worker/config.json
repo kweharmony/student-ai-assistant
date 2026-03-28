@@ -1,0 +1,8 @@
+{
+  "SERVER_URL": "http://localhost",
+  "API_KEY": "sol2033",
+  "WORKER_NAME": "dmitry_pc",
+  "WHISPER_MODEL": "medium",
+  "DEVICE": "auto",
+  "POLL_INTERVAL": 30
+}

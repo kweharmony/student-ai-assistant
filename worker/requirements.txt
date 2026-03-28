@@ -1,0 +1,30 @@
+# Зависимости для воркера транскрибации MindSync
+# ================================================
+#
+# УСТАНОВКА:
+#
+# 1. Без GPU (только CPU):
+#    pip install -r requirements.txt
+#
+# 2. С GPU (NVIDIA CUDA 12.1):
+#    pip install torch --index-url https://download.pytorch.org/whl/cu121
+#    pip install -r requirements.txt
+#
+# 3. С GPU (NVIDIA CUDA 11.8):
+#    pip install torch --index-url https://download.pytorch.org/whl/cu118
+#    pip install -r requirements.txt
+#
+# Проверить наличие CUDA после установки:
+#    python -c "import torch; print(torch.cuda.is_available())"
+#
+# Скорость транскрибации (примерно):
+#   small  + GPU (RTX 3060): ~10x realtime
+#   medium + GPU (RTX 3060): ~5x realtime
+#   large  + GPU (RTX 3060): ~2x realtime
+#   small  + CPU (i7):       ~1x realtime
+#   medium + CPU (i7):       ~0.3x realtime
+
+openai-whisper>=20231117
+requests>=2.31.0
+pystray>=0.19.5
+Pillow>=10.0.0

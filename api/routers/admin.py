@@ -17,13 +17,15 @@ from sqlalchemy.orm import selectinload
 
 from ..dependencies import get_db, require_admin
 from ..models import (
-    AdminAction, AudioFile, Lecture, Transcription, User, UserRole,
+    AdminAction, AudioFile, Lecture, Transcription, TranscriptionTask,
+    TranscriptionTaskStatus, User, UserRole,
 )
 from ..schemas import (
     AdminActionOut,
     AdminUserOut,
     BlockUserRequest,
     DeleteContentRequest,
+    WorkerStatusOut,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
@@ -329,6 +331,18 @@ async def list_audio_queue(
                 })
 
     return {"files": files, "total": len(files)}
+
+
+# ---------- Worker stats (admin view) ----------
+
+@router.get("/worker-stats", response_model=WorkerStatusOut)
+async def get_worker_stats(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Статистика воркеров и очереди транскрибации для админ-панели."""
+    from ..routers.worker import _get_worker_stats
+    return await _get_worker_stats(db)
 
 
 # ---------- All lectures (admin view) ----------

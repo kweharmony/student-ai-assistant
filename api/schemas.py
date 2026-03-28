@@ -148,6 +148,98 @@ class LectureDetailOut(LectureOut):
     transcriptions: List[TranscriptionOut] = []
 
 
+# ==================== Worker / TranscriptionTask ====================
+
+class TaskEnqueuedOut(BaseModel):
+    task_id: UUID
+    status: str
+    audio_file_id: UUID
+
+
+class TranscriptionTaskOut(BaseModel):
+    id: UUID
+    audio_file_id: UUID
+    status: str
+    worker_name: Optional[str] = None
+    retry_count: int
+    error_message: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class WorkerNextTaskOut(BaseModel):
+    task: Optional[TranscriptionTaskOut] = None
+
+
+class WorkerResultIn(BaseModel):
+    raw_text: str
+    language: str = "ru"
+    processing_time: float = 0.0
+    whisper_model: str = "base"
+    device_used: Optional[str] = None
+
+
+class WorkerErrorIn(BaseModel):
+    error_message: str
+
+
+class WorkerHeartbeatIn(BaseModel):
+    task_id: Optional[UUID] = None
+
+
+class WorkerStatusOut(BaseModel):
+    pending: int
+    processing: int
+    completed: int
+    error: int
+    failed: int
+    active_workers: List[str]
+
+
+# ==================== My Lectures ====================
+
+class LectureNoteOut(BaseModel):
+    id: UUID
+    mode: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LectureNoteContentOut(LectureNoteOut):
+    content: str
+
+
+class LectureNoteIn(BaseModel):
+    mode: str
+    content: str
+
+
+class LectureMyOut(BaseModel):
+    id: UUID
+    title: str
+    subject: Optional[str] = None
+    status: str
+    created_at: datetime
+    task_status: Optional[str] = None
+    transcription_id: Optional[UUID] = None
+    has_text: bool = False
+    is_ai_filtered: bool = False
+    notes: List[LectureNoteOut] = []
+
+
+class SaveTextIn(BaseModel):
+    text: str
+
+
+class ApplyFilterOut(BaseModel):
+    success: bool
+    filtered_text: str
+
+
 # ==================== Admin ====================
 
 class BlockUserRequest(BaseModel):

@@ -8,6 +8,7 @@ import TranscriberSection, { LectureMeta } from './TranscriberSection';
 import TextProcessingSection from './TextProcessingSection';
 import TranscriptionModals from './TranscriptionModals';
 import AdminDashboard from './AdminDashboard';
+import LecturesSection from './LecturesSection';
 import { useAuth } from '../../contexts/AuthContext';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -51,6 +52,9 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [transcribedText, setTranscribedText] = useState('');
   const [isFiltering, setIsFiltering] = useState(false);
+
+  // Lecture context for saving text back to DB
+  const [currentLectureId, setCurrentLectureId] = useState<string | null>(null);
 
   // Закрытие мобильного меню при изменении размера экрана
   useEffect(() => {
@@ -130,12 +134,51 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
       const result = await response.json();
 
-      setTranscriptionProgress('Лекция создана и файл загружен!');
+      setTranscriptionProgress('Файл в очереди на транскрибацию...');
 
-      setTimeout(() => {
-        setIsTranscribing(false);
-        setTranscriptionProgress('');
-      }, 2500);
+      // Polling статуса задачи каждые 5 секунд
+      const lectureId = result.lecture_id;
+      let pollCount = 0;
+      const intervalId = setInterval(async () => {
+        try {
+          pollCount += 1;
+          const statusHeaders: Record<string, string> = {};
+          if (token) statusHeaders['Authorization'] = `Bearer ${token}`;
+
+          const statusRes = await fetch(`${API_BASE}/api/lectures/${lectureId}/task-status`, {
+            headers: statusHeaders,
+          });
+
+          if (!statusRes.ok) return;
+          const taskData = await statusRes.json();
+
+          if (taskData.status === 'pending') {
+            // После 30 секунд (6 опросов) предупреждаем что воркеры не подключены
+            if (pollCount >= 6) {
+              setTranscriptionProgress(
+                'Файл в очереди. Воркеры транскрибации сейчас не подключены — ' +
+                'задача выполнится автоматически когда кто-то включит воркер.'
+              );
+            }
+          } else if (taskData.status === 'processing') {
+            setTranscriptionProgress('Обрабатывается воркером...');
+          } else if (taskData.status === 'completed') {
+            clearInterval(intervalId);
+            setIsTranscribing(false);
+            setTranscriptionProgress('');
+            // Переключаемся в раздел "Мои лекции"
+            setActiveSection('lectures');
+          } else if (taskData.status === 'failed' || taskData.status === 'error') {
+            clearInterval(intervalId);
+            setTranscriptionError(
+              `Транскрибация завершилась с ошибкой: ${taskData.error_message || 'неизвестная ошибка'}`
+            );
+            setIsTranscribing(false);
+          }
+        } catch {
+          // Не прерываем polling при временных ошибках сети
+        }
+      }, 5000);
 
     } catch (error: any) {
       console.error('Ошибка загрузки:', error);
@@ -159,7 +202,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     setActiveSection('text-processing');
     setShowTextEditor(true);
 
-    // Очищаем сохраненный текст
+    // Очищаем сохраненный текст (currentLectureId сохраняется для кнопки Save)
     setTranscribedText('');
   };
 
@@ -199,7 +242,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         setActiveSection('text-processing');
         setShowTextEditor(true);
 
-        // Очищаем сохраненный текст
+        // Очищаем сохраненный текст (currentLectureId сохраняется для кнопки Save)
         setTranscribedText('');
       } else {
         console.error('❌ Фильтрация вернула success=false');
@@ -211,6 +254,80 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
       // В случае ошибки вставляем оригинальный текст
       handleSkipFilter();
+    }
+  };
+
+  // Открыть текст лекции прямо в редакторе (из раздела "Мои лекции")
+  const handleOpenInEditor = (text: string, lectureId: string) => {
+    setCurrentLectureId(lectureId);
+    if (editorInstance) {
+      editorInstance.commands.setContent(text);
+    }
+    setOriginalText(text);
+    setEditorMode('original');
+    setActiveSection('text-processing');
+    setShowTextEditor(true);
+  };
+
+  // Начать повторную транскрибацию лекции (задача уже создана, запускаем polling)
+  const handleReTranscribe = (lectureId: string) => {
+    setIsTranscribing(true);
+    setTranscriptionError(null);
+    setTranscriptionProgress('Файл в очереди на транскрибацию...');
+    setTranscriptionMinimized(false);
+    setCurrentLectureId(lectureId);
+
+    let pollCount = 0;
+    const intervalId = setInterval(async () => {
+      try {
+        pollCount += 1;
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const statusRes = await fetch(`${API_BASE}/api/lectures/${lectureId}/task-status`, { headers });
+        if (!statusRes.ok) return;
+        const taskData = await statusRes.json();
+
+        if (taskData.status === 'pending') {
+          if (pollCount >= 6) {
+            setTranscriptionProgress(
+              'Файл в очереди. Воркеры транскрибации сейчас не подключены — ' +
+              'задача выполнится автоматически когда кто-то включит воркер.'
+            );
+          }
+        } else if (taskData.status === 'processing') {
+          setTranscriptionProgress('Обрабатывается воркером...');
+        } else if (taskData.status === 'completed') {
+          clearInterval(intervalId);
+          setIsTranscribing(false);
+          setTranscriptionProgress('');
+          setActiveSection('lectures');
+        } else if (taskData.status === 'failed' || taskData.status === 'error') {
+          clearInterval(intervalId);
+          setTranscriptionError(
+            `Транскрибация завершилась с ошибкой: ${taskData.error_message || 'неизвестная ошибка'}`
+          );
+          setIsTranscribing(false);
+        }
+      } catch {
+        // ignore transient errors
+      }
+    }, 5000);
+  };
+
+  // Сохранить текст из редактора обратно в лекцию в БД
+  const handleSaveLectureText = async (text: string) => {
+    if (!currentLectureId) return;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/api/lectures/${currentLectureId}/save-text`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Ошибка сохранения');
     }
   };
 
@@ -276,6 +393,14 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
           />
         )}
 
+        {activeSection === 'lectures' && (
+          <LecturesSection
+            isLightTheme={isLightTheme}
+            onOpenInEditor={handleOpenInEditor}
+            onReTranscribe={handleReTranscribe}
+          />
+        )}
+
         {activeSection === 'text-processing' && (
           <TextProcessingSection
             isLightTheme={isLightTheme}
@@ -291,6 +416,8 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             setProcessedText={setProcessedText}
             editorMode={editorMode}
             setEditorMode={setEditorMode}
+            lectureId={currentLectureId || undefined}
+            onSaveLecture={handleSaveLectureText}
           />
         )}
 

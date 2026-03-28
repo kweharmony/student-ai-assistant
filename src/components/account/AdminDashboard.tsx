@@ -34,6 +34,15 @@ interface QueueFile {
   uploaded_at: string;
 }
 
+interface WorkerStats {
+  pending: number;
+  processing: number;
+  completed: number;
+  error: number;
+  failed: number;
+  active_workers: string[];
+}
+
 interface LectureItem {
   id: string;
   title: string;
@@ -47,7 +56,7 @@ interface LectureItem {
   transcription_count: number;
 }
 
-type AdminTab = 'overview' | 'users' | 'queue' | 'lectures';
+type AdminTab = 'overview' | 'users' | 'queue' | 'workers' | 'lectures';
 
 // ==================== Component ====================
 
@@ -57,6 +66,7 @@ const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<Stats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [queue, setQueue] = useState<QueueFile[]>([]);
+  const [workerStats, setWorkerStats] = useState<WorkerStats | null>(null);
   const [lectures, setLectures] = useState<LectureItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,10 +98,22 @@ const AdminDashboard: React.FC = () => {
   const fetchQueue = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/queue`, { headers });
-      if (!res.ok) throw new Error('Ошибка загрузки очереди');
-      const data = await res.json();
-      setQueue(data.files);
+      const res = await fetch(`${API_BASE}/api/admin/worker-stats`, { headers });
+      if (!res.ok) throw new Error('Ошибка загрузки статистики воркеров');
+      const data: WorkerStats = await res.json();
+      setWorkerStats(data);
+      // Для обратной совместимости: показываем pending задачи как "файлы в очереди"
+      setQueue([]);
+    } catch (e: any) { setError(e.message); }
+    setLoading(false);
+  }, [token]);
+
+  const fetchWorkers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/worker-stats`, { headers });
+      if (!res.ok) throw new Error('Ошибка загрузки воркеров');
+      setWorkerStats(await res.json());
     } catch (e: any) { setError(e.message); }
     setLoading(false);
   }, [token]);
@@ -113,8 +135,9 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'users') fetchUsers();
     if (activeTab === 'queue') fetchQueue();
+    if (activeTab === 'workers') fetchWorkers();
     if (activeTab === 'lectures') fetchLectures();
-  }, [activeTab, fetchUsers, fetchQueue, fetchLectures]);
+  }, [activeTab, fetchUsers, fetchQueue, fetchWorkers, fetchLectures]);
 
   // Actions
   const handleBlock = async () => {
@@ -168,6 +191,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'overview', label: 'Обзор' },
     { id: 'users', label: 'Пользователи' },
     { id: 'queue', label: 'Очередь аудио' },
+    { id: 'workers', label: 'Воркеры' },
     { id: 'lectures', label: 'Лекции' },
   ];
 
@@ -310,7 +334,7 @@ const AdminDashboard: React.FC = () => {
         <div>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm opacity-60" style={{ color: 'var(--text-secondary)' }}>
-              Аудиофайлы ожидающие транскрибации
+              Статус задач транскрибации
             </p>
             <button onClick={fetchQueue} className="text-xs px-3 py-1.5 rounded-lg border transition-all hover:opacity-80" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
               Обновить
@@ -319,31 +343,82 @@ const AdminDashboard: React.FC = () => {
 
           {loading ? (
             <p className="text-center opacity-60 py-8" style={{ color: 'var(--text-secondary)' }}>Загрузка...</p>
-          ) : queue.length === 0 ? (
-            <div className="text-center py-12 border rounded-xl" style={{ borderColor: 'var(--border-color)' }}>
-              <p className="text-lg opacity-40 mb-2" style={{ color: 'var(--text-secondary)' }}>Очередь пуста</p>
-              <p className="text-sm opacity-30" style={{ color: 'var(--text-secondary)' }}>Загруженные аудиофайлы появятся здесь</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {queue.map((file, i) => (
-                <div key={i} className="border rounded-xl p-4 flex items-center gap-4" style={{ borderColor: 'var(--border-color)' }}>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'rgba(59,130,246,0.1)' }}>
-                    <svg className="w-4 h-4" style={{ color: '#3b82f6' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM21 16c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{file.filename}</div>
-                    <div className="text-xs opacity-50" style={{ color: 'var(--text-secondary)' }}>
-                      {file.size_mb} МБ &middot; {formatDate(file.uploaded_at)}
-                    </div>
-                  </div>
-                  <div className="text-xs px-2 py-1 rounded-full shrink-0" style={{ background: 'rgba(234,179,8,0.15)', color: '#eab308' }}>
-                    В очереди
-                  </div>
+          ) : workerStats ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+              {[
+                { label: 'В очереди', value: workerStats.pending, color: '#eab308', bg: 'rgba(234,179,8,0.1)' },
+                { label: 'Обрабатывается', value: workerStats.processing, color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' },
+                { label: 'Завершено', value: workerStats.completed, color: '#22c55e', bg: 'rgba(34,197,94,0.1)' },
+                { label: 'Ошибки', value: workerStats.error, color: '#f97316', bg: 'rgba(249,115,22,0.1)' },
+                { label: 'Провалено', value: workerStats.failed, color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
+                { label: 'Активных воркеров', value: workerStats.active_workers.length, color: '#a855f7', bg: 'rgba(168,85,247,0.1)' },
+              ].map((card, i) => (
+                <div key={i} className="border rounded-xl p-4" style={{ borderColor: 'var(--border-color)', background: card.bg }}>
+                  <div className="text-2xl font-light mb-1" style={{ color: card.color }}>{card.value}</div>
+                  <div className="text-xs opacity-70" style={{ color: 'var(--text-secondary)' }}>{card.label}</div>
                 </div>
               ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 border rounded-xl" style={{ borderColor: 'var(--border-color)' }}>
+              <p className="text-lg opacity-40 mb-2" style={{ color: 'var(--text-secondary)' }}>Нет данных</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== Workers ==================== */}
+      {activeTab === 'workers' && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm opacity-60" style={{ color: 'var(--text-secondary)' }}>
+              Подключённые воркеры транскрибации
+            </p>
+            <button onClick={fetchWorkers} className="text-xs px-3 py-1.5 rounded-lg border transition-all hover:opacity-80" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+              Обновить
+            </button>
+          </div>
+
+          {loading ? (
+            <p className="text-center opacity-60 py-8" style={{ color: 'var(--text-secondary)' }}>Загрузка...</p>
+          ) : workerStats ? (
+            <div>
+              {workerStats.active_workers.length === 0 ? (
+                <div className="text-center py-12 border rounded-xl mb-4" style={{ borderColor: 'var(--border-color)' }}>
+                  <p className="text-lg opacity-40 mb-2" style={{ color: 'var(--text-secondary)' }}>Нет активных воркеров</p>
+                  <p className="text-sm opacity-30" style={{ color: 'var(--text-secondary)' }}>
+                    Запустите worker/tray_app.py на компьютере разработчика
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 mb-6">
+                  {workerStats.active_workers.map((name, i) => (
+                    <div key={i} className="border rounded-xl p-4 flex items-center gap-3" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ background: '#22c55e' }} />
+                      <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{name}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full ml-auto" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>
+                        Активен
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {[
+                  { label: 'Задач в очереди', value: workerStats.pending },
+                  { label: 'Выполняется сейчас', value: workerStats.processing },
+                  { label: 'Завершено всего', value: workerStats.completed },
+                ].map((card, i) => (
+                  <div key={i} className="border rounded-xl p-3" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+                    <div className="text-xl font-light mb-1" style={{ color: 'var(--text-primary)' }}>{card.value}</div>
+                    <div className="text-xs opacity-50" style={{ color: 'var(--text-secondary)' }}>{card.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12 border rounded-xl" style={{ borderColor: 'var(--border-color)' }}>
+              <p className="text-lg opacity-40 mb-2" style={{ color: 'var(--text-secondary)' }}>Нет данных</p>
             </div>
           )}
         </div>

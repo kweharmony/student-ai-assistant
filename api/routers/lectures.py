@@ -4,7 +4,6 @@
 
 import mimetypes
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -16,14 +15,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..dependencies import get_current_user, get_db
-from ..models import AudioFile, Lecture, LectureStatus, Transcription, User
+from ..models import AudioFile, Lecture, LectureNote, LectureStatus, Transcription, TranscriptionTask, User
+import asyncio
+from uuid import UUID as PyUUID
+
 from ..schemas import (
+    ApplyFilterOut,
     AudioFileOut,
     LectureCreateRequest,
     LectureDetailOut,
+    LectureMyOut,
+    LectureNoteContentOut,
+    LectureNoteIn,
+    LectureNoteOut,
     LectureOut,
     LectureUpdateRequest,
+    SaveTextIn,
+    TaskEnqueuedOut,
     TranscriptionOut,
+    TranscriptionTaskOut,
 )
 
 router = APIRouter(prefix="/api/lectures", tags=["Lectures"])
@@ -104,6 +114,70 @@ async def create_lecture(
     await db.commit()
     await db.refresh(lecture)
     return lecture
+
+
+@router.get("/my", response_model=List[LectureMyOut])
+async def list_my_lectures(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Список лекций текущего пользователя с задачами транскрибации."""
+
+    stmt = (
+        select(Lecture)
+        .where(Lecture.uploaded_by == user.id, Lecture.is_deleted == False)
+        .options(
+            selectinload(Lecture.transcriptions),
+            selectinload(Lecture.audio_files),
+            selectinload(Lecture.notes),
+        )
+        .order_by(Lecture.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    lectures = result.scalars().all()
+
+    out: List[LectureMyOut] = []
+    for lec in lectures:
+        active_transcriptions = [t for t in lec.transcriptions if not t.is_deleted]
+        active_audio = [a for a in lec.audio_files if not a.is_deleted]
+
+        task_status: Optional[str] = None
+        if active_audio:
+            latest_audio = sorted(active_audio, key=lambda a: a.created_at, reverse=True)[0]
+            task_result = await db.execute(
+                select(TranscriptionTask)
+                .where(TranscriptionTask.audio_file_id == latest_audio.id)
+                .order_by(TranscriptionTask.created_at.desc())
+                .limit(1)
+            )
+            task = task_result.scalar_one_or_none()
+            if task:
+                task_status = task.status.value
+
+        latest_transcription = (
+            sorted(active_transcriptions, key=lambda t: t.created_at, reverse=True)[0]
+            if active_transcriptions else None
+        )
+
+        out.append(LectureMyOut(
+            id=lec.id,
+            title=lec.title,
+            subject=lec.subject,
+            status=lec.status.value,
+            created_at=lec.created_at,
+            task_status=task_status,
+            transcription_id=latest_transcription.id if latest_transcription else None,
+            has_text=bool(
+                latest_transcription and
+                (latest_transcription.processed_text or latest_transcription.raw_text)
+            ),
+            is_ai_filtered=bool(latest_transcription and latest_transcription.is_ai_filtered),
+            notes=[
+                LectureNoteOut(id=n.id, mode=n.mode, created_at=n.created_at)
+                for n in lec.notes
+            ],
+        ))
+    return out
 
 
 @router.get("/{lecture_id}", response_model=LectureDetailOut)
@@ -218,6 +292,12 @@ async def upload_audio(
         mime_type=mime,
     )
     db.add(audio)
+    await db.flush()
+
+    # Создать задачу на транскрибацию
+    task = TranscriptionTask(audio_file_id=audio.id)
+    db.add(task)
+
     await db.commit()
     await db.refresh(audio)
     return audio
@@ -225,21 +305,21 @@ async def upload_audio(
 
 # ---------- Transcription ----------
 
-@router.post("/{lecture_id}/transcribe", response_model=TranscriptionOut, status_code=status.HTTP_201_CREATED)
+@router.post("/{lecture_id}/transcribe", response_model=TaskEnqueuedOut, status_code=status.HTTP_202_ACCEPTED)
 async def transcribe_lecture_audio(
     lecture_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """
-    Запустить транскрибацию последнего аудиофайла лекции.
-    Использует тот же Whisper, что и /api/transcribe/audio, но сохраняет результат в БД.
+    Поставить аудиофайл лекции в очередь на транскрибацию.
+    Возвращает task_id для отслеживания статуса.
+    Транскрибация выполняется асинхронно воркером.
     """
 
     lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
     _check_owner(lecture, user)
 
-    # Find latest non-deleted audio
     active_audio = [a for a in lecture.audio_files if not a.is_deleted]
     if not active_audio:
         raise HTTPException(status_code=400, detail="Нет аудиофайлов для транскрибации")
@@ -249,37 +329,248 @@ async def transcribe_lecture_audio(
     if not os.path.exists(audio.file_path):
         raise HTTPException(status_code=404, detail="Аудиофайл не найден на диске")
 
-    # Import whisper helpers from existing transcribe module
-    from ..transcribe import get_whisper_model, _model_name
+    task = TranscriptionTask(audio_file_id=audio.id)
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    return TaskEnqueuedOut(
+        task_id=task.id,
+        status=task.status.value,
+        audio_file_id=audio.id,
+    )
+
+
+@router.get("/{lecture_id}/task-status", response_model=TranscriptionTaskOut)
+async def get_transcription_task_status(
+    lecture_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Получить текущий статус задачи транскрибации для лекции.
+    Используется фронтендом для polling (опрос каждые 5 сек).
+    """
+
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+
+    if lecture.uploaded_by != user.id and not lecture.is_public:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой лекции")
+
+    active_audio = [a for a in lecture.audio_files if not a.is_deleted]
+    if not active_audio:
+        raise HTTPException(status_code=404, detail="Нет аудиофайлов у лекции")
+
+    audio = sorted(active_audio, key=lambda a: a.created_at, reverse=True)[0]
+
+    result = await db.execute(
+        select(TranscriptionTask)
+        .where(TranscriptionTask.audio_file_id == audio.id)
+        .order_by(TranscriptionTask.created_at.desc())
+        .limit(1)
+    )
+    task = result.scalar_one_or_none()
+
+    if task is None:
+        raise HTTPException(status_code=404, detail="Задача транскрибации не найдена")
+
+    return TranscriptionTaskOut.model_validate(task)
+
+
+@router.put("/{lecture_id}/save-text", status_code=status.HTTP_200_OK)
+async def save_transcription_text(
+    lecture_id: UUID,
+    body: SaveTextIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Сохранить отредактированный/отфильтрованный текст в транскрипцию лекции."""
+
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    _check_owner(lecture, user)
+
+    active_transcriptions = [t for t in lecture.transcriptions if not t.is_deleted]
+    if not active_transcriptions:
+        raise HTTPException(status_code=404, detail="Транскрипция не найдена")
+
+    latest = sorted(active_transcriptions, key=lambda t: t.created_at, reverse=True)[0]
+    latest.processed_text = body.text
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/{lecture_id}/re-transcribe", response_model=TaskEnqueuedOut, status_code=status.HTTP_202_ACCEPTED)
+async def re_transcribe_lecture(
+    lecture_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Удалить старую транскрипцию и поставить задачу заново."""
+
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    _check_owner(lecture, user)
+
+    # Soft-delete existing transcriptions
+    for t in lecture.transcriptions:
+        if not t.is_deleted:
+            t.is_deleted = True
+            t.deleted_at = datetime.utcnow()
+            t.deleted_by = user.id
+
+    lecture.status = LectureStatus.processing
+
+    active_audio = [a for a in lecture.audio_files if not a.is_deleted]
+    if not active_audio:
+        raise HTTPException(status_code=400, detail="Нет аудиофайла для повторной транскрибации")
+
+    audio = sorted(active_audio, key=lambda a: a.created_at, reverse=True)[0]
+
+    task = TranscriptionTask(audio_file_id=audio.id)
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    return TaskEnqueuedOut(
+        task_id=task.id,
+        status=task.status.value,
+        audio_file_id=audio.id,
+    )
+
+
+# ---------- AI Filter ----------
+
+@router.post("/{lecture_id}/apply-filter", response_model=ApplyFilterOut)
+async def apply_ai_filter(
+    lecture_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Применить AI-фильтрацию к транскрипции лекции и сохранить результат."""
+
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    _check_owner(lecture, user)
+
+    active_transcriptions = [t for t in lecture.transcriptions if not t.is_deleted]
+    if not active_transcriptions:
+        raise HTTPException(status_code=404, detail="Транскрипция не найдена")
+
+    latest = sorted(active_transcriptions, key=lambda t: t.created_at, reverse=True)[0]
+    source_text = latest.raw_text
 
     try:
-        from ...ml.profanity_filter import filter_profanity
-    except (ImportError, ValueError):
-        from ml.profanity_filter import filter_profanity
+        from ml.transcription_filter import TranscriptionFilter
+        fltr = TranscriptionFilter()
+        filtered = await asyncio.get_event_loop().run_in_executor(
+            None, fltr.filter_text, source_text
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка фильтрации: {str(e)}")
 
-    start = time.time()
-    model = get_whisper_model()
-    result = model.transcribe(audio.file_path, language="ru", task="transcribe", fp16=False, verbose=False)
-    processing_time = time.time() - start
-
-    raw_text = result["text"]
-    detected_lang = result.get("language", "ru")
-
-    # Apply profanity filter
-    filtered_text = filter_profanity(raw_text)
-
-    transcription = Transcription(
-        lecture_id=lecture.id,
-        audio_file_id=audio.id,
-        raw_text=filtered_text,
-        whisper_model=_model_name,
-        language=detected_lang,
-        processing_time=processing_time,
-    )
-    db.add(transcription)
-
-    # Update lecture status
-    lecture.status = LectureStatus.ready
+    latest.processed_text = filtered
+    latest.is_ai_filtered = True
     await db.commit()
-    await db.refresh(transcription)
-    return transcription
+
+    return ApplyFilterOut(success=True, filtered_text=filtered)
+
+
+# ---------- Lecture Notes ----------
+
+@router.get("/{lecture_id}/notes", response_model=List[LectureNoteOut])
+async def get_lecture_notes(
+    lecture_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    lecture = await _get_lecture_or_404(lecture_id, db)
+    if lecture.uploaded_by != user.id and not lecture.is_public:
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    result = await db.execute(
+        select(LectureNote)
+        .where(LectureNote.lecture_id == lecture_id)
+        .order_by(LectureNote.created_at.asc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/{lecture_id}/notes/{note_id}", response_model=LectureNoteContentOut)
+async def get_lecture_note(
+    lecture_id: UUID,
+    note_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    lecture = await _get_lecture_or_404(lecture_id, db)
+    if lecture.uploaded_by != user.id and not lecture.is_public:
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    result = await db.execute(
+        select(LectureNote).where(
+            LectureNote.id == note_id,
+            LectureNote.lecture_id == lecture_id,
+        )
+    )
+    note = result.scalar_one_or_none()
+    if not note:
+        raise HTTPException(status_code=404, detail="Заметка не найдена")
+    return note
+
+
+@router.post("/{lecture_id}/notes", response_model=LectureNoteContentOut, status_code=201)
+async def upsert_lecture_note(
+    lecture_id: UUID,
+    body: LectureNoteIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Создать или обновить заметку (один режим — одна заметка на лекцию)."""
+
+    lecture = await _get_lecture_or_404(lecture_id, db)
+    _check_owner(lecture, user)
+
+    result = await db.execute(
+        select(LectureNote).where(
+            LectureNote.lecture_id == lecture_id,
+            LectureNote.mode == body.mode,
+        )
+    )
+    note = result.scalar_one_or_none()
+
+    if note:
+        note.content = body.content
+        note.created_at = datetime.utcnow()
+    else:
+        note = LectureNote(
+            lecture_id=lecture_id,
+            mode=body.mode,
+            content=body.content,
+        )
+        db.add(note)
+
+    await db.commit()
+    await db.refresh(note)
+    return note
+
+
+@router.delete("/{lecture_id}/notes/{note_id}", status_code=204)
+async def delete_lecture_note(
+    lecture_id: UUID,
+    note_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    lecture = await _get_lecture_or_404(lecture_id, db)
+    _check_owner(lecture, user)
+
+    result = await db.execute(
+        select(LectureNote).where(
+            LectureNote.id == note_id,
+            LectureNote.lecture_id == lecture_id,
+        )
+    )
+    note = result.scalar_one_or_none()
+    if not note:
+        raise HTTPException(status_code=404, detail="Заметка не найдена")
+
+    await db.delete(note)
+    await db.commit()

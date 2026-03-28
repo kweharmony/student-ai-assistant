@@ -21,7 +21,7 @@ export interface ScheduleItem {
   date: string;
 }
 
-export type ActiveSection = 'profile' | 'calendar' | 'transcriber' | 'text-processing' | 'admin';
+export type ActiveSection = 'profile' | 'calendar' | 'transcriber' | 'text-processing' | 'lectures' | 'admin';
 
 export const getFilterModalSurface = (isLightTheme: boolean) => isLightTheme
   ? {
