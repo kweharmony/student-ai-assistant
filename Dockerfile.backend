@@ -31,7 +31,8 @@ RUN mkdir -p /app/whisper_models
 EXPOSE 8000
 
 # Скрипт запуска: миграции + uvicorn
+# sed -i убирает Windows CRLF (частая проблема при разработке на Windows)
 COPY scripts/start.sh .
-RUN chmod +x start.sh
+RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 
 CMD ["./start.sh"]

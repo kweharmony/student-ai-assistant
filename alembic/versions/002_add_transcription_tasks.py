@@ -17,11 +17,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    task_status = postgresql.ENUM(
+    task_status_enum = postgresql.ENUM(
         "pending", "processing", "completed", "error", "failed",
         name="task_status",
+        create_type=False,
     )
-    task_status.create(op.get_bind())
+    task_status_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "transcription_tasks",
@@ -34,7 +35,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "status",
-            sa.Enum("pending", "processing", "completed", "error", "failed", name="task_status", create_type=False),
+            task_status_enum,
             nullable=False,
             server_default="pending",
         ),
