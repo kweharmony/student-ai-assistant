@@ -460,9 +460,7 @@ async def apply_ai_filter(
     try:
         from ml.transcription_filter import TranscriptionFilter
         fltr = TranscriptionFilter()
-        filtered = await asyncio.get_event_loop().run_in_executor(
-            None, fltr.filter_text, source_text
-        )
+        filtered = await fltr.filter_text_async(source_text, chunk_size=8000)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка фильтрации: {str(e)}")
 
