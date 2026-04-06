@@ -1,0 +1,6 @@
+# Форсируем LF для shell-скриптов (чтобы работали в Docker на Linux)
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Dockerfiles тоже лучше с LF
+Dockerfile* text eol=lf

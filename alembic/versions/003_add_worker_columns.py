@@ -16,10 +16,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("transcription_tasks", sa.Column("worker_name", sa.String(100), nullable=True))
-    op.add_column("transcription_tasks", sa.Column("last_heartbeat_at", sa.DateTime, nullable=True))
+    # Колонки worker_name и last_heartbeat_at уже созданы в миграции 002
+    pass
 
 
 def downgrade() -> None:
-    op.drop_column("transcription_tasks", "last_heartbeat_at")
-    op.drop_column("transcription_tasks", "worker_name")
+    # Ничего не делаем — колонки удалятся при downgrade 002
+    pass
