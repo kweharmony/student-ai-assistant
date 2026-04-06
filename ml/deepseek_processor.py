@@ -176,7 +176,7 @@ class DeepSeekProcessor:
             mode=mode
         )
         
-        config = PROCESSING_CONFIGS.get(mode, PROCESSING_CONFIGS['summarize'])
+        config = {**PROCESSING_CONFIGS.get(mode, PROCESSING_CONFIGS['summarize'])}
         config['max_tokens'] = max_tokens  # Применяем рассчитанный лимит
         
         result = await self._make_async_request(
