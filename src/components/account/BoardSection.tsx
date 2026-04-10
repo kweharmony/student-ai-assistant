@@ -338,7 +338,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
         <div style={{
           position: 'fixed',
           left: 12,
-          top: '62%',
+          top: '80%',
           transform: 'translateY(-50%)',
           zIndex: 300,
           display: 'flex',
