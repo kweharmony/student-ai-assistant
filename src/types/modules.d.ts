@@ -1,3 +1,13 @@
+declare module 'katex/contrib/auto-render' {
+  import { KatexOptions } from 'katex';
+  function renderMathInElement(elem: HTMLElement, options?: KatexOptions & {
+    delimiters?: Array<{ left: string; right: string; display: boolean }>;
+    ignoredTags?: string[];
+    throwOnError?: boolean;
+  }): void;
+  export default renderMathInElement;
+}
+
 declare module 'mammoth' {
   interface ExtractRawTextOptions {
     arrayBuffer: ArrayBuffer;

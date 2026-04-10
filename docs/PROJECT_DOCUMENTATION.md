@@ -8,12 +8,12 @@
 
 1. **🎙️ Транскрибация аудио** - Конвертация аудиозаписей лекций в текст (Whisper AI, локально)
 2. **🧹 AI-фильтрация** - Очистка транскрибированного текста от ошибок распознавания
-3. **📝 Создание конспектов** - Автоматическое структурирование материала
+3. **📝 Создание конспектов** - Автоматическое структурирование материала с поддержкой LaTeX-формул
 4. **📚 Извлечение терминов** - Список ключевых понятий с определениями
 5. **❓ Генерация вопросов** - Вопросы для самопроверки
 6. **🧾 Создание шпаргалок** - Компактные памятки для быстрого повторения
 7. **🔍 Расширенные конспекты** - Детальный разбор всех терминов
-8. **📄 Экспорт** - Сохранение в PDF, DOCX, TXT
+8. **📄 Экспорт** - Сохранение в PDF (с корректным рендером формул через Playwright), DOCX, TXT, Markdown
 
 ---
 
@@ -26,6 +26,7 @@
 │  │   Главная    │  │   Личный     │  │  Обработка   │      │
 │  │   страница   │  │   кабинет    │  │    текста    │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  KaTeX — рендер LaTeX-формул в браузере                     │
 └─────────────────────────────────────────────────────────────┘
                             ↕
 ┌─────────────────────────────────────────────────────────────┐
@@ -34,21 +35,24 @@
 │  │              API Endpoints                           │   │
 │  │  • /api/transcribe/*  - Транскрибация               │   │
 │  │  • /api/ml/*          - Обработка конспектов        │   │
+│  │  • /api/export/pdf    - Проксирование в pdf-service │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
-                            ↕
-┌─────────────────────────────────────────────────────────────┐
-│                     ML МОДУЛЬ (Python)                      │
-│  ┌──────────────────┐        ┌──────────────────┐          │
-│  │  Whisper AI      │        │  DeepSeek API     │          │
-│  │  (локально)      │        │  (via VseLLM)     │          │
-│  │                  │        │                  │          │
-│  │ • Транскрибация  │        │ • Фильтрация     │          │
-│  │   аудио          │        │ • Конспекты      │          │
-│  │                  │        │ • Термины        │          │
-│  └──────────────────┘        │ • Вопросы        │          │
-│                              └──────────────────┘          │
-└─────────────────────────────────────────────────────────────┘
+                      ↕               ↕
+┌──────────────────────────┐  ┌───────────────────────────────┐
+│     ML МОДУЛЬ (Python)   │  │  PDF SERVICE (Node.js)        │
+│  ┌────────────────────┐  │  │  • Express (порт 3001)        │
+│  │  Whisper AI        │  │  │  • marked.js (MD → HTML)      │
+│  │  (Worker Queue)    │  │  │  • KaTeX (рендер формул)      │
+│  └────────────────────┘  │  │  • Playwright + Chromium      │
+│  ┌────────────────────┐  │  │    (генерация PDF)            │
+│  │  DeepSeek API      │  │  └───────────────────────────────┘
+│  │  (via VseLLM)      │  │
+│  │ • Фильтрация       │  │
+│  │ • Конспекты        │  │
+│  │ • LaTeX-формулы    │  │
+│  └────────────────────┘  │
+└──────────────────────────┘
 ```
 
 ---
@@ -124,7 +128,9 @@ student-ai-assistant/
 │       ├── __init__.py
 │       ├── app.py                 # Главное FastAPI приложение
 │       ├── transcribe.py          # API транскрибации ⭐
-│       └── ml_endpoints.py        # API обработки конспектов ⭐
+│       ├── ml_endpoints.py        # API обработки конспектов ⭐
+│       └── routers/
+│           └── export.py          # Проксирование экспорта PDF в pdf-service ⭐
 │
 ├── 🤖 ML модуль (Python)
 │   └── ml/
@@ -136,6 +142,19 @@ student-ai-assistant/
 │       ├── transcription_filter.py # Фильтратор транскрибаций ⭐
 │       ├── filter_prompts.py      # Промпты для фильтрации
 │       └── profanity_filter.py    # Локальный фильтр нецензурной лексики
+│
+├── 📄 PDF Service (Node.js + Playwright)
+│   └── pdf-service/
+│       ├── server.js              # Express-сервер, генерация PDF через Playwright ⭐
+│       └── package.json           # Зависимости: express, marked, playwright
+│
+├── 🐳 Docker
+│   ├── Dockerfile.backend         # Multi-stage: builder (gcc) → runtime (ffmpeg)
+│   ├── Dockerfile.frontend        # Multi-stage: node:20-alpine → nginx:alpine
+│   ├── Dockerfile.pdf             # Multi-stage: npm install → Playwright + Chromium
+│   ├── docker-compose.yml         # 5 сервисов: db, backend, pdf-service, frontend, nginx
+│   └── nginx/
+│       └── default.conf           # Nginx: проксирование /api/ → backend, остальное → frontend
 │
 ├── 🧪 Скрипты
 │   ├── scripts/
@@ -173,6 +192,7 @@ student-ai-assistant/
 
 **UI компоненты:**
 - **TipTap 3.7.2:** расширяемый WYSIWYG редактор на базе ProseMirror
+- **KaTeX:** рендеринг LaTeX-математических формул в браузере (используется в режиме просмотра обработанного текста)
 - **Framer Motion 12.23.24:** библиотека анимаций
 
 **Стилизация:**
@@ -180,11 +200,12 @@ student-ai-assistant/
 - **PostCSS + Autoprefixer:** обработка CSS
 
 **Экспорт документов:**
-- **jsPDF 3.0.3:** генерация PDF
+- **jsPDF 3.0.3:** генерация PDF (fallback для обычного текста)
 - **pdfmake 0.2.20:** создание PDF с форматированием
 - **docx 8.5.0:** создание DOCX файлов
 - **html-docx-js 0.3.1:** конвертация HTML в DOCX
 - **file-saver 2.0.5:** сохранение файлов на клиенте
+- **Server-side PDF (приоритет):** для обработанного текста с LaTeX — запрос к `/api/export/pdf`, где Playwright рендерит страницу с KaTeX и генерирует PDF
 
 **Парсинг документов:**
 - **mammoth 1.11.0:** чтение DOCX
@@ -281,10 +302,11 @@ WYSIWYG редактор на базе TipTap для работы с консп�
 - Заголовки (H1-H3)
 - Списки (маркированные, нумерованные)
 - Цитаты
-- Блоки кода
+- Блоки кода (только для программного кода, не для формул)
 - Ссылки
 - Таблицы
 - Отмена/повтор действий
+- **Рендеринг LaTeX-формул через KaTeX** (в режиме просмотра обработанного текста)
 
 **Архитектура:**
 ```typescript
@@ -307,9 +329,46 @@ const editor = useEditor({
 });
 ```
 
+**Двухрежимное отображение:**
+
+В режиме `processed` (обработанный AI текст) TipTap заменяется read-only `<div>` с KaTeX-рендером. Это обходит ограничение ProseMirror, который sanitizes DOM и удалял бы KaTeX `<span>` элементы.
+
+```tsx
+// Режим просмотра обработанного текста — отдельный div с KaTeX
+{showModeSwitcher && currentMode === 'processed' ? (
+  <div
+    ref={katexRef}
+    className="prose max-w-none"
+    dangerouslySetInnerHTML={{ __html: processedText || '' }}
+  />
+) : (
+  <EditorContent editor={editor} ... />
+)}
+```
+
+KaTeX применяется через `renderMathInElement` из `katex/contrib/auto-render`:
+```typescript
+useEffect(() => {
+  if (currentMode === 'processed' && katexRef.current) {
+    import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
+      renderMathInElement(katexRef.current!, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\[', right: '\\]', display: true },
+          { left: '\\(', right: '\\)', display: false },
+        ],
+        throwOnError: false,
+      });
+    });
+  }
+}, [currentMode, processedText]);
+```
+
 **Особенности:**
 - Синхронизация состояния активных форматов
 - Переключение между исходным и обработанным текстом
+- TipTap используется только для редактирования исходного текста
 - Экспорт в HTML формате
 - Кастомная панель инструментов
 - Адаптивный дизайн панели инструментов
@@ -541,16 +600,20 @@ const exportToTxt = (options = {}) => {
 ```
 
 2. **Markdown:**
+
+Для обработанного AI текста экспортируется `rawMarkdown` — оригинальный Markdown от LLM с LaTeX-нотацией (`$...$`, `$$...$$`). Это позволяет корректно открывать файл в Obsidian, VS Code, GitHub.
+
 ```typescript
-const exportToMarkdown = (options = {}) => {
-  const html = editor.getHTML();
-  const markdown = htmlToMarkdown(html);
-  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
-  downloadFile(blob, filename);
-};
+case 'md':
+  if (editorMode === 'processed' && rawMarkdown) {
+    saveAs(new Blob([rawMarkdown], { type: 'text/markdown;charset=utf-8' }), `${filename}.md`);
+  } else {
+    exportToMarkdown({ filename: `${filename}.md` });
+  }
+  break;
 ```
 
-**Конвертация HTML → Markdown:**
+**Конвертация HTML → Markdown (для режима редактирования):**
 - `<h1>` → `# `
 - `<strong>` → `**text**`
 - `<em>` → `*text*`
@@ -573,29 +636,33 @@ const exportToDocx = async (options = {}) => {
 ```
 
 4. **PDF:**
+
+**Приоритетный путь (для обработанного AI текста с LaTeX):** запрос к серверному `/api/export/pdf`, который проксирует в `pdf-service`. Playwright рендерит страницу с KaTeX из CDN, затем генерирует PDF — формулы выглядят точно так же, как в браузере.
+
 ```typescript
-const exportToPdf = async (options = {}) => {
-  const html = editor.getHTML();
-  
-  // Конвертация HTML структуры в pdfmake формат
-  const docDefinition = {
-    content: convertHtmlToPdfMake(html),
-    defaultStyle: { font: 'Roboto', fontSize: 12 },
-    styles: {
-      header: { fontSize: 18, bold: true },
-      subheader: { fontSize: 14, bold: true }
+case 'pdf':
+  if (editorMode === 'processed' && rawMarkdown) {
+    const resp = await fetch('/api/export/pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ markdown: rawMarkdown }),
+    });
+    if (resp.ok) {
+      const blob = await resp.blob();
+      saveAs(blob, `${filename}.pdf`);
+    } else {
+      await exportToPdf({ filename: `${filename}.pdf` }); // fallback
     }
-  };
-  
-  pdfMake.createPdf(docDefinition).download(filename);
-};
+  }
 ```
 
+**Fallback (для обычного текста без LaTeX):** pdfmake с шрифтом Roboto для поддержки кириллицы.
+
 **Особенности PDF экспорта:**
-- Поддержка кириллицы через шрифт Roboto
-- Конвертация HTML структуры в pdfmake формат
+- Серверный рендер: Playwright + Chromium + KaTeX — гарантированно корректный вид формул
+- Поддержка кириллицы
 - Сохранение форматирования (заголовки, списки, стили)
-- Fallback на jsPDF при недоступности pdfMake
+- Fallback на pdfmake/jsPDF при недоступности pdf-service
 
 ### 🧠 Управление состоянием
 
@@ -962,7 +1029,9 @@ api/
 ├── __init__.py           # Инициализация пакета
 ├── app.py                # Главный файл приложения, конфигурация FastAPI
 ├── ml_endpoints.py       # REST API endpoints для обработки текста
-└── transcribe.py         # Endpoints транскрибации
+├── transcribe.py         # Endpoints транскрибации
+└── routers/
+    └── export.py         # POST /api/export/pdf — проксирование в pdf-service
 ```
 
 ### 🏗️ Основные модули
@@ -1009,6 +1078,7 @@ app.include_router(transcribe_router)
 **Подключение роутеров:**
 - `ml_endpoints.router` - обработка текстовых данных
 - `transcribe_router` - транскрибация аудио
+- `export_router` — экспорт PDF (проксирование в pdf-service)
 
 #### `ml_endpoints.py` - API обработки текста
 
@@ -1160,6 +1230,47 @@ async def process_text(request: ProcessRequest):
   }
 }
 ```
+
+#### `api/routers/export.py` - Экспорт PDF ⭐
+
+**Назначение:** принять Markdown с LaTeX-формулами от фронтенда и делегировать рендеринг PDF в `pdf-service`.
+
+**Endpoint:**
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| POST | `/api/export/pdf` | Генерация PDF из Markdown |
+
+**Модель запроса:**
+```python
+class PdfExportRequest(BaseModel):
+    markdown: str
+```
+
+**Логика:**
+```python
+PDF_SERVICE_URL = os.getenv("PDF_SERVICE_URL", "http://pdf-service:3001")
+
+@router.post("/pdf")
+async def export_pdf(request: PdfExportRequest):
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            f"{PDF_SERVICE_URL}/render-pdf",
+            json={"markdown": request.markdown},
+        )
+    return StreamingResponse(
+        io.BytesIO(resp.content),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=document.pdf"},
+    )
+```
+
+**Обработка ошибок:**
+- `503` — pdf-service недоступен (`httpx.ConnectError`)
+- `504` — pdf-service не ответил вовремя (`httpx.TimeoutException`)
+- `502` — pdf-service вернул ошибку (не HTTP 200)
+
+---
 
 ### 🔒 Безопасность
 
@@ -1411,6 +1522,19 @@ results = processor.batch_process("Текст...", ['summarize', 'extract_terms'
 | `detailed_notes` | Расширенный конспект (2-3x больше) | 0.3 | 4096 | 60-90с |
 | `cheat_sheet` | Компактная шпаргалка | 0.2 | 3000 | 20-30с |
 
+**Правило оформления формул (важно!):**
+
+В системном промпте (`SYSTEM_PROMPT`) и во всех промптах обработки установлено явное требование:
+
+```
+Используй LaTeX-нотацию для математических формул:
+  $формула$   — для инлайн-формул
+  $$формула$$ — для блочных выражений (на отдельной строке)
+Блоки кода (```) используй ТОЛЬКО для программного кода (Python, C++, SQL, псевдокод)
+```
+
+Это гарантирует, что LLM выдаёт `$E = mc^2$` вместо ````E = mc^2```` — иначе KaTeX не отрендерит формулу.
+
 **Пример промпта (ml/prompts.py):**
 ```python
 SUMMARIZE_PROMPT = """
@@ -1424,6 +1548,7 @@ SUMMARIZE_PROMPT = """
 3. Структурируй по разделам
 4. Выдели важные моменты
 5. Добавь итоговые выводы
+6. Используй LaTeX ($...$) для математических формул
 
 ФОРМАТ ОТВЕТА:
 # 📚 [Название темы]
@@ -2061,7 +2186,107 @@ REACT_APP_API_URL=http://localhost:8000
 
 ---
 
-## 🚀 Запуск проекта
+## 🐳 Docker — развёртывание
+
+### Архитектура контейнеров
+
+Проект состоит из **5 сервисов** (`docker-compose.yml`):
+
+| Сервис | Образ | Порт | Назначение |
+|--------|-------|------|-----------|
+| `db` | postgres:16-alpine | — (внутренний) | PostgreSQL |
+| `backend` | Dockerfile.backend | 8000 (внутренний) | FastAPI + Whisper |
+| `pdf-service` | Dockerfile.pdf | 3001 (внутренний) | Node.js + Playwright PDF |
+| `frontend` | Dockerfile.frontend | 80 (внутренний) | Собранный React → nginx |
+| `nginx` | nginx:alpine | **80 → external** | Точка входа, прокси |
+
+Внешний трафик принимает только **nginx** на порту 80.
+
+### Multi-stage сборки
+
+Все образы используют multi-stage для уменьшения размера итогового образа:
+
+**Dockerfile.backend** (Python):
+```dockerfile
+# Stage 1: builder — компиляция C-расширений (asyncpg, bcrypt)
+FROM python:3.12-slim AS builder
+RUN apt-get install -y gcc libpq-dev
+RUN python -m venv /venv && /venv/bin/pip install -r requirements.txt
+
+# Stage 2: runtime — только ffmpeg + libpq5 (без gcc/libpq-dev)
+FROM python:3.12-slim
+RUN apt-get install -y ffmpeg libpq5
+COPY --from=builder /venv /venv
+ENV PATH="/venv/bin:$PATH"
+```
+
+**Dockerfile.pdf** (Node.js + Playwright):
+```dockerfile
+# Stage 1: deps — npm install в чистом окружении
+FROM node:20-slim AS deps
+RUN npm install --omit=dev
+
+# Stage 2: runtime — Chromium через playwright install
+FROM node:20-slim
+COPY --from=deps /app/node_modules ./node_modules
+RUN ./node_modules/.bin/playwright install --with-deps chromium
+COPY pdf-service/server.js .
+```
+
+**Dockerfile.frontend** (React → nginx):
+```dockerfile
+# Stage 1: build — Node.js компилирует React (npm run build)
+FROM node:20-alpine AS build
+RUN npm install && npm run build
+
+# Stage 2: nginx — раздача статики
+FROM nginx:alpine
+COPY --from=build /app/build /usr/share/nginx/html
+```
+
+### Запуск через Docker Compose
+
+```bash
+# Сборка и запуск всех сервисов
+docker compose up --build
+
+# Запуск в фоне
+docker compose up --build -d
+
+# Просмотр логов
+docker compose logs -f backend
+docker compose logs -f pdf-service
+
+# Остановка
+docker compose down
+```
+
+### Переменные окружения для Docker
+
+```bash
+# .env (корень проекта)
+POSTGRES_USER=mindesync
+POSTGRES_PASSWORD=mindesync_secret
+POSTGRES_DB=mindesync
+
+DEEPSEEK_API_KEY=vsellm_your_api_key
+DEEPSEEK_BASE_URL=https://api.vsellm.ru/v1
+
+WORKER_API_KEYS=Sol PC:ключ1
+
+# PDF_SERVICE_URL автоматически задаётся в docker-compose.yml:
+# PDF_SERVICE_URL=http://pdf-service:3001
+```
+
+### Healthcheck и зависимости
+
+- `backend` стартует только после `db` (healthy) и `pdf-service` (healthy)
+- `pdf-service` healthcheck: `node -e "require('http').get('http://localhost:3001/health', ...)"` — проверяет `/health` эндпоинт
+- `backend` healthcheck: `urllib.request.urlopen('http://localhost:8000/api/auth/me')` — достаточно получить любой HTTP-ответ
+
+---
+
+## 🚀 Запуск проекта (локально без Docker)
 
 ### Требования
 
@@ -2252,29 +2477,30 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 
 # Обработка данных
-pydantic==2.9.0
+pydantic[email]==2.9.0
 python-dotenv==1.0.0
 python-multipart==0.0.6
-aiofiles==23.2.1
+aiofiles==24.1.0
 
-# Транскрибация
-openai-whisper
-ffmpeg-python
-torch
-torchaudio
-tqdm
-requests
+# Локальная транскрибация (Whisper от OpenAI)
+openai-whisper>=20231117
 
-# Для работы с документами
-PyPDF2==3.0.1
-python-docx==0.8.11
+# PostgreSQL + ORM
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.1
 
-# Тестирование
-pytest==7.4.0
-httpx==0.25.0
+# Аутентификация
+bcrypt>=4.0.0
+python-jose[cryptography]==3.3.0
+
+# HTTP-клиент для обращения к pdf-service
+httpx>=0.27.0
 ```
 
-### Node.js (package.json)
+> **Примечание:** `playwright` удалён из Python-зависимостей — Playwright перенесён в отдельный `pdf-service` контейнер (Node.js).
+
+### Node.js — Frontend (package.json, ключевые зависимости)
 
 ```json
 {
@@ -2287,12 +2513,37 @@ httpx==0.25.0
     "@tiptap/extension-underline": "^2.1.13",
     "@tiptap/extension-link": "^2.1.13",
     "@tiptap/extension-table": "^2.1.13",
+    "katex": "^0.16.x",
     "framer-motion": "^10.16.5",
+    "file-saver": "^2.0.5",
+    "marked": "^16.x",
     "tailwindcss": "^3.3.5",
     "typescript": "^4.9.5"
   }
 }
 ```
+
+### Node.js — PDF Service (pdf-service/package.json)
+
+```json
+{
+  "name": "pdf-service",
+  "version": "1.0.0",
+  "dependencies": {
+    "express": "^4.19.2",
+    "marked": "^13.0.0",
+    "playwright": "^1.44.0"
+  }
+}
+```
+
+**Как работает pdf-service (`pdf-service/server.js`):**
+1. `POST /render-pdf` принимает `{ markdown: string }`
+2. `marked.parse()` конвертирует Markdown → HTML
+3. Playwright запускает Chromium, загружает HTML-страницу с KaTeX CDN (`waitUntil: 'networkidle'` — ждёт загрузки шрифтов KaTeX)
+4. `page.pdf({ format: 'A4', printBackground: true })` генерирует PDF
+5. PDF возвращается как бинарный ответ, браузер закрывается
+6. `GET /health` возвращает `{ status: 'ok' }` (для Docker healthcheck)
 
 ---
 
@@ -2662,7 +2913,7 @@ MIT License
 - ✅ Профиль пользователя
 - ✅ Админ-панель (управление пользователями, очередь задач)
 
-### v1.2 ✅ (текущая версия)
+### v1.2 ✅
 - ✅ Распределённая система транскрибации (Worker Queue)
 - ✅ Системный трей для управления воркером (pystray)
 - ✅ Поддержка CUDA / GPU ускорение в воркере
@@ -2671,6 +2922,14 @@ MIT License
 - ✅ Сохранение текста лекции в БД из редактора
 - ✅ Повторная транскрибация лекций
 - ✅ Мониторинг воркеров в Админ-панели
+
+### v1.3 ✅ (текущая версия)
+- ✅ **LaTeX-рендеринг** — KaTeX в браузере для отображения математических формул в обработанном тексте
+- ✅ **Исправление промптов** — LLM теперь использует `$...$` / `$$...$$` вместо блоков кода для формул
+- ✅ **Серверный PDF-экспорт** — отдельный `pdf-service` (Node.js + Playwright + Chromium) корректно рендерит LaTeX в PDF
+- ✅ **Корректный Markdown-экспорт** — сохраняется оригинальный `rawMarkdown` с LaTeX-нотацией (работает в Obsidian, VS Code, GitHub)
+- ✅ **Multi-stage Docker-сборки** — оптимизированные образы для backend (Python venv) и pdf-service (Playwright Chromium)
+- ✅ **5-контейнерная Docker-архитектура** — db, backend, pdf-service, frontend, nginx
 
 ### v2.0 (Будущее)
 - 📋 База знаний (RAG) для ответов на вопросы по лекциям
@@ -2681,6 +2940,6 @@ MIT License
 
 ---
 
-**Версия документации:** 1.2
-**Дата обновления:** 29 марта 2026
+**Версия документации:** 1.3
+**Дата обновления:** 10 апреля 2026
 **Статус:** ✅ Актуальная

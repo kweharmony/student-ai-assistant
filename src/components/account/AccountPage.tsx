@@ -249,6 +249,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         throw new Error('Фильтрация не удалась');
       }
     } catch (error: any) {
+      // Обрыв запроса при обновлении/уходе со страницы — не показываем ошибку
+      if (error?.name === 'AbortError' || error?.message === 'Failed to fetch') {
+        return;
+      }
       console.error('Ошибка фильтрации:', error);
       alert('Ошибка AI-фильтрации. Текст будет вставлен без обработки.');
 

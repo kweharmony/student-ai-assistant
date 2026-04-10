@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import HardBreak from '@tiptap/extension-hard-break';
 import CodeBlock from '@tiptap/extension-code-block';
+import 'katex/dist/katex.min.css';
 import './RichTextEditor.css';
 
 interface RichTextEditorProps {
@@ -29,6 +30,25 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   isProcessing = false
 }) => {
   // Состояние для отслеживания активных форматов
+  const katexRef = useRef<HTMLDivElement>(null);
+
+  // Рендеринг LaTeX-формул в режиме обработанного текста
+  useEffect(() => {
+    if (currentMode === 'processed' && katexRef.current) {
+      import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
+        renderMathInElement(katexRef.current!, {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false },
+            { left: '\\[', right: '\\]', display: true },
+            { left: '\\(', right: '\\)', display: false },
+          ],
+          throwOnError: false,
+        });
+      });
+    }
+  }, [currentMode, processedText]);
+
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
     italic: false,
@@ -112,15 +132,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
   }, [editor, initialContent]);
 
-  // Логика переключения между исходным и обработанным текстом
+  // При переключении на оригинал — восстанавливаем в TipTap
   useEffect(() => {
-    if (editor && showModeSwitcher) {
-      const contentToShow = currentMode === 'original' ? originalText : processedText;
-      if (contentToShow) {
-        editor.commands.setContent(contentToShow);
+    if (editor && showModeSwitcher && currentMode === 'original') {
+      if (originalText) {
+        editor.commands.setContent(originalText);
       }
     }
-  }, [editor, currentMode, originalText, processedText, showModeSwitcher]);
+  }, [editor, currentMode, originalText, showModeSwitcher]);
 
 
   if (!editor) {
@@ -197,26 +216,42 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       <div className="flex flex-col md:flex-row h-[500px] md:h-[600px] w-full">
         {/* Область редактирования */}
         <div className="flex-1 md:flex-1 flex flex-col overflow-hidden w-full">
-          <div 
+          <div
             className="editor-container flex-1 p-4 md:p-8 bg-transparent border rounded-lg md:rounded-l-lg overflow-y-auto w-full"
-            style={{ 
+            style={{
               borderColor: 'var(--border-color)',
               background: 'var(--bg-primary)',
               maxHeight: '100%'
             }}
           >
-            <EditorContent 
-              editor={editor}
-              style={{
-                color: 'var(--text-primary)',
-                lineHeight: '1.4',
-                fontFamily: 'Georgia, Times New Roman, serif',
-                outline: 'none',
-                whiteSpace: 'pre-wrap',
-                fontSize: '16px',
-                width: '100%'
-              }}
-            />
+            {showModeSwitcher && currentMode === 'processed' ? (
+              /* Режим обработанного текста: read-only div с KaTeX-рендерингом */
+              <div
+                ref={katexRef}
+                className="prose max-w-none"
+                style={{
+                  color: 'var(--text-primary)',
+                  lineHeight: '1.6',
+                  fontFamily: 'Georgia, Times New Roman, serif',
+                  fontSize: '16px',
+                  width: '100%',
+                }}
+                dangerouslySetInnerHTML={{ __html: processedText || '' }}
+              />
+            ) : (
+              <EditorContent
+                editor={editor}
+                style={{
+                  color: 'var(--text-primary)',
+                  lineHeight: '1.4',
+                  fontFamily: 'Georgia, Times New Roman, serif',
+                  outline: 'none',
+                  whiteSpace: 'pre-wrap',
+                  fontSize: '16px',
+                  width: '100%'
+                }}
+              />
+            )}
           </div>
         </div>
 

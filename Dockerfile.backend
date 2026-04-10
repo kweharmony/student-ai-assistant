@@ -1,37 +1,58 @@
 # ============================================================
-# MindeSync Backend — Python 3.12 + FastAPI + Whisper (CPU)
+# MindeSync Backend — multi-stage build
+#
+# Stage 1 (builder): компилируем C-расширения (asyncpg, bcrypt...)
+#                    с полным набором build-tools
+# Stage 2 (runtime): копируем только venv и код — без gcc/libpq-dev
 # ============================================================
-FROM python:3.12-slim
 
-# Системные зависимости: ffmpeg (для Whisper), gcc (для сборки пакетов)
+# ---------- Stage 1: builder ----------
+FROM python:3.12-slim AS builder
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ffmpeg \
         gcc \
         libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Сначала копируем только requirements.txt — кэширование слоёв Docker
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем код приложения
+# Устанавливаем зависимости в изолированный venv
+RUN python -m venv /venv
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /venv/bin/pip install -r requirements.txt
+
+# ---------- Stage 2: runtime ----------
+FROM python:3.12-slim
+
+# Только runtime-зависимости (не -dev пакеты):
+#   ffmpeg  — для Whisper (обработка аудио)
+#   libpq5  — runtime-lib PostgreSQL (без заголовков)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем готовый venv из builder-стадии
+COPY --from=builder /venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+WORKDIR /app
+
 COPY api/ ./api/
 COPY ml/ ./ml/
 COPY scripts/ ./scripts/
 COPY alembic/ ./alembic/
 COPY alembic.ini .
 
-# Директория для Whisper-моделей (монтируется как volume)
 ENV WHISPER_CACHE_DIR=/app/whisper_models
 RUN mkdir -p /app/whisper_models
 
 EXPOSE 8000
 
-# Скрипт запуска: миграции + uvicorn
-# sed -i убирает Windows CRLF (частая проблема при разработке на Windows)
 COPY scripts/start.sh .
 RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 

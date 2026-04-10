@@ -1,0 +1,34 @@
+# ============================================================
+# MindeSync PDF Service — multi-stage build
+#
+# Stage 1 (deps):    npm ci в чистом окружении
+# Stage 2 (runtime): копируем node_modules, устанавливаем Chromium
+# ============================================================
+
+# ---------- Stage 1: deps ----------
+FROM node:20-slim AS deps
+
+WORKDIR /app
+
+COPY pdf-service/package.json pdf-service/package-lock.json* ./
+# --omit=dev — только production-зависимости
+RUN npm install --omit=dev
+
+# ---------- Stage 2: runtime ----------
+FROM node:20-slim
+
+WORKDIR /app
+
+# Копируем установленные пакеты из stage 1
+COPY --from=deps /app/node_modules ./node_modules
+
+# Playwright: скачиваем Chromium + все системные зависимости (libnss3, libatk, и т.д.)
+# --with-deps автоматически запускает apt-get для нужных системных либ
+RUN ./node_modules/.bin/playwright install --with-deps chromium
+
+# Копируем исходник сервиса
+COPY pdf-service/server.js .
+
+EXPOSE 3001
+
+CMD ["node", "server.js"]

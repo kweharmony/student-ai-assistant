@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { saveAs } from 'file-saver';
 import RichTextEditor from '../RichTextEditor';
 import { useExport } from '../../hooks/useExport';
 import { useMLProcessor } from '../../hooks/useMLProcessor';
@@ -92,6 +93,8 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [showEditorHelp, setShowEditorHelp] = useState(false);
+  // Исходный Markdown от LLM (до конвертации в HTML) — нужен для MD-экспорта и PDF
+  const [rawMarkdown, setRawMarkdown] = useState('');
 
   // Хук для экспорта
   const { exportToTxt, exportToMarkdown, exportToDocx, exportToPdf } = useExport(editorInstance);
@@ -248,7 +251,9 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
       );
 
       if (processedTextResult) {
-        // Сохраняем обработанный текст
+        // Сохраняем исходный Markdown для экспорта
+        setRawMarkdown(processedTextResult);
+        // Конвертируем в HTML для отображения
         const htmlContent = convertMarkdownToHTML(processedTextResult);
         setProcessedText(htmlContent);
 
@@ -668,13 +673,34 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
                         exportToTxt({ filename: `${filename}.txt` });
                         break;
                       case 'md':
-                        exportToMarkdown({ filename: `${filename}.md` });
+                        // Экспортируем исходный Markdown от LLM (с правильными $$...$$)
+                        if (editorMode === 'processed' && rawMarkdown) {
+                          saveAs(new Blob([rawMarkdown], { type: 'text/markdown;charset=utf-8' }), `${filename}.md`);
+                        } else {
+                          exportToMarkdown({ filename: `${filename}.md` });
+                        }
                         break;
                       case 'docx':
                         await exportToDocx({ filename: `${filename}.docx` });
                         break;
                       case 'pdf':
-                        await exportToPdf({ filename: `${filename}.pdf` });
+                        // Для обработанного текста — серверный рендеринг через Playwright
+                        if (editorMode === 'processed' && rawMarkdown) {
+                          const resp = await fetch('/api/export/pdf', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ markdown: rawMarkdown }),
+                          });
+                          if (resp.ok) {
+                            const blob = await resp.blob();
+                            saveAs(blob, `${filename}.pdf`);
+                          } else {
+                            // Fallback на клиентский экспорт
+                            await exportToPdf({ filename: `${filename}.pdf` });
+                          }
+                        } else {
+                          await exportToPdf({ filename: `${filename}.pdf` });
+                        }
                         break;
                       default:
                         exportToTxt({ filename: `${filename}.txt` });

@@ -1,0 +1,17 @@
+{
+  "name": "pdf-service",
+  "version": "1.0.0",
+  "description": "MindeSync PDF rendering service — Playwright + KaTeX",
+  "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "marked": "^13.0.0",
+    "playwright": "^1.44.0"
+  }
+}
