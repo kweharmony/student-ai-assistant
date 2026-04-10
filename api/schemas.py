@@ -88,6 +88,11 @@ class UserUpdateRequest(BaseModel):
     academic_degree: Optional[str] = Field(None, max_length=100)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+
 # ==================== Lectures ====================
 
 class LectureCreateRequest(BaseModel):
@@ -254,6 +259,7 @@ class AdminUserOut(UserOut):
     is_deleted: bool = False
     blocked_reason: Optional[str] = None
     blocked_at: Optional[datetime] = None
+    lecture_count: int = 0
 
 
 class AdminActionOut(BaseModel):

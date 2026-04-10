@@ -10,9 +10,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import hash_password, verify_password
 from ..dependencies import get_current_user, get_db
 from ..models import User
-from ..schemas import UserOut, UserUpdateRequest
+from ..schemas import ChangePasswordRequest, UserOut, UserUpdateRequest
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -61,6 +62,19 @@ async def update_my_profile(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.post("/me/password", status_code=204)
+async def change_password(
+    body: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Изменить свой пароль."""
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Неверный текущий пароль")
+    user.password_hash = hash_password(body.new_password)
+    await db.commit()
 
 
 @router.post("/me/avatar", response_model=UserOut)

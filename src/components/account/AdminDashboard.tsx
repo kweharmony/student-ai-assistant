@@ -25,6 +25,9 @@ interface AdminUser {
   blocked_at: string | null;
   created_at: string;
   last_login_at: string | null;
+  lecture_count: number;
+  student_profile: { group_name: string | null; course: number | null; faculty: string | null } | null;
+  teacher_profile: { department: string | null; position: string | null; academic_degree: string | null } | null;
 }
 
 interface QueueFile {
@@ -71,9 +74,25 @@ const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Filters
+  const [filterRole, setFilterRole] = useState<string>('');
+  const [filterGroup, setFilterGroup] = useState('');
+  const [filterSearch, setFilterSearch] = useState('');
+
+  // Lecture filters
+  const [lectureSearch, setLectureSearch] = useState('');
+  const [lectureSubject, setLectureSubject] = useState('');
+  const [lectureStatus, setLectureStatus] = useState('');
+  const [lectureDateFrom, setLectureDateFrom] = useState('');
+  const [lectureDateTo, setLectureDateTo] = useState('');
+  const [lectureUploader, setLectureUploader] = useState('');
+
   // Block modal
   const [blockModal, setBlockModal] = useState<{ userId: string; login: string } | null>(null);
   const [blockReason, setBlockReason] = useState('');
+
+  // Delete modal
+  const [deleteModal, setDeleteModal] = useState<{ userId: string; login: string } | null>(null);
 
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -118,10 +137,20 @@ const AdminDashboard: React.FC = () => {
     setLoading(false);
   }, [token]);
 
-  const fetchLectures = useCallback(async () => {
+  const fetchLectures = useCallback(async (filters?: {
+    search?: string; subject?: string; status?: string;
+    dateFrom?: string; dateTo?: string; uploader?: string;
+  }) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/lectures?limit=200`, { headers });
+      const params = new URLSearchParams({ limit: '200' });
+      if (filters?.search) params.set('search', filters.search);
+      if (filters?.subject) params.set('subject', filters.subject);
+      if (filters?.status) params.set('status', filters.status);
+      if (filters?.dateFrom) params.set('date_from', filters.dateFrom);
+      if (filters?.dateTo) params.set('date_to', filters.dateTo);
+      if (filters?.uploader) params.set('uploader_search', filters.uploader);
+      const res = await fetch(`${API_BASE}/api/admin/lectures?${params}`, { headers });
       if (!res.ok) throw new Error('Ошибка загрузки лекций');
       setLectures(await res.json());
     } catch (e: any) { setError(e.message); }
@@ -136,7 +165,7 @@ const AdminDashboard: React.FC = () => {
     if (activeTab === 'users') fetchUsers();
     if (activeTab === 'queue') fetchQueue();
     if (activeTab === 'workers') fetchWorkers();
-    if (activeTab === 'lectures') fetchLectures();
+    if (activeTab === 'lectures') fetchLectures({});
   }, [activeTab, fetchUsers, fetchQueue, fetchWorkers, fetchLectures]);
 
   // Actions
@@ -165,6 +194,36 @@ const AdminDashboard: React.FC = () => {
       fetchStats();
     } catch (e: any) { setError(e.message); }
   };
+
+  const handleDelete = async () => {
+    if (!deleteModal) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${deleteModal.userId}`, {
+        method: 'DELETE', headers,
+      });
+      if (!res.ok) throw new Error('Ошибка удаления');
+      setDeleteModal(null);
+      fetchUsers();
+      fetchStats();
+    } catch (e: any) { setError(e.message); }
+  };
+
+  const filteredUsers = users.filter(u => {
+    if (filterRole && u.role !== filterRole) return false;
+    if (filterGroup) {
+      const g = u.student_profile?.group_name?.toLowerCase() || '';
+      if (!g.includes(filterGroup.toLowerCase())) return false;
+    }
+    if (filterSearch) {
+      const s = filterSearch.toLowerCase();
+      const match =
+        u.login.toLowerCase().includes(s) ||
+        u.email.toLowerCase().includes(s) ||
+        (u.full_name?.toLowerCase().includes(s) ?? false);
+      if (!match) return false;
+    }
+    return true;
+  });
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '—';
@@ -244,7 +303,7 @@ const AdminDashboard: React.FC = () => {
             { label: 'Лекций', value: stats.lectures.total },
             { label: 'Аудиофайлов', value: stats.audio.total },
             { label: 'Транскрипций', value: stats.transcriptions.total },
-            { label: 'В очереди', value: stats.queue.files, sub: `${stats.queue.size_mb} МБ` },
+            { label: 'В очереди', value: stats.queue.files, sub: 'ожидают + обрабатываются' },
           ].map((card, i) => (
             <div key={i} className="border rounded-xl p-4 md:p-5" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
               <div className="text-2xl md:text-3xl font-light mb-1" style={{ color: card.warn ? '#ef4444' : 'var(--text-primary)' }}>
@@ -259,73 +318,140 @@ const AdminDashboard: React.FC = () => {
 
       {/* ==================== Users ==================== */}
       {activeTab === 'users' && (
-        <div className="space-y-3">
-          {loading ? (
-            <p className="text-center opacity-60 py-8" style={{ color: 'var(--text-secondary)' }}>Загрузка...</p>
-          ) : users.length === 0 ? (
-            <p className="text-center opacity-60 py-8" style={{ color: 'var(--text-secondary)' }}>Нет пользователей</p>
-          ) : (
-            users.map(user => (
-              <div
-                key={user.id}
-                className="border rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-3"
-                style={{
-                  borderColor: !user.is_active ? 'rgba(239,68,68,0.3)' : 'var(--border-color)',
-                  background: !user.is_active ? 'rgba(239,68,68,0.05)' : 'transparent',
-                }}
+        <div>
+          {/* Filters */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            <select
+              value={filterRole}
+              onChange={e => setFilterRole(e.target.value)}
+              className="text-xs px-3 py-2 rounded-lg border"
+              style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+            >
+              <option value="">Все роли</option>
+              <option value="student">Студенты</option>
+              <option value="teacher">Преподаватели</option>
+              <option value="admin">Администраторы</option>
+            </select>
+            <input
+              type="text"
+              value={filterGroup}
+              onChange={e => setFilterGroup(e.target.value)}
+              placeholder="Группа (напр. ИС-21)"
+              className="text-xs px-3 py-2 rounded-lg border"
+              style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', width: 160 }}
+            />
+            <input
+              type="text"
+              value={filterSearch}
+              onChange={e => setFilterSearch(e.target.value)}
+              placeholder="Поиск по логину, email, имени..."
+              className="text-xs px-3 py-2 rounded-lg border flex-1 min-w-40"
+              style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+            />
+            {(filterRole || filterGroup || filterSearch) && (
+              <button
+                onClick={() => { setFilterRole(''); setFilterGroup(''); setFilterSearch(''); }}
+                className="text-xs px-3 py-2 rounded-lg border"
+                style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
               >
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{user.login}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: roleBadgeColor(user.role), color: 'var(--text-primary)' }}>
-                      {roleLabel(user.role)}
-                    </span>
-                    {!user.is_active && (
-                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
-                        Заблокирован
+                Сбросить
+              </button>
+            )}
+          </div>
+
+          <p className="text-xs opacity-40 mb-3" style={{ color: 'var(--text-secondary)' }}>
+            Показано: {filteredUsers.length} из {users.length}
+          </p>
+
+          <div className="space-y-3">
+            {loading ? (
+              <p className="text-center opacity-60 py-8" style={{ color: 'var(--text-secondary)' }}>Загрузка...</p>
+            ) : filteredUsers.length === 0 ? (
+              <p className="text-center opacity-60 py-8" style={{ color: 'var(--text-secondary)' }}>Нет пользователей</p>
+            ) : (
+              filteredUsers.map(user => (
+                <div
+                  key={user.id}
+                  className="border rounded-xl p-4 flex flex-col md:flex-row md:items-start gap-3"
+                  style={{
+                    borderColor: !user.is_active ? 'rgba(239,68,68,0.3)' : 'var(--border-color)',
+                    background: !user.is_active ? 'rgba(239,68,68,0.05)' : 'transparent',
+                  }}
+                >
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{user.login}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: roleBadgeColor(user.role), color: 'var(--text-primary)' }}>
+                        {roleLabel(user.role)}
                       </span>
+                      {!user.is_active && (
+                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                          Заблокирован
+                        </span>
+                      )}
+                      <span className="text-xs opacity-50 ml-auto" style={{ color: 'var(--text-secondary)' }}>
+                        {user.lecture_count} лекц.
+                      </span>
+                    </div>
+                    <div className="text-xs opacity-60 mt-1" style={{ color: 'var(--text-secondary)' }}>
+                      {user.email}{user.full_name ? ` \u00b7 ${user.full_name}` : ''}
+                    </div>
+                    {user.role === 'student' && user.student_profile && (
+                      <div className="text-xs opacity-50 mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                        {[user.student_profile.group_name, user.student_profile.course ? `${user.student_profile.course} курс` : null, user.student_profile.faculty].filter(Boolean).join(' \u00b7 ')}
+                      </div>
+                    )}
+                    {user.role === 'teacher' && user.teacher_profile && (
+                      <div className="text-xs opacity-50 mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                        {[user.teacher_profile.department, user.teacher_profile.position, user.teacher_profile.academic_degree].filter(Boolean).join(' \u00b7 ')}
+                      </div>
+                    )}
+                    <div className="text-xs opacity-40 mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                      Регистрация: {formatDate(user.created_at)}
+                      {user.last_login_at && ` \u00b7 Вход: ${formatDate(user.last_login_at)}`}
+                    </div>
+                    {user.blocked_reason && (
+                      <div className="text-xs mt-1" style={{ color: '#ef4444' }}>
+                        Причина блок.: {user.blocked_reason}
+                      </div>
                     )}
                   </div>
-                  <div className="text-xs opacity-60 mt-1" style={{ color: 'var(--text-secondary)' }}>
-                    {user.email} {user.full_name ? `\u00b7 ${user.full_name}` : ''}
-                  </div>
-                  <div className="text-xs opacity-40 mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                    Регистрация: {formatDate(user.created_at)}
-                    {user.last_login_at && ` \u00b7 Последний вход: ${formatDate(user.last_login_at)}`}
-                  </div>
-                  {user.blocked_reason && (
-                    <div className="text-xs mt-1" style={{ color: '#ef4444' }}>
-                      Причина: {user.blocked_reason}
+
+                  {/* Actions */}
+                  {user.role !== 'admin' && (
+                    <div className="flex gap-2 shrink-0">
+                      {user.is_active ? (
+                        <button
+                          onClick={() => setBlockModal({ userId: user.id, login: user.login })}
+                          className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
+                          style={{ borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}
+                        >
+                          Заблокировать
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleUnblock(user.id)}
+                          className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
+                          style={{ borderColor: 'rgba(34,197,94,0.3)', color: '#22c55e' }}
+                        >
+                          Разблокировать
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setDeleteModal({ userId: user.id, login: user.login })}
+                        className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
+                        style={{ borderColor: 'rgba(239,68,68,0.2)', color: 'rgba(239,68,68,0.6)' }}
+                        title="Удалить пользователя"
+                      >
+                        Удалить
+                      </button>
                     </div>
                   )}
                 </div>
-
-                {/* Actions */}
-                {user.role !== 'admin' && (
-                  <div className="flex gap-2 shrink-0">
-                    {user.is_active ? (
-                      <button
-                        onClick={() => setBlockModal({ userId: user.id, login: user.login })}
-                        className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
-                        style={{ borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}
-                      >
-                        Заблокировать
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleUnblock(user.id)}
-                        className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
-                        style={{ borderColor: 'rgba(34,197,94,0.3)', color: '#22c55e' }}
-                      >
-                        Разблокировать
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
       )}
 
@@ -427,14 +553,93 @@ const AdminDashboard: React.FC = () => {
       {/* ==================== Lectures ==================== */}
       {activeTab === 'lectures' && (
         <div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <p className="text-sm opacity-60" style={{ color: 'var(--text-secondary)' }}>
               Все лекции на платформе
             </p>
-            <button onClick={fetchLectures} className="text-xs px-3 py-1.5 rounded-lg border transition-all hover:opacity-80" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+            <button
+              onClick={() => fetchLectures({ search: lectureSearch, subject: lectureSubject, status: lectureStatus, dateFrom: lectureDateFrom, dateTo: lectureDateTo, uploader: lectureUploader })}
+              className="text-xs px-3 py-1.5 rounded-lg border transition-all hover:opacity-80"
+              style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+            >
               Обновить
             </button>
           </div>
+
+          {/* Filters */}
+          <div className="border rounded-xl p-4 mb-4 space-y-3" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="text"
+                value={lectureSearch}
+                onChange={e => setLectureSearch(e.target.value)}
+                placeholder="Поиск по названию или предмету..."
+                className="text-xs px-3 py-2 rounded-lg border flex-1 min-w-48"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              />
+              <input
+                type="text"
+                value={lectureUploader}
+                onChange={e => setLectureUploader(e.target.value)}
+                placeholder="Логин / имя автора"
+                className="text-xs px-3 py-2 rounded-lg border"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', width: 160 }}
+              />
+              <select
+                value={lectureStatus}
+                onChange={e => setLectureStatus(e.target.value)}
+                className="text-xs px-3 py-2 rounded-lg border"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              >
+                <option value="">Все статусы</option>
+                <option value="processing">Обрабатывается</option>
+                <option value="ready">Готова</option>
+                <option value="error">Ошибка</option>
+              </select>
+            </div>
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs opacity-50" style={{ color: 'var(--text-secondary)' }}>Дата создания:</span>
+              <input
+                type="date"
+                value={lectureDateFrom}
+                onChange={e => setLectureDateFrom(e.target.value)}
+                className="text-xs px-3 py-2 rounded-lg border"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              />
+              <span className="text-xs opacity-40" style={{ color: 'var(--text-secondary)' }}>—</span>
+              <input
+                type="date"
+                value={lectureDateTo}
+                onChange={e => setLectureDateTo(e.target.value)}
+                className="text-xs px-3 py-2 rounded-lg border"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              />
+              <button
+                onClick={() => fetchLectures({ search: lectureSearch, subject: lectureSubject, status: lectureStatus, dateFrom: lectureDateFrom, dateTo: lectureDateTo, uploader: lectureUploader })}
+                className="text-xs px-4 py-2 rounded-lg transition-all"
+                style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
+              >
+                Найти
+              </button>
+              {(lectureSearch || lectureSubject || lectureStatus || lectureDateFrom || lectureDateTo || lectureUploader) && (
+                <button
+                  onClick={() => {
+                    setLectureSearch(''); setLectureSubject(''); setLectureStatus('');
+                    setLectureDateFrom(''); setLectureDateTo(''); setLectureUploader('');
+                    fetchLectures();
+                  }}
+                  className="text-xs px-3 py-2 rounded-lg border"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                >
+                  Сбросить
+                </button>
+              )}
+            </div>
+          </div>
+
+          <p className="text-xs opacity-40 mb-3" style={{ color: 'var(--text-secondary)' }}>
+            Найдено: {lectures.length}
+          </p>
 
           {loading ? (
             <p className="text-center opacity-60 py-8" style={{ color: 'var(--text-secondary)' }}>Загрузка...</p>
@@ -475,6 +680,32 @@ const AdminDashboard: React.FC = () => {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ==================== Delete Modal ==================== */}
+      {deleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={() => setDeleteModal(null)}>
+          <div className="max-w-md w-full rounded-2xl p-6 border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }} onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-light mb-3" style={{ color: 'var(--text-primary)' }}>
+              Удалить {deleteModal.login}?
+            </h3>
+            <p className="text-sm opacity-60 mb-6" style={{ color: 'var(--text-secondary)' }}>
+              Пользователь будет скрыт из системы. Это действие нельзя отменить через интерфейс.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setDeleteModal(null)} className="px-4 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+                Отмена
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 text-sm rounded-lg"
+                style={{ background: '#ef4444', color: '#fff' }}
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

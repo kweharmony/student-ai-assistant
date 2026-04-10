@@ -11,14 +11,14 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..dependencies import get_db, require_admin
 from ..models import (
     AdminAction, AudioFile, Lecture, Transcription, TranscriptionTask,
-    TranscriptionTaskStatus, User, UserRole,
+    TranscriptionTaskStatus, User, UserRole, StudentProfile, TeacherProfile,
 )
 from ..schemas import (
     AdminActionOut,
@@ -54,24 +54,88 @@ async def _log_action(
 
 # ---------- Users ----------
 
-@router.get("/users", response_model=List[AdminUserOut])
+@router.get("/users")
 async def list_users(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    role: Optional[str] = Query(None),
+    group_name: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
 ):
-    """Список всех пользователей (включая заблокированных)."""
+    """Список всех пользователей с фильтрацией по роли, группе и поиском."""
 
-    result = await db.execute(
+    query = (
         select(User)
         .options(selectinload(User.student_profile), selectinload(User.teacher_profile))
         .where(User.is_deleted == False)
-        .order_by(User.created_at.desc())
-        .offset(offset)
-        .limit(limit)
     )
-    return result.scalars().all()
+
+    if role:
+        try:
+            query = query.where(User.role == UserRole(role))
+        except ValueError:
+            pass
+
+    if group_name:
+        query = query.join(User.student_profile).where(
+            StudentProfile.group_name.ilike(f"%{group_name}%")
+        )
+
+    if search:
+        query = query.where(
+            or_(
+                User.login.ilike(f"%{search}%"),
+                User.email.ilike(f"%{search}%"),
+                User.full_name.ilike(f"%{search}%"),
+            )
+        )
+
+    query = query.order_by(User.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(query)
+    users = result.scalars().all()
+
+    # Lecture counts per user
+    user_ids = [u.id for u in users]
+    counts_result = await db.execute(
+        select(Lecture.uploaded_by, func.count(Lecture.id).label("cnt"))
+        .where(Lecture.uploaded_by.in_(user_ids), Lecture.is_deleted == False)
+        .group_by(Lecture.uploaded_by)
+    )
+    counts_map = {row[0]: row[1] for row in counts_result.all()}
+
+    from ..schemas import AdminUserOut
+    response = []
+    for user in users:
+        data = AdminUserOut.model_validate(user).model_dump()
+        data["lecture_count"] = counts_map.get(user.id, 0)
+        response.append(data)
+    return response
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
+async def delete_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Мягкое удаление пользователя (админ)."""
+
+    result = await db.execute(select(User).where(User.id == user_id, User.is_deleted == False))
+    target = result.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if target.id == admin.id:
+        raise HTTPException(status_code=400, detail="Нельзя удалить самого себя")
+
+    target.is_deleted = True
+    target.is_active = False
+
+    await _log_action(db, admin, "delete_user", "user", target.id)
+    await db.commit()
+
+    return {"detail": "Пользователь удалён"}
 
 
 @router.post("/users/{user_id}/block", status_code=status.HTTP_200_OK)
@@ -279,15 +343,21 @@ async def dashboard_stats(
     # Транскрипции
     total_transcriptions = (await db.execute(select(func.count(Transcription.id)).where(Transcription.is_deleted == False))).scalar() or 0
 
-    # Очередь аудио (файлы на диске)
-    queue_dir = Path(os.getenv("DATA_DIR", "/data")) / "audio_queue"
-    queue_files = 0
-    queue_size_mb = 0.0
-    if queue_dir.exists():
-        for f in queue_dir.rglob("*"):
-            if f.is_file():
-                queue_files += 1
-                queue_size_mb += f.stat().st_size / (1024 * 1024)
+    # Очередь транскрибации (задачи в БД)
+    queue_pending = (
+        await db.execute(
+            select(func.count(TranscriptionTask.id)).where(
+                TranscriptionTask.status == TranscriptionTaskStatus.pending
+            )
+        )
+    ).scalar() or 0
+    queue_processing = (
+        await db.execute(
+            select(func.count(TranscriptionTask.id)).where(
+                TranscriptionTask.status == TranscriptionTaskStatus.processing
+            )
+        )
+    ).scalar() or 0
 
     return {
         "users": {
@@ -302,8 +372,8 @@ async def dashboard_stats(
         "audio": {"total": total_audio},
         "transcriptions": {"total": total_transcriptions},
         "queue": {
-            "files": queue_files,
-            "size_mb": round(queue_size_mb, 1),
+            "files": queue_pending + queue_processing,
+            "size_mb": 0.0,
         },
     }
 
@@ -354,8 +424,15 @@ async def list_all_lectures(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     include_deleted: bool = Query(False),
+    search: Optional[str] = Query(None),
+    subject: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    uploader_search: Optional[str] = Query(None),
 ):
-    """Список всех лекций (для админа)."""
+    """Список всех лекций (для админа) с фильтрацией."""
+    from datetime import date as date_type
 
     query = select(Lecture).options(
         selectinload(Lecture.uploader),
@@ -365,6 +442,44 @@ async def list_all_lectures(
 
     if not include_deleted:
         query = query.where(Lecture.is_deleted == False)
+
+    if search:
+        query = query.where(
+            or_(
+                Lecture.title.ilike(f"%{search}%"),
+                Lecture.subject.ilike(f"%{search}%"),
+            )
+        )
+
+    if subject:
+        query = query.where(Lecture.subject.ilike(f"%{subject}%"))
+
+    if status:
+        try:
+            query = query.where(Lecture.status == LectureStatus(status))
+        except ValueError:
+            pass
+
+    if date_from:
+        try:
+            query = query.where(Lecture.created_at >= datetime.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            dt_to = datetime.fromisoformat(date_to).replace(hour=23, minute=59, second=59)
+            query = query.where(Lecture.created_at <= dt_to)
+        except ValueError:
+            pass
+
+    if uploader_search:
+        query = query.join(Lecture.uploader).where(
+            or_(
+                User.login.ilike(f"%{uploader_search}%"),
+                User.full_name.ilike(f"%{uploader_search}%"),
+            )
+        )
 
     query = query.order_by(Lecture.created_at.desc()).offset(offset).limit(limit)
     result = await db.execute(query)

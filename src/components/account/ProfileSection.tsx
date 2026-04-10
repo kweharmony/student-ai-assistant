@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -13,8 +13,70 @@ const roleLabels: Record<string, string> = {
   admin: 'Администратор',
 };
 
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate }) => {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
+
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+
+  const openPasswordModal = () => {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+    setPasswordSuccess(false);
+    setShowPasswordModal(true);
+  };
+
+  const closePasswordModal = () => {
+    setShowPasswordModal(false);
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Новые пароли не совпадают');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('Новый пароль должен быть не короче 6 символов');
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/users/me/password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Ошибка сервера' }));
+        setPasswordError(err.detail || 'Ошибка сервера');
+        return;
+      }
+
+      setPasswordSuccess(true);
+      setTimeout(() => setShowPasswordModal(false), 1500);
+    } catch {
+      setPasswordError('Не удалось подключиться к серверу');
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
 
   if (!user) return null;
 
@@ -178,7 +240,7 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
 
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <button className="btn">
+            <button className="btn" onClick={openPasswordModal}>
               Изменить пароль
             </button>
             <button
@@ -190,6 +252,107 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
           </div>
         </div>
       </div>
+
+      {/* Change password modal */}
+      {showPasswordModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) closePasswordModal(); }}
+        >
+          <div
+            className="w-full max-w-md rounded-xl p-6 shadow-xl"
+            style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
+          >
+            <h3 className="text-xl font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
+              Изменить пароль
+            </h3>
+
+            {passwordSuccess ? (
+              <div className="text-center py-4" style={{ color: '#4caf50' }}>
+                <span className="material-symbols-outlined text-4xl block mb-2">check_circle</span>
+                Пароль успешно изменён
+              </div>
+            ) : (
+              <form onSubmit={handleChangePassword} className="space-y-4">
+                <div>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
+                    Текущий пароль
+                  </label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{
+                      background: 'var(--hover-bg)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
+                    Новый пароль
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{
+                      background: 'var(--hover-bg)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
+                    Повторите новый пароль
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{
+                      background: 'var(--hover-bg)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                </div>
+
+                {passwordError && (
+                  <p className="text-sm" style={{ color: '#e57373' }}>{passwordError}</p>
+                )}
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={closePasswordModal}
+                    className="flex-1 btn"
+                    disabled={passwordLoading}
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 btn-gradient transition-all duration-300"
+                    disabled={passwordLoading}
+                  >
+                    {passwordLoading ? 'Сохранение...' : 'Сохранить'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 };
