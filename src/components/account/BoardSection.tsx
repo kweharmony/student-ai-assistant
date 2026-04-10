@@ -20,11 +20,12 @@ interface BoardDetail extends BoardMeta {
 
 interface BoardSectionProps {
   isLightTheme: boolean;
+  onCanvasMode?: (active: boolean) => void;
 }
 
 type Mode = 'modal' | 'canvas';
 
-const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme }) => {
+const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode }) => {
   const { token } = useAuth();
 
   // ── modal state ──────────────────────────────────────────────────────────────
@@ -90,6 +91,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme }) => {
     setBoardTitle(detail.title);
     setActiveBoard(detail);
     setMode('canvas');
+    onCanvasMode?.(true);
   };
 
   // ── open board by share link ─────────────────────────────────────────────────
@@ -110,6 +112,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme }) => {
     setBoardTitle(detail.title + ' (только просмотр)');
     setActiveBoard(null);
     setMode('canvas');
+    onCanvasMode?.(true);
   };
 
   // ── create new board ─────────────────────────────────────────────────────────
@@ -274,6 +277,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme }) => {
     setActiveBoardId(null);
     setInitialData(null);
     setActiveBoard(null);
+    onCanvasMode?.(false);
     fetchBoards();
   };
 
@@ -311,6 +315,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme }) => {
   if (mode === 'canvas') {
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#fff' }}>
+        <style>{`.excalidraw .ToolIcon__library, .excalidraw [title="Library"], .excalidraw [aria-label="Library"] { display: none !important; }`}</style>
         {/* Excalidraw fills entire viewport */}
         {initialData !== null && (
           <Excalidraw

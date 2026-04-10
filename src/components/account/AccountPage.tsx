@@ -36,6 +36,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<ActiveSection>('profile');
   const [showSidebarText, setShowSidebarText] = useState(false);
+  const [isBoardCanvas, setIsBoardCanvas] = useState(false);
 
   // Editor state (shared between transcriber -> text-processing)
   const [showTextEditor, setShowTextEditor] = useState(false);
@@ -345,21 +346,23 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       color: 'var(--text-primary)',
       background: 'var(--bg-primary)'
     }}>
-      <Sidebar
-        activeSection={activeSection}
-        setActiveSection={setActiveSection}
-        sidebarCollapsed={sidebarCollapsed}
-        setSidebarCollapsed={setSidebarCollapsed}
-        mobileMenuOpen={mobileMenuOpen}
-        setMobileMenuOpen={setMobileMenuOpen}
-        showSidebarText={showSidebarText}
-        isLightTheme={isLightTheme}
-        onThemeToggle={handleThemeToggle}
-        navigate={navigate}
-      />
+      {!isBoardCanvas && (
+        <Sidebar
+          activeSection={activeSection}
+          setActiveSection={setActiveSection}
+          sidebarCollapsed={sidebarCollapsed}
+          setSidebarCollapsed={setSidebarCollapsed}
+          mobileMenuOpen={mobileMenuOpen}
+          setMobileMenuOpen={setMobileMenuOpen}
+          showSidebarText={showSidebarText}
+          isLightTheme={isLightTheme}
+          onThemeToggle={handleThemeToggle}
+          navigate={navigate}
+        />
+      )}
 
       {/* Мобильная кнопка меню */}
-      {!mobileMenuOpen && (
+      {!mobileMenuOpen && !isBoardCanvas && (
         <button
           onClick={() => setMobileMenuOpen(true)}
           className="fixed top-4 left-4 z-50 lg:hidden p-3 bg-transparent border rounded-lg hover:bg-hover transition-all duration-300"
@@ -431,7 +434,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         )}
 
         {activeSection === 'board' && (
-          <BoardSection isLightTheme={isLightTheme} />
+          <BoardSection isLightTheme={isLightTheme} onCanvasMode={setIsBoardCanvas} />
         )}
         </div>
       </main>
