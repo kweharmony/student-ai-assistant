@@ -122,8 +122,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Ошибка сервера' }));
       // detail может быть объектом (при блокировке) или строкой
-      if (err.detail && typeof err.detail === 'object') {
-        const e = new Error(err.detail.message || 'Аккаунт заблокирован') as any;
+      if (err.detail && typeof err.detail === 'object' && !Array.isArray(err.detail) && err.detail.message) {
+        const e = new Error(err.detail.message) as any;
         e.blockInfo = err.detail;
         throw e;
       }
