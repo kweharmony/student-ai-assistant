@@ -1,0 +1,26 @@
+name: Deploy to server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Pull latest code
+        run: |
+          cd ~/student-ai-assistant
+          git pull
+
+      - name: Rebuild backend (if changed)
+        run: |
+          cd ~/student-ai-assistant
+          git diff HEAD~1 HEAD --name-only 2>/dev/null | grep -qE "^(api|ml|scripts|alembic|requirements)" && docker compose up -d --build backend || echo "Backend не изменился"
+
+      - name: Rebuild frontend (if changed)
+        run: |
+          cd ~/student-ai-assistant
+          git diff HEAD~1 HEAD --name-only 2>/dev/null | grep -qE "^(src|public|package)" && docker compose up -d --build frontend || echo "Frontend не изменился"
