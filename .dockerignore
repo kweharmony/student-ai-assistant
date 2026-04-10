@@ -13,4 +13,3 @@ tools
 docker-compose.yml
 Dockerfile.*
 nginx/default.conf
-NorwaySandefjordS24.conf
