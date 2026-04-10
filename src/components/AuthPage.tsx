@@ -18,6 +18,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockInfo, setBlockInfo] = useState<{ reason?: string; blocked_until?: string | null } | null>(null);
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
   // Modal for showing generated login after registration
@@ -57,10 +58,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
+    setBlockInfo(null);
 
     try {
       if (isLogin) {
-        await login({ login: formData.username, password: formData.password });
+        await login({ email: formData.email, password: formData.password });
         navigate('/account');
       } else {
         const payload: RegisterData = {
@@ -85,7 +87,12 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
         setShowLoginModal(true);
       }
     } catch (err: any) {
-      setError(err.message || 'Произошла ошибка');
+      if (err.blockInfo) {
+        setBlockInfo(err.blockInfo);
+        setError(err.message);
+      } else {
+        setError(err.message || 'Произошла ошибка');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -165,56 +172,52 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
               color: '#B58488',
               border: '1px solid rgba(181, 132, 136, 0.3)',
             }}>
-              {error}
+              <div className="flex items-center gap-2 font-medium mb-1">
+                <span className="material-symbols-outlined text-base">block</span>
+                {error}
+              </div>
+              {blockInfo && (
+                <div className="mt-2 space-y-1 text-xs opacity-90">
+                  {blockInfo.reason && (
+                    <div><span className="opacity-70">Причина: </span>{blockInfo.reason}</div>
+                  )}
+                  <div>
+                    {blockInfo.blocked_until ? (
+                      <><span className="opacity-70">Разбан: </span>
+                      {new Date(blockInfo.blocked_until).toLocaleString('ru-RU', {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}</>
+                    ) : (
+                      <span className="opacity-70">Блокировка бессрочная</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Login field — only for login mode */}
-            {isLogin && (
-              <div className="group">
-                <label htmlFor="username" className={labelClass} style={{ color: 'var(--text-secondary)' }}>
-                  <span className="material-symbols-outlined">person</span>
-                  <span>Логин</span>
-                </label>
-                <input
-                  type="text"
-                  id="username"
-                  name="username"
-                  value={formData.username}
-                  onChange={handleInputChange}
-                  onFocus={() => setFocusedField('username')}
-                  onBlur={() => setFocusedField(null)}
-                  required
-                  className={inputClass}
-                  style={inputStyle('username')}
-                  placeholder="Введите логин"
-                />
-              </div>
-            )}
-
-            {/* Email — only for register mode */}
-            {!isLogin && (
-              <div className="group">
-                <label htmlFor="email" className={labelClass} style={{ color: 'var(--text-secondary)' }}>
-                  <span className="material-symbols-outlined">email</span>
-                  <span>Email</span>
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  onFocus={() => setFocusedField('email')}
-                  onBlur={() => setFocusedField(null)}
-                  required
-                  className={inputClass}
-                  style={inputStyle('email')}
-                  placeholder="Введите email"
-                />
-              </div>
-            )}
+            {/* Email field — for both login and register */}
+            <div className="group">
+              <label htmlFor="email" className={labelClass} style={{ color: 'var(--text-secondary)' }}>
+                <span className="material-symbols-outlined">email</span>
+                <span>Email</span>
+              </label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                onFocus={() => setFocusedField('email')}
+                onBlur={() => setFocusedField(null)}
+                required
+                className={inputClass}
+                style={inputStyle('email')}
+                placeholder="Введите email"
+              />
+            </div>
 
             {/* Password */}
             <div className="group">

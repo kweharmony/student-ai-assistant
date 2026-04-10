@@ -2,6 +2,13 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
+const EMOJI_LIST = [
+  '😀','😎','🤓','🧑‍💻','👨‍🎓','👩‍🎓','🧑‍🏫','👨‍🔬','👩‍🔬','🧙','🦊','🐼','🐨','🦁','🐯',
+  '🦋','🐉','🦄','🌟','⚡','🔥','💎','🎯','🚀','🎮','🎸','🎨','📚','🔬','🏆',
+  '💡','🌈','🍀','🌺','🌙','☀️','🍕','🎃','👾','🤖','👑','🎭','🏄','🧩','🎲',
+  '🌍','🏔️','🎋','🍁','🌊','🦅','🐬','🦋','🌸','🍄','🎵','🎺','🎻','🎷','🥁',
+];
+
 interface ProfileSectionProps {
   isLightTheme: boolean;
   navigate: (path: string) => void;
@@ -16,7 +23,116 @@ const roleLabels: Record<string, string> = {
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate }) => {
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, updateUser } = useAuth();
+
+  // Emoji picker
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiLoading, setEmojiLoading] = useState(false);
+
+  const handleSelectEmoji = async (emoji: string) => {
+    setEmojiLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/users/me/avatar-emoji`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ emoji }),
+      });
+      if (!res.ok) return;
+      const updated = await res.json();
+      updateUser(updated);
+      setShowEmojiPicker(false);
+    } finally {
+      setEmojiLoading(false);
+    }
+  };
+
+  const handleRemoveEmoji = async () => {
+    setEmojiLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/users/me/avatar-emoji`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const updated = await res.json();
+      updateUser(updated);
+    } finally {
+      setEmojiLoading(false);
+    }
+  };
+
+  // Edit profile modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState(false);
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    email: '',
+    group_name: '',
+    course: '',
+    faculty: '',
+    department: '',
+    position: '',
+    academic_degree: '',
+  });
+
+  const openEditModal = () => {
+    if (!user) return;
+    setEditForm({
+      full_name: user.full_name ?? '',
+      email: user.email ?? '',
+      group_name: user.student_profile?.group_name ?? '',
+      course: user.student_profile?.course?.toString() ?? '',
+      faculty: user.student_profile?.faculty ?? '',
+      department: user.teacher_profile?.department ?? '',
+      position: user.teacher_profile?.position ?? '',
+      academic_degree: user.teacher_profile?.academic_degree ?? '',
+    });
+    setEditError('');
+    setEditSuccess(false);
+    setShowEditModal(true);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditError('');
+    setEditLoading(true);
+    try {
+      const body: Record<string, any> = {
+        full_name: editForm.full_name || null,
+        email: editForm.email || null,
+      };
+      if (user?.student_profile) {
+        body.group_name = editForm.group_name || null;
+        body.course = editForm.course ? parseInt(editForm.course) : null;
+        body.faculty = editForm.faculty || null;
+      }
+      if (user?.teacher_profile) {
+        body.department = editForm.department || null;
+        body.position = editForm.position || null;
+        body.academic_degree = editForm.academic_degree || null;
+      }
+      const res = await fetch(`${API_BASE}/api/users/me`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Ошибка сервера' }));
+        setEditError(err.detail || 'Ошибка сохранения');
+        return;
+      }
+      const updated = await res.json();
+      updateUser(updated);
+      setEditSuccess(true);
+      setTimeout(() => setShowEditModal(false), 1200);
+    } catch {
+      setEditError('Не удалось подключиться к серверу');
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -113,16 +229,41 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
 
         {/* Avatar + name */}
         <div className="text-center mb-6">
-          <div
-            className="w-20 h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 rounded-full flex items-center justify-center text-2xl md:text-3xl lg:text-4xl font-semibold mx-auto mb-4 relative"
-            style={{
-              background: 'var(--text-primary)',
-              color: 'var(--bg-primary)',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-            }}
-          >
-            <span className="material-symbols-outlined text-3xl md:text-4xl lg:text-5xl">account_circle</span>
+          <div className="relative inline-block mb-4">
+            <div
+              className="w-20 h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 rounded-full flex items-center justify-center mx-auto"
+              style={{
+                background: 'var(--text-primary)',
+                color: 'var(--bg-primary)',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                fontSize: user.avatar_emoji ? '2.5rem' : undefined,
+              }}
+            >
+              {user.avatar_emoji
+                ? <span>{user.avatar_emoji}</span>
+                : <span className="material-symbols-outlined text-3xl md:text-4xl lg:text-5xl">account_circle</span>
+              }
+            </div>
+            {/* Кнопка выбора эмодзи */}
+            <button
+              onClick={() => setShowEmojiPicker(true)}
+              title="Выбрать эмодзи"
+              className="absolute bottom-0 right-0 w-7 h-7 rounded-full flex items-center justify-center transition-opacity hover:opacity-80"
+              style={{ background: 'var(--bg-primary)', border: '2px solid var(--border-color)', fontSize: '0.9rem' }}
+            >
+              ✏️
+            </button>
           </div>
+          {user.avatar_emoji && (
+            <button
+              onClick={handleRemoveEmoji}
+              disabled={emojiLoading}
+              className="text-xs opacity-50 hover:opacity-80 transition-opacity mb-2 block mx-auto"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              Убрать эмодзи
+            </button>
+          )}
           <h3 className="text-xl md:text-2xl lg:text-3xl font-semibold mb-2 md:mb-3" style={{ color: 'var(--text-primary)' }}>
             {user.full_name || user.login}
           </h3>
@@ -240,6 +381,9 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
 
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button className="btn" onClick={openEditModal}>
+              Редактировать профиль
+            </button>
             <button className="btn" onClick={openPasswordModal}>
               Изменить пароль
             </button>
@@ -252,6 +396,177 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
           </div>
         </div>
       </div>
+
+      {/* Emoji picker modal */}
+      {showEmojiPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowEmojiPicker(false); }}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl p-5 shadow-xl"
+            style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Выберите эмодзи</h3>
+              <button onClick={() => setShowEmojiPicker(false)} style={{ color: 'var(--text-secondary)' }}>
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-8 gap-1">
+              {EMOJI_LIST.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => handleSelectEmoji(emoji)}
+                  disabled={emojiLoading}
+                  className="w-9 h-9 rounded-lg text-xl flex items-center justify-center transition-all hover:scale-125"
+                  style={{
+                    background: user.avatar_emoji === emoji ? 'var(--hover-bg)' : 'transparent',
+                    border: user.avatar_emoji === emoji ? '2px solid var(--text-primary)' : '2px solid transparent',
+                  }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit profile modal */}
+      {showEditModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowEditModal(false); }}
+        >
+          <div
+            className="w-full max-w-md rounded-xl p-6 shadow-xl overflow-y-auto"
+            style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', maxHeight: '90vh' }}
+          >
+            <h3 className="text-xl font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
+              Редактировать профиль
+            </h3>
+
+            {editSuccess ? (
+              <div className="text-center py-4" style={{ color: '#4caf50' }}>
+                <span className="material-symbols-outlined text-4xl block mb-2">check_circle</span>
+                Профиль обновлён
+              </div>
+            ) : (
+              <form onSubmit={handleSaveProfile} className="space-y-4">
+                {/* Общие поля */}
+                <div>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Полное имя</label>
+                  <input
+                    type="text"
+                    value={editForm.full_name}
+                    onChange={e => setEditForm(f => ({ ...f, full_name: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ background: 'var(--hover-bg)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Email</label>
+                  <input
+                    type="email"
+                    value={editForm.email}
+                    onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ background: 'var(--hover-bg)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+
+                {/* Поля студента */}
+                {user?.student_profile !== null && user?.role === 'student' && (
+                  <>
+                    <div>
+                      <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Группа</label>
+                      <input
+                        type="text"
+                        value={editForm.group_name}
+                        onChange={e => setEditForm(f => ({ ...f, group_name: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                        style={{ background: 'var(--hover-bg)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Курс (1–6)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={6}
+                        value={editForm.course}
+                        onChange={e => setEditForm(f => ({ ...f, course: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                        style={{ background: 'var(--hover-bg)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Факультет</label>
+                      <input
+                        type="text"
+                        value={editForm.faculty}
+                        onChange={e => setEditForm(f => ({ ...f, faculty: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                        style={{ background: 'var(--hover-bg)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Поля преподавателя */}
+                {user?.role === 'teacher' && (
+                  <>
+                    <div>
+                      <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Кафедра</label>
+                      <input
+                        type="text"
+                        value={editForm.department}
+                        onChange={e => setEditForm(f => ({ ...f, department: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                        style={{ background: 'var(--hover-bg)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Должность</label>
+                      <input
+                        type="text"
+                        value={editForm.position}
+                        onChange={e => setEditForm(f => ({ ...f, position: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                        style={{ background: 'var(--hover-bg)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Учёная степень</label>
+                      <input
+                        type="text"
+                        value={editForm.academic_degree}
+                        onChange={e => setEditForm(f => ({ ...f, academic_degree: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                        style={{ background: 'var(--hover-bg)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {editError && <p className="text-sm" style={{ color: '#e57373' }}>{editError}</p>}
+
+                <div className="flex gap-3 pt-1">
+                  <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 btn" disabled={editLoading}>
+                    Отмена
+                  </button>
+                  <button type="submit" className="flex-1 btn-gradient transition-all duration-300" disabled={editLoading}>
+                    {editLoading ? 'Сохранение...' : 'Сохранить'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Change password modal */}
       {showPasswordModal && (

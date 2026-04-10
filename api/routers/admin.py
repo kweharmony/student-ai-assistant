@@ -5,7 +5,7 @@
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
@@ -17,11 +17,12 @@ from sqlalchemy.orm import selectinload
 
 from ..dependencies import get_db, require_admin
 from ..models import (
-    AdminAction, AudioFile, Lecture, Transcription, TranscriptionTask,
+    AdminAction, AudioFile, Lecture, LectureStatus, Transcription, TranscriptionTask,
     TranscriptionTaskStatus, User, UserRole, StudentProfile, TeacherProfile,
 )
 from ..schemas import (
     AdminActionOut,
+    AdminLectureUpdateRequest,
     AdminUserOut,
     BlockUserRequest,
     DeleteContentRequest,
@@ -115,27 +116,81 @@ async def list_users(
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
-async def delete_user(
+async def hard_delete_user(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Мягкое удаление пользователя (админ)."""
+    """
+    Жёсткое удаление пользователя из БД.
+    Лекции, аудио, транскрипции и лог действий переназначаются
+    на системного администратора с логином 'admin'.
+    Профиль (student/teacher) удаляется каскадом.
+    """
+    from sqlalchemy import update
 
-    result = await db.execute(select(User).where(User.id == user_id, User.is_deleted == False))
+    result = await db.execute(select(User).where(User.id == user_id))
     target = result.scalar_one_or_none()
     if target is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     if target.id == admin.id:
         raise HTTPException(status_code=400, detail="Нельзя удалить самого себя")
 
-    target.is_deleted = True
-    target.is_active = False
+    # Находим системного admin-пользователя для переназначения контента
+    sys_admin_result = await db.execute(
+        select(User).where(User.login == "admin", User.role == UserRole.admin)
+    )
+    sys_admin = sys_admin_result.scalar_one_or_none()
+    if sys_admin is None:
+        # Fallback: любой другой администратор
+        sys_admin_result = await db.execute(
+            select(User).where(User.role == UserRole.admin, User.id != user_id).limit(1)
+        )
+        sys_admin = sys_admin_result.scalar_one_or_none()
+    if sys_admin is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Не найден администратор для переназначения лекций. Создайте пользователя с логином 'admin'.",
+        )
 
-    await _log_action(db, admin, "delete_user", "user", target.id)
+    # Переназначаем лекции на системного админа
+    await db.execute(
+        update(Lecture)
+        .where(Lecture.uploaded_by == user_id)
+        .values(uploaded_by=sys_admin.id)
+    )
+    # Обнуляем nullable FK на удаляемого пользователя
+    await db.execute(
+        update(Lecture)
+        .where(Lecture.deleted_by == user_id)
+        .values(deleted_by=None)
+    )
+    await db.execute(
+        update(AudioFile)
+        .where(AudioFile.deleted_by == user_id)
+        .values(deleted_by=None)
+    )
+    await db.execute(
+        update(Transcription)
+        .where(Transcription.deleted_by == user_id)
+        .values(deleted_by=None)
+    )
+    await db.execute(
+        update(User)
+        .where(User.blocked_by == user_id)
+        .values(blocked_by=None)
+    )
+    # Переназначаем лог действий администратора
+    await db.execute(
+        update(AdminAction)
+        .where(AdminAction.admin_id == user_id)
+        .values(admin_id=sys_admin.id)
+    )
+
+    await db.delete(target)
     await db.commit()
 
-    return {"detail": "Пользователь удалён"}
+    return {"detail": f"Пользователь удалён. Лекции переназначены на '{sys_admin.login}'."}
 
 
 @router.post("/users/{user_id}/block", status_code=status.HTTP_200_OK)
@@ -145,7 +200,7 @@ async def block_user(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Заблокировать пользователя."""
+    """Заблокировать пользователя на срок или бессрочно."""
 
     result = await db.execute(select(User).where(User.id == user_id, User.is_deleted == False))
     target = result.scalar_one_or_none()
@@ -154,10 +209,18 @@ async def block_user(
     if target.id == admin.id:
         raise HTTPException(status_code=400, detail="Нельзя заблокировать самого себя")
 
+    now = datetime.utcnow()
+    blocked_until = (
+        now + timedelta(minutes=body.duration_minutes)
+        if body.duration_minutes is not None
+        else None
+    )
+
     target.is_active = False
     target.blocked_reason = body.reason
     target.blocked_by = admin.id
-    target.blocked_at = datetime.utcnow()
+    target.blocked_at = now
+    target.blocked_until = blocked_until
 
     await _log_action(db, admin, "block_user", "user", target.id, reason=body.reason)
     await db.commit()
@@ -182,6 +245,7 @@ async def unblock_user(
     target.blocked_reason = None
     target.blocked_by = None
     target.blocked_at = None
+    target.blocked_until = None
 
     await _log_action(db, admin, "unblock_user", "user", target.id)
     await db.commit()
@@ -242,6 +306,43 @@ async def admin_delete_lecture(
     await db.commit()
 
     return {"detail": "Лекция удалена"}
+
+
+@router.put("/lectures/{lecture_id}", status_code=status.HTTP_200_OK)
+async def admin_update_lecture(
+    lecture_id: UUID,
+    body: AdminLectureUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Редактировать лекцию (админ, без проверки владельца)."""
+
+    result = await db.execute(select(Lecture).where(Lecture.id == lecture_id, Lecture.is_deleted == False))
+    lecture = result.scalar_one_or_none()
+    if lecture is None:
+        raise HTTPException(status_code=404, detail="Лекция не найдена")
+
+    if body.title is not None:
+        lecture.title = body.title
+    if body.description is not None:
+        lecture.description = body.description
+    if body.subject is not None:
+        lecture.subject = body.subject
+    if body.is_public is not None:
+        lecture.is_public = body.is_public
+
+    await _log_action(db, admin, "edit_lecture", "lecture", lecture.id)
+    await db.commit()
+    await db.refresh(lecture)
+
+    return {
+        "id": str(lecture.id),
+        "title": lecture.title,
+        "description": lecture.description,
+        "subject": lecture.subject,
+        "is_public": lecture.is_public,
+        "status": lecture.status.value if lecture.status else None,
+    }
 
 
 @router.delete("/audio/{audio_id}", status_code=status.HTTP_200_OK)
@@ -489,6 +590,7 @@ async def list_all_lectures(
         {
             "id": str(l.id),
             "title": l.title,
+            "description": l.description,
             "subject": l.subject,
             "status": l.status.value if l.status else None,
             "is_public": l.is_public,

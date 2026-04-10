@@ -26,7 +26,7 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    login: str
+    email: EmailStr
     password: str
 
 
@@ -66,6 +66,7 @@ class UserOut(BaseModel):
     role: str
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    avatar_emoji: Optional[str] = None
     is_active: bool
     created_at: datetime
     last_login_at: Optional[datetime] = None
@@ -86,6 +87,10 @@ class UserUpdateRequest(BaseModel):
     department: Optional[str] = Field(None, max_length=150)
     position: Optional[str] = Field(None, max_length=100)
     academic_degree: Optional[str] = Field(None, max_length=100)
+
+
+class SetEmojiRequest(BaseModel):
+    emoji: str = Field(..., min_length=1, max_length=10)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -247,8 +252,17 @@ class ApplyFilterOut(BaseModel):
 
 # ==================== Admin ====================
 
+class AdminLectureUpdateRequest(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=300)
+    description: Optional[str] = None
+    subject: Optional[str] = Field(None, max_length=100)
+    is_public: Optional[bool] = None
+
+
 class BlockUserRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=300)
+    # duration_minutes=None означает бессрочную блокировку
+    duration_minutes: Optional[int] = Field(None, gt=0)
 
 
 class DeleteContentRequest(BaseModel):
@@ -273,3 +287,30 @@ class AdminActionOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ==================== Boards ====================
+
+class BoardCreate(BaseModel):
+    title: str = Field("Новое полотно", max_length=255)
+
+
+class BoardUpdate(BaseModel):
+    title: Optional[str] = Field(None, max_length=255)
+    data: Optional[str] = None
+    is_public: Optional[bool] = None
+
+
+class BoardOut(BaseModel):
+    id: UUID
+    title: str
+    is_public: bool
+    share_token: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BoardDetailOut(BoardOut):
+    data: Optional[str] = None

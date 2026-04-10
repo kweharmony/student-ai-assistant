@@ -49,6 +49,7 @@ interface WorkerStats {
 interface LectureItem {
   id: string;
   title: string;
+  description: string | null;
   subject: string | null;
   status: string | null;
   is_public: boolean;
@@ -81,7 +82,6 @@ const AdminDashboard: React.FC = () => {
 
   // Lecture filters
   const [lectureSearch, setLectureSearch] = useState('');
-  const [lectureSubject, setLectureSubject] = useState('');
   const [lectureStatus, setLectureStatus] = useState('');
   const [lectureDateFrom, setLectureDateFrom] = useState('');
   const [lectureDateTo, setLectureDateTo] = useState('');
@@ -90,9 +90,16 @@ const AdminDashboard: React.FC = () => {
   // Block modal
   const [blockModal, setBlockModal] = useState<{ userId: string; login: string } | null>(null);
   const [blockReason, setBlockReason] = useState('');
+  // null = бессрочно, число = минуты
+  const [blockDuration, setBlockDuration] = useState<number | null>(null);
+  const [blockCustomDays, setBlockCustomDays] = useState('');
 
-  // Delete modal
-  const [deleteModal, setDeleteModal] = useState<{ userId: string; login: string } | null>(null);
+  // Hard delete modal
+  const [hardDeleteModal, setHardDeleteModal] = useState<{ userId: string; login: string } | null>(null);
+
+  // Edit lecture modal
+  const [editLectureModal, setEditLectureModal] = useState<LectureItem | null>(null);
+  const [editLectureLoading, setEditLectureLoading] = useState(false);
 
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -138,14 +145,13 @@ const AdminDashboard: React.FC = () => {
   }, [token]);
 
   const fetchLectures = useCallback(async (filters?: {
-    search?: string; subject?: string; status?: string;
+    search?: string; status?: string;
     dateFrom?: string; dateTo?: string; uploader?: string;
   }) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ limit: '200' });
       if (filters?.search) params.set('search', filters.search);
-      if (filters?.subject) params.set('subject', filters.subject);
       if (filters?.status) params.set('status', filters.status);
       if (filters?.dateFrom) params.set('date_from', filters.dateFrom);
       if (filters?.dateTo) params.set('date_to', filters.dateTo);
@@ -171,14 +177,23 @@ const AdminDashboard: React.FC = () => {
   // Actions
   const handleBlock = async () => {
     if (!blockModal || !blockReason.trim()) return;
+    // Вычисляем duration_minutes
+    let durationMinutes: number | null = blockDuration;
+    if (blockDuration === -1) {
+      const days = parseInt(blockCustomDays);
+      if (!days || days <= 0) { setError('Укажите корректное количество дней'); return; }
+      durationMinutes = days * 24 * 60;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/admin/users/${blockModal.userId}/block`, {
         method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: blockReason }),
+        body: JSON.stringify({ reason: blockReason, duration_minutes: durationMinutes }),
       });
       if (!res.ok) throw new Error('Ошибка блокировки');
       setBlockModal(null);
       setBlockReason('');
+      setBlockDuration(null);
+      setBlockCustomDays('');
       fetchUsers();
       fetchStats();
     } catch (e: any) { setError(e.message); }
@@ -195,17 +210,41 @@ const AdminDashboard: React.FC = () => {
     } catch (e: any) { setError(e.message); }
   };
 
-  const handleDelete = async () => {
-    if (!deleteModal) return;
+  const handleHardDelete = async () => {
+    if (!hardDeleteModal) return;
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${deleteModal.userId}`, {
+      const res = await fetch(`${API_BASE}/api/admin/users/${hardDeleteModal.userId}/hard`, {
         method: 'DELETE', headers,
       });
-      if (!res.ok) throw new Error('Ошибка удаления');
-      setDeleteModal(null);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Ошибка удаления');
+      setHardDeleteModal(null);
       fetchUsers();
       fetchStats();
     } catch (e: any) { setError(e.message); }
+  };
+
+  const handleSaveLecture = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editLectureModal) return;
+    const form = e.currentTarget;
+    const data = {
+      title: (form.elements.namedItem('title') as HTMLInputElement).value.trim() || undefined,
+      subject: (form.elements.namedItem('subject') as HTMLInputElement).value.trim() || null,
+      description: (form.elements.namedItem('description') as HTMLTextAreaElement).value.trim() || null,
+      is_public: (form.elements.namedItem('is_public') as HTMLInputElement).checked,
+    };
+    setEditLectureLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/lectures/${editLectureModal.id}`, {
+        method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Ошибка сохранения');
+      setEditLectureModal(null);
+      fetchLectures({ search: lectureSearch, status: lectureStatus, dateFrom: lectureDateFrom, dateTo: lectureDateTo, uploader: lectureUploader });
+    } catch (e: any) { setError(e.message); }
+    setEditLectureLoading(false);
   };
 
   const filteredUsers = users.filter(u => {
@@ -439,10 +478,10 @@ const AdminDashboard: React.FC = () => {
                         </button>
                       )}
                       <button
-                        onClick={() => setDeleteModal({ userId: user.id, login: user.login })}
+                        onClick={() => setHardDeleteModal({ userId: user.id, login: user.login })}
                         className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
-                        style={{ borderColor: 'rgba(239,68,68,0.2)', color: 'rgba(239,68,68,0.6)' }}
-                        title="Удалить пользователя"
+                        style={{ borderColor: 'rgba(239,68,68,0.5)', color: '#ef4444' }}
+                        title="Удалить из БД безвозвратно"
                       >
                         Удалить
                       </button>
@@ -558,7 +597,7 @@ const AdminDashboard: React.FC = () => {
               Все лекции на платформе
             </p>
             <button
-              onClick={() => fetchLectures({ search: lectureSearch, subject: lectureSubject, status: lectureStatus, dateFrom: lectureDateFrom, dateTo: lectureDateTo, uploader: lectureUploader })}
+              onClick={() => fetchLectures({ search: lectureSearch, status: lectureStatus, dateFrom: lectureDateFrom, dateTo: lectureDateTo, uploader: lectureUploader })}
               className="text-xs px-3 py-1.5 rounded-lg border transition-all hover:opacity-80"
               style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
             >
@@ -615,16 +654,16 @@ const AdminDashboard: React.FC = () => {
                 style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
               />
               <button
-                onClick={() => fetchLectures({ search: lectureSearch, subject: lectureSubject, status: lectureStatus, dateFrom: lectureDateFrom, dateTo: lectureDateTo, uploader: lectureUploader })}
+                onClick={() => fetchLectures({ search: lectureSearch, status: lectureStatus, dateFrom: lectureDateFrom, dateTo: lectureDateTo, uploader: lectureUploader })}
                 className="text-xs px-4 py-2 rounded-lg transition-all"
                 style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
               >
                 Найти
               </button>
-              {(lectureSearch || lectureSubject || lectureStatus || lectureDateFrom || lectureDateTo || lectureUploader) && (
+              {(lectureSearch || lectureStatus || lectureDateFrom || lectureDateTo || lectureUploader) && (
                 <button
                   onClick={() => {
-                    setLectureSearch(''); setLectureSubject(''); setLectureStatus('');
+                    setLectureSearch(''); setLectureStatus('');
                     setLectureDateFrom(''); setLectureDateTo(''); setLectureUploader('');
                     fetchLectures();
                   }}
@@ -671,9 +710,16 @@ const AdminDashboard: React.FC = () => {
                         {' \u00b7 '}{formatDate(lecture.created_at)}
                       </div>
                     </div>
-                    <div className="flex gap-3 text-xs shrink-0" style={{ color: 'var(--text-secondary)' }}>
-                      <span className="opacity-60">{lecture.audio_count} аудио</span>
-                      <span className="opacity-60">{lecture.transcription_count} транскр.</span>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>{lecture.audio_count} аудио</span>
+                      <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>{lecture.transcription_count} транскр.</span>
+                      <button
+                        onClick={() => setEditLectureModal(lecture)}
+                        className="px-2 py-1 text-xs rounded-lg border transition-all hover:opacity-80"
+                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                      >
+                        Изменить
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -683,26 +729,78 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* ==================== Delete Modal ==================== */}
-      {deleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={() => setDeleteModal(null)}>
-          <div className="max-w-md w-full rounded-2xl p-6 border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }} onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-light mb-3" style={{ color: 'var(--text-primary)' }}>
-              Удалить {deleteModal.login}?
-            </h3>
-            <p className="text-sm opacity-60 mb-6" style={{ color: 'var(--text-secondary)' }}>
-              Пользователь будет скрыт из системы. Это действие нельзя отменить через интерфейс.
-            </p>
+      {/* ==================== Edit Lecture Modal ==================== */}
+      {editLectureModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={() => setEditLectureModal(null)}>
+          <div className="max-w-lg w-full rounded-2xl p-6 border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }} onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>Редактировать лекцию</h3>
+            <form onSubmit={handleSaveLecture} className="space-y-4">
+              <div>
+                <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Название *</label>
+                <input
+                  name="title"
+                  defaultValue={editLectureModal.title}
+                  required
+                  className="w-full px-3 py-2 text-sm rounded-lg border outline-none"
+                  style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Предмет</label>
+                <input
+                  name="subject"
+                  defaultValue={editLectureModal.subject ?? ''}
+                  className="w-full px-3 py-2 text-sm rounded-lg border outline-none"
+                  style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Описание</label>
+                <textarea
+                  name="description"
+                  defaultValue={editLectureModal.description ?? ''}
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm rounded-lg border outline-none resize-none"
+                  style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" name="is_public" id="lec_is_public" defaultChecked={editLectureModal.is_public} className="w-4 h-4" />
+                <label htmlFor="lec_is_public" className="text-sm" style={{ color: 'var(--text-primary)' }}>Публичная лекция</label>
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <button type="button" onClick={() => setEditLectureModal(null)} className="px-4 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+                  Отмена
+                </button>
+                <button type="submit" disabled={editLectureLoading} className="px-4 py-2 text-sm rounded-lg transition-opacity" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)', opacity: editLectureLoading ? 0.5 : 1 }}>
+                  {editLectureLoading ? 'Сохранение...' : 'Сохранить'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== Hard Delete Modal ==================== */}
+      {hardDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }} onClick={() => setHardDeleteModal(null)}>
+          <div className="max-w-md w-full rounded-2xl p-6 border" style={{ background: 'var(--bg-primary)', borderColor: 'rgba(239,68,68,0.4)' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined" style={{ color: '#ef4444' }}>warning</span>
+              <h3 className="text-lg font-semibold" style={{ color: '#ef4444' }}>
+                Удалить {hardDeleteModal.login} из БД?
+              </h3>
+            </div>
+            <div className="text-sm mb-5 space-y-2" style={{ color: 'var(--text-secondary)' }}>
+              <p>Это <strong>безвозвратное</strong> действие. Пользователь будет полностью удалён из базы данных.</p>
+              <p>Его лекции, аудио и транскрипции <strong>не удаляются</strong> — они будут переназначены на администратора с логином <code className="px-1 py-0.5 rounded text-xs" style={{ background: 'var(--hover-bg)' }}>admin</code>.</p>
+            </div>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setDeleteModal(null)} className="px-4 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+              <button onClick={() => setHardDeleteModal(null)} className="px-4 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
                 Отмена
               </button>
-              <button
-                onClick={handleDelete}
-                className="px-4 py-2 text-sm rounded-lg"
-                style={{ background: '#ef4444', color: '#fff' }}
-              >
-                Удалить
+              <button onClick={handleHardDelete} className="px-4 py-2 text-sm rounded-lg font-medium" style={{ background: '#ef4444', color: '#fff' }}>
+                Удалить безвозвратно
               </button>
             </div>
           </div>
@@ -711,21 +809,93 @@ const AdminDashboard: React.FC = () => {
 
       {/* ==================== Block Modal ==================== */}
       {blockModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={() => setBlockModal(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={() => { setBlockModal(null); setBlockReason(''); setBlockDuration(null); setBlockCustomDays(''); }}>
           <div className="max-w-md w-full rounded-2xl p-6 border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }} onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-light mb-4" style={{ color: 'var(--text-primary)' }}>
-              Заблокировать {blockModal.login}?
+              Заблокировать {blockModal.login}
             </h3>
+
+            {/* Причина */}
             <textarea
               value={blockReason}
               onChange={e => setBlockReason(e.target.value)}
               placeholder="Причина блокировки..."
-              rows={3}
+              rows={2}
               className="w-full p-3 rounded-lg border text-sm resize-none mb-4"
               style={{ background: 'transparent', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
             />
+
+            {/* Срок блокировки */}
+            <p className="text-xs mb-2 opacity-60" style={{ color: 'var(--text-secondary)' }}>Срок блокировки:</p>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {[
+                { label: '5 минут', value: 5 },
+                { label: '1 час', value: 60 },
+                { label: '1 день', value: 1440 },
+                { label: '3 дня', value: 4320 },
+                { label: '1 неделя', value: 10080 },
+                { label: '1 месяц', value: 43200 },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => { setBlockDuration(opt.value); setBlockCustomDays(''); }}
+                  className="px-2 py-1.5 text-xs rounded-lg border transition-all"
+                  style={{
+                    borderColor: blockDuration === opt.value ? '#ef4444' : 'var(--border-color)',
+                    background: blockDuration === opt.value ? 'rgba(239,68,68,0.1)' : 'transparent',
+                    color: blockDuration === opt.value ? '#ef4444' : 'var(--text-secondary)',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => { setBlockDuration(-1); }}
+                className="px-3 py-1.5 text-xs rounded-lg border flex-1 transition-all"
+                style={{
+                  borderColor: blockDuration === -1 ? '#ef4444' : 'var(--border-color)',
+                  background: blockDuration === -1 ? 'rgba(239,68,68,0.1)' : 'transparent',
+                  color: blockDuration === -1 ? '#ef4444' : 'var(--text-secondary)',
+                }}
+              >
+                Указать дни
+              </button>
+              <button
+                onClick={() => { setBlockDuration(null); setBlockCustomDays(''); }}
+                className="px-3 py-1.5 text-xs rounded-lg border flex-1 transition-all"
+                style={{
+                  borderColor: blockDuration === null ? '#ef4444' : 'var(--border-color)',
+                  background: blockDuration === null ? 'rgba(239,68,68,0.1)' : 'transparent',
+                  color: blockDuration === null ? '#ef4444' : 'var(--text-secondary)',
+                }}
+              >
+                Бессрочно
+              </button>
+            </div>
+
+            {blockDuration === -1 && (
+              <div className="flex items-center gap-2 mb-4">
+                <input
+                  type="number"
+                  min={1}
+                  value={blockCustomDays}
+                  onChange={e => setBlockCustomDays(e.target.value)}
+                  placeholder="Кол-во дней"
+                  className="flex-1 px-3 py-2 text-sm rounded-lg border"
+                  style={{ background: 'transparent', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                />
+                <span className="text-sm opacity-60" style={{ color: 'var(--text-secondary)' }}>дн.</span>
+              </div>
+            )}
+
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setBlockModal(null)} className="px-4 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+              <button
+                onClick={() => { setBlockModal(null); setBlockReason(''); setBlockDuration(null); setBlockCustomDays(''); }}
+                className="px-4 py-2 text-sm rounded-lg border"
+                style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+              >
                 Отмена
               </button>
               <button

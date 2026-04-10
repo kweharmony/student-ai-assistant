@@ -2,6 +2,7 @@
 FastAPI-зависимости: сессия БД, текущий пользователь, проверка роли.
 """
 
+from datetime import datetime
 from typing import AsyncGenerator
 from uuid import UUID
 
@@ -44,8 +45,26 @@ async def get_current_user(
 
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Пользователь не найден")
+
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Аккаунт заблокирован")
+        # Авто-разблокировка если срок истёк
+        if user.blocked_until is not None and datetime.utcnow() >= user.blocked_until:
+            user.is_active = True
+            user.blocked_reason = None
+            user.blocked_by = None
+            user.blocked_at = None
+            user.blocked_until = None
+            await db.commit()
+            await db.refresh(user)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "message": "Аккаунт заблокирован",
+                    "reason": user.blocked_reason,
+                    "blocked_until": user.blocked_until.isoformat() if user.blocked_until else None,
+                },
+            )
 
     return user
 

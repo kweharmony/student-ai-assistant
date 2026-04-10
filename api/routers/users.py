@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth import hash_password, verify_password
 from ..dependencies import get_current_user, get_db
 from ..models import User
-from ..schemas import ChangePasswordRequest, UserOut, UserUpdateRequest
+from ..schemas import ChangePasswordRequest, SetEmojiRequest, UserOut, UserUpdateRequest
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -75,6 +75,31 @@ async def change_password(
         raise HTTPException(status_code=400, detail="Неверный текущий пароль")
     user.password_hash = hash_password(body.new_password)
     await db.commit()
+
+
+@router.put("/me/avatar-emoji", response_model=UserOut)
+async def set_avatar_emoji(
+    body: SetEmojiRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Установить эмодзи как аватарку."""
+    user.avatar_emoji = body.emoji
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.delete("/me/avatar-emoji", response_model=UserOut)
+async def delete_avatar_emoji(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Удалить эмодзи-аватарку."""
+    user.avatar_emoji = None
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 
 @router.post("/me/avatar", response_model=UserOut)

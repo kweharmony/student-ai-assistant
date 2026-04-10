@@ -9,6 +9,7 @@ import TextProcessingSection from './TextProcessingSection';
 import TranscriptionModals from './TranscriptionModals';
 import AdminDashboard from './AdminDashboard';
 import LecturesSection from './LecturesSection';
+import BoardSection from './BoardSection';
 import { useAuth } from '../../contexts/AuthContext';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -427,6 +428,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
         {activeSection === 'admin' && (
           <AdminDashboard />
+        )}
+
+        {activeSection === 'board' && (
+          <BoardSection isLightTheme={isLightTheme} />
         )}
         </div>
       </main>

@@ -4,7 +4,7 @@
 
 import random
 import string
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -90,7 +90,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Вход по логину и паролю → JWT-токен."""
 
     result = await db.execute(
-        select(User).where(User.login == body.login, User.is_deleted == False)
+        select(User).where(User.email == body.email, User.is_deleted == False)
     )
     user = result.scalar_one_or_none()
 
@@ -98,7 +98,24 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный логин или пароль")
 
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Аккаунт заблокирован")
+        # Авто-разблокировка если срок истёк
+        if user.blocked_until is not None and datetime.utcnow() >= user.blocked_until:
+            user.is_active = True
+            user.blocked_reason = None
+            user.blocked_by = None
+            user.blocked_at = None
+            user.blocked_until = None
+            await db.commit()
+            await db.refresh(user)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "message": "Аккаунт заблокирован",
+                    "reason": user.blocked_reason,
+                    "blocked_until": user.blocked_until.isoformat() if user.blocked_until else None,
+                },
+            )
 
     user.last_login_at = datetime.utcnow()
     await db.commit()

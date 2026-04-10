@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.17.6",
     "@tiptap/core": "3.7.2",
     "@tiptap/pm": "3.7.2",
     "@tiptap/react": "3.7.2",

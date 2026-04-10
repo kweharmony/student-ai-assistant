@@ -22,6 +22,7 @@ from .routers.lectures import router as lectures_router
 from .routers.admin import router as admin_router
 from .routers.worker import router as worker_router
 from .routers.export import router as export_router
+from .routers.boards import router as boards_router
 
 
 async def _timeout_recovery_loop() -> None:
@@ -102,5 +103,6 @@ app.include_router(lectures_router)
 app.include_router(admin_router)
 app.include_router(worker_router)
 app.include_router(export_router, prefix="/api")
+app.include_router(boards_router)
 
 # This allows running with: uvicorn api.app:app --reload

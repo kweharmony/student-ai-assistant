@@ -3,10 +3,13 @@ import { saveAs } from 'file-saver';
 import RichTextEditor from '../RichTextEditor';
 import { useExport } from '../../hooks/useExport';
 import { useMLProcessor } from '../../hooks/useMLProcessor';
+import { useAuth } from '../../contexts/AuthContext';
 import { MLMode, MLModeInfo } from '../../types/ml';
 import { marked } from 'marked';
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse');
+
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 interface TextProcessingSectionProps {
   isLightTheme: boolean;
@@ -84,6 +87,68 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   lectureId,
   onSaveLecture,
 }) => {
+  const { token } = useAuth();
+
+  // Модалка выбора лекции
+  const [showLectureModal, setShowLectureModal] = useState(false);
+  const [userLectures, setUserLectures] = useState<any[]>([]);
+  const [lecturesLoading, setLecturesLoading] = useState(false);
+  const [lectureSelectError, setLectureSelectError] = useState('');
+  const [lectureLoadingId, setLectureLoadingId] = useState<string | null>(null);
+
+  const openLectureModal = async () => {
+    setShowLectureModal(true);
+    setLectureSelectError('');
+    setLecturesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/lectures/my`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Ошибка загрузки лекций');
+      const data = await res.json();
+      setUserLectures(data.filter((l: any) => l.has_text));
+    } catch {
+      setLectureSelectError('Не удалось загрузить лекции');
+    } finally {
+      setLecturesLoading(false);
+    }
+  };
+
+  const handleSelectLecture = async (lectureId: string) => {
+    setLectureLoadingId(lectureId);
+    setLectureSelectError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/lectures/${lectureId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Ошибка загрузки лекции');
+      const data = await res.json();
+
+      const transcriptions = (data.transcriptions || []).filter((t: any) => !t.is_deleted);
+      if (!transcriptions.length) {
+        setLectureSelectError('У этой лекции нет текста');
+        return;
+      }
+      const latest = transcriptions.sort((a: any, b: any) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0];
+      const text: string = latest.processed_text || latest.raw_text || '';
+      if (!text.trim()) {
+        setLectureSelectError('Текст лекции пустой');
+        return;
+      }
+
+      const html = processTextContent(text, 'lecture.txt');
+      setEditorContent(html);
+      setShowTextEditor(true);
+      setShowLectureModal(false);
+    } catch {
+      setLectureSelectError('Не удалось загрузить текст лекции');
+    } finally {
+      setLectureLoadingId(null);
+    }
+  };
+
   // Состояние ML обработки
   const [selectedMLMode, setSelectedMLMode] = useState<MLMode>('summarize');
   const [topicInput, setTopicInput] = useState<string>('');
@@ -420,10 +485,15 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
             </p>
           </div>
 
-          <div className="space-y-4">
-            <label
-              className="btn-upload inline-block cursor-pointer"
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={openLectureModal}
+              className="btn-upload inline-flex items-center gap-2 cursor-pointer"
             >
+              <span className="material-symbols-outlined text-base">library_books</span>
+              Выбрать из лекций
+            </button>
+            <label className="btn-upload inline-block cursor-pointer">
               <input
                 type="file"
                 accept=".txt,.md,.doc,.docx"
@@ -432,15 +502,12 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
                   const file = e.target.files?.[0];
                   if (!file) return;
                   await handleFileUpload(file, false);
-                  // Сбрасываем input для возможности повторной загрузки того же файла
                   e.target.value = '';
                 }}
               />
-              <span>Выбрать лекцию</span>
+              <span>Загрузить файл лекции</span>
             </label>
-            <label
-              className="btn-upload inline-block cursor-pointer ml-4"
-            >
+            <label className="btn-upload inline-block cursor-pointer">
               <input
                 type="file"
                 accept=".txt,.md,.pdf,.doc,.docx"
@@ -449,7 +516,6 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
                   const file = e.target.files?.[0];
                   if (!file) return;
                   await handleFileUpload(file, true);
-                  // Сбрасываем input для возможности повторной загрузки того же файла
                   e.target.value = '';
                 }}
               />
@@ -936,6 +1002,100 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
                   При перемещении курсора или выделении текста кнопки инструментов автоматически показывают активные стили форматирования, как в Microsoft Word.
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модалка выбора лекции */}
+      {showLectureModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowLectureModal(false); }}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl shadow-xl flex flex-col"
+            style={{
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)',
+              maxHeight: '80vh',
+            }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border-color)' }}>
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined" style={{ color: '#B58488' }}>library_books</span>
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Выбрать лекцию</h3>
+              </div>
+              <button
+                onClick={() => setShowLectureModal(false)}
+                className="p-1 rounded-lg hover:opacity-70 transition-opacity"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto flex-1 px-5 py-4">
+              {lecturesLoading ? (
+                <div className="text-center py-10 opacity-50" style={{ color: 'var(--text-secondary)' }}>
+                  <svg className="animate-spin h-6 w-6 mx-auto mb-3" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  Загрузка лекций...
+                </div>
+              ) : lectureSelectError ? (
+                <p className="text-center py-6 text-sm" style={{ color: '#e57373' }}>{lectureSelectError}</p>
+              ) : userLectures.length === 0 ? (
+                <div className="text-center py-10 opacity-50" style={{ color: 'var(--text-secondary)' }}>
+                  <span className="material-symbols-outlined text-4xl block mb-2">library_books</span>
+                  <p className="text-sm">Нет лекций с готовым текстом</p>
+                  <p className="text-xs mt-1 opacity-70">Сначала загрузите аудио и дождитесь транскрибации</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {userLectures.map((lecture) => (
+                    <button
+                      key={lecture.id}
+                      onClick={() => handleSelectLecture(lecture.id)}
+                      disabled={lectureLoadingId === lecture.id}
+                      className="w-full text-left px-4 py-3 rounded-lg border transition-all duration-150 hover:opacity-80"
+                      style={{
+                        borderColor: 'var(--border-color)',
+                        background: 'var(--hover-bg)',
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                            {lecture.title}
+                          </p>
+                          <p className="text-xs opacity-50 mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                            {lecture.subject ? `${lecture.subject} · ` : ''}
+                            {new Date(lecture.created_at).toLocaleDateString('ru-RU')}
+                            {lecture.is_ai_filtered && (
+                              <span className="ml-2 px-1.5 py-0.5 rounded text-xs" style={{ background: 'rgba(181,132,136,0.2)', color: '#B58488' }}>
+                                AI-фильтр
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        {lectureLoadingId === lecture.id ? (
+                          <svg className="animate-spin h-4 w-4 shrink-0" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                          </svg>
+                        ) : (
+                          <span className="material-symbols-outlined text-base shrink-0 opacity-40" style={{ color: 'var(--text-secondary)' }}>arrow_forward</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

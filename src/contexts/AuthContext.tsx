@@ -21,6 +21,7 @@ export interface User {
   role: 'student' | 'teacher' | 'admin';
   full_name: string | null;
   avatar_url: string | null;
+  avatar_emoji: string | null;
   is_active: boolean;
   created_at: string;
   last_login_at: string | null;
@@ -42,7 +43,7 @@ export interface RegisterData {
 }
 
 export interface LoginData {
-  login: string;
+  email: string;
   password: string;
 }
 
@@ -120,6 +121,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Ошибка сервера' }));
+      // detail может быть объектом (при блокировке) или строкой
+      if (err.detail && typeof err.detail === 'object') {
+        const e = new Error(err.detail.message || 'Аккаунт заблокирован') as any;
+        e.blockInfo = err.detail;
+        throw e;
+      }
       throw new Error(err.detail || 'Ошибка входа');
     }
 

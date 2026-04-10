@@ -51,11 +51,13 @@ class User(Base):
     role = Column(Enum(UserRole, name="user_role", create_constraint=True), nullable=False)
     full_name = Column(String(100), nullable=True)
     avatar_url = Column(String(500), nullable=True)
+    avatar_emoji = Column(String(10), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     blocked_reason = Column(String(300), nullable=True)
     blocked_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     blocked_at = Column(DateTime, nullable=True)
+    blocked_until = Column(DateTime, nullable=True)  # None = indefinite
     created_at = Column(DateTime, default=_now, nullable=False)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
@@ -213,7 +215,24 @@ class LectureNote(Base):
     __table_args__ = (UniqueConstraint("lecture_id", "mode", name="uq_lecture_note_mode"),)
 
 
-# ========== 9. admin_actions ==========
+# ========== 9. boards ==========
+
+class Board(Base):
+    __tablename__ = "boards"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    title = Column(String(255), nullable=False, default="Новое полотно")
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    share_token = Column(String(64), nullable=True, unique=True)
+    is_public = Column(Boolean, default=False, nullable=False)
+    data = Column(Text, nullable=True)  # Excalidraw JSON state
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    owner = relationship("User")
+
+
+# ========== 10. admin_actions ==========
 
 class AdminAction(Base):
     __tablename__ = "admin_actions"
