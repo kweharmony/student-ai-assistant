@@ -144,19 +144,32 @@ const excalidrawStyles = `
 
   /* ── Center the tool toolbar on desktop ── */
   @media (min-width: 641px) {
-    .excalidraw .layer-ui__wrapper {
-      display: flex !important;
-      justify-content: center !important;
+    .excalidraw .App-top-bar {
+      position: absolute !important;
+      inset: 16px 0 auto 0 !important;
+      width: 100% !important;
+      pointer-events: none !important;
+    }
+
+    .excalidraw .App-menu_top {
+      width: 100% !important;
+      grid-template-columns: 1fr auto 1fr !important;
+      grid-gap: 0 !important;
       align-items: flex-start !important;
+      justify-items: center !important;
+    }
+
+    .excalidraw .App-menu_top__left {
+      display: none !important;
     }
 
     .excalidraw .App-toolbar,
     .excalidraw .App-toolbar-container {
-      position: absolute !important;
-      left: 50% !important;
-      top: 16px !important;
+      position: relative !important;
+      left: auto !important;
+      top: auto !important;
       right: auto !important;
-      transform: translateX(-50%) !important;
+      transform: none !important;
       width: max-content !important;
       margin: 0 !important;
       padding: 8px 12px !important;
@@ -173,7 +186,8 @@ const excalidrawStyles = `
   .excalidraw [aria-label="Меню"],
   .excalidraw [aria-label="Main menu"],
   .excalidraw [title="Menu"],
-  .excalidraw [title="Меню"] { display: none !important; }
+  .excalidraw [title="Меню"],
+  .excalidraw .default-sidebar-trigger { display: none !important; }
 `;
 
 export default excalidrawStyles;
