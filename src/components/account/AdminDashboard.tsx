@@ -8,6 +8,7 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 interface Stats {
   users: { total: number; active: number; blocked: number; students: number; teachers: number; admins: number };
   lectures: { total: number };
+  boards: { total: number };
   audio: { total: number };
   transcriptions: { total: number };
   queue: { files: number; size_mb: number };
@@ -60,7 +61,17 @@ interface LectureItem {
   transcription_count: number;
 }
 
-type AdminTab = 'overview' | 'users' | 'queue' | 'workers' | 'lectures';
+interface AdminBoardItem {
+  id: string;
+  title: string;
+  is_public: boolean;
+  share_token: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  owner: { id: string; login: string; email: string; full_name: string | null; role: string } | null;
+}
+
+type AdminTab = 'overview' | 'users' | 'queue' | 'workers' | 'lectures' | 'boards';
 
 // ==================== Component ====================
 
@@ -72,6 +83,7 @@ const AdminDashboard: React.FC = () => {
   const [queue, setQueue] = useState<QueueFile[]>([]);
   const [workerStats, setWorkerStats] = useState<WorkerStats | null>(null);
   const [lectures, setLectures] = useState<LectureItem[]>([]);
+  const [boards, setBoards] = useState<AdminBoardItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,6 +98,10 @@ const AdminDashboard: React.FC = () => {
   const [lectureDateFrom, setLectureDateFrom] = useState('');
   const [lectureDateTo, setLectureDateTo] = useState('');
   const [lectureUploader, setLectureUploader] = useState('');
+
+  // Board filters
+  const [boardSearch, setBoardSearch] = useState('');
+  const [boardOwnerSearch, setBoardOwnerSearch] = useState('');
 
   // Block modal
   const [blockModal, setBlockModal] = useState<{ userId: string; login: string } | null>(null);
@@ -163,6 +179,19 @@ const AdminDashboard: React.FC = () => {
     setLoading(false);
   }, [token]);
 
+  const fetchBoards = useCallback(async (filters?: { search?: string; owner?: string }) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: '300' });
+      if (filters?.search) params.set('search', filters.search);
+      if (filters?.owner) params.set('owner_search', filters.owner);
+      const res = await fetch(`${API_BASE}/api/admin/boards?${params}`, { headers });
+      if (!res.ok) throw new Error('Ошибка загрузки досок');
+      setBoards(await res.json());
+    } catch (e: any) { setError(e.message); }
+    setLoading(false);
+  }, [token]);
+
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
@@ -172,7 +201,8 @@ const AdminDashboard: React.FC = () => {
     if (activeTab === 'queue') fetchQueue();
     if (activeTab === 'workers') fetchWorkers();
     if (activeTab === 'lectures') fetchLectures({});
-  }, [activeTab, fetchUsers, fetchQueue, fetchWorkers, fetchLectures]);
+    if (activeTab === 'boards') fetchBoards({});
+  }, [activeTab, fetchUsers, fetchQueue, fetchWorkers, fetchLectures, fetchBoards]);
 
   // Actions
   const handleBlock = async () => {
@@ -291,6 +321,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'queue', label: 'Очередь аудио' },
     { id: 'workers', label: 'Воркеры' },
     { id: 'lectures', label: 'Лекции' },
+    { id: 'boards', label: 'Доски' },
   ];
 
   return (
@@ -340,6 +371,7 @@ const AdminDashboard: React.FC = () => {
             { label: 'Преподавателей', value: stats.users.teachers },
             { label: 'Заблокировано', value: stats.users.blocked, warn: stats.users.blocked > 0 },
             { label: 'Лекций', value: stats.lectures.total },
+            { label: 'Полотен', value: stats.boards.total },
             { label: 'Аудиофайлов', value: stats.audio.total },
             { label: 'Транскрипций', value: stats.transcriptions.total },
             { label: 'В очереди', value: stats.queue.files, sub: 'ожидают + обрабатываются' },
@@ -720,6 +752,104 @@ const AdminDashboard: React.FC = () => {
                       >
                         Изменить
                       </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== Boards ==================== */}
+      {activeTab === 'boards' && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm opacity-60" style={{ color: 'var(--text-secondary)' }}>
+              Все доски на платформе
+            </p>
+            <button
+              onClick={() => fetchBoards({ search: boardSearch, owner: boardOwnerSearch })}
+              className="text-xs px-3 py-1.5 rounded-lg border transition-all hover:opacity-80"
+              style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+            >
+              Обновить
+            </button>
+          </div>
+
+          <div className="border rounded-xl p-4 mb-4" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="text"
+                value={boardSearch}
+                onChange={e => setBoardSearch(e.target.value)}
+                placeholder="Поиск по названию доски..."
+                className="text-xs px-3 py-2 rounded-lg border flex-1 min-w-48"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              />
+              <input
+                type="text"
+                value={boardOwnerSearch}
+                onChange={e => setBoardOwnerSearch(e.target.value)}
+                placeholder="Логин / email / имя владельца"
+                className="text-xs px-3 py-2 rounded-lg border"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', width: 240 }}
+              />
+              <button
+                onClick={() => fetchBoards({ search: boardSearch, owner: boardOwnerSearch })}
+                className="text-xs px-4 py-2 rounded-lg transition-all"
+                style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
+              >
+                Найти
+              </button>
+              {(boardSearch || boardOwnerSearch) && (
+                <button
+                  onClick={() => {
+                    setBoardSearch('');
+                    setBoardOwnerSearch('');
+                    fetchBoards({});
+                  }}
+                  className="text-xs px-3 py-2 rounded-lg border"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                >
+                  Сбросить
+                </button>
+              )}
+            </div>
+          </div>
+
+          <p className="text-xs opacity-40 mb-3" style={{ color: 'var(--text-secondary)' }}>
+            Найдено: {boards.length}
+          </p>
+
+          {loading ? (
+            <p className="text-center opacity-60 py-8" style={{ color: 'var(--text-secondary)' }}>Загрузка...</p>
+          ) : boards.length === 0 ? (
+            <div className="text-center py-12 border rounded-xl" style={{ borderColor: 'var(--border-color)' }}>
+              <p className="text-lg opacity-40 mb-2" style={{ color: 'var(--text-secondary)' }}>Досок нет</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {boards.map(board => (
+                <div key={board.id} className="border rounded-xl p-4" style={{ borderColor: 'var(--border-color)' }}>
+                  <div className="flex flex-col md:flex-row md:items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>{board.title}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: board.is_public ? 'rgba(34,197,94,0.15)' : 'rgba(107,114,128,0.15)', color: board.is_public ? '#22c55e' : '#6b7280' }}>
+                          {board.is_public ? 'Публичная' : 'Приватная'}
+                        </span>
+                      </div>
+                      <div className="text-xs opacity-50 mt-1" style={{ color: 'var(--text-secondary)' }}>
+                        Владелец: {board.owner ? `${board.owner.login}${board.owner.full_name ? ` (${board.owner.full_name})` : ''}` : 'Неизвестен'}
+                        {board.owner?.email ? ` · ${board.owner.email}` : ''}
+                      </div>
+                      <div className="text-xs opacity-40 mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                        Создано: {formatDate(board.created_at)} · Обновлено: {formatDate(board.updated_at)}
+                      </div>
+                    </div>
+                    <div className="text-xs opacity-50 shrink-0" style={{ color: 'var(--text-secondary)' }}>
+                      ID: {board.id.slice(0, 8)}...
                     </div>
                   </div>
                 </div>

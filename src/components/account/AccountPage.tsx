@@ -13,6 +13,20 @@ import BoardSection from './BoardSection';
 import { useAuth } from '../../contexts/AuthContext';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const ACCOUNT_ACTIVE_SECTION_KEY = 'mindesync_account_active_section';
+const ALLOWED_SECTIONS: ActiveSection[] = ['profile', 'calendar', 'transcriber', 'text-processing', 'lectures', 'admin', 'board'];
+
+const getInitialActiveSection = (): ActiveSection => {
+  try {
+    const saved = localStorage.getItem(ACCOUNT_ACTIVE_SECTION_KEY);
+    if (saved && ALLOWED_SECTIONS.includes(saved as ActiveSection)) {
+      return saved as ActiveSection;
+    }
+  } catch {
+    // ignore localStorage access errors
+  }
+  return 'profile';
+};
 
 const filterBenefits = [
   'Орфографические ошибки распознавания',
@@ -29,12 +43,12 @@ const errorRecoverySteps = [
 
 const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }) => {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   // Sidebar state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<ActiveSection>('profile');
+  const [activeSection, setActiveSection] = useState<ActiveSection>(() => getInitialActiveSection());
   const [showSidebarText, setShowSidebarText] = useState(false);
   const [isBoardCanvas, setIsBoardCanvas] = useState(false);
 
@@ -103,6 +117,22 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const handleThemeToggle = () => {
     onToggleTheme();
   };
+
+  // Сохраняем выбранный раздел, чтобы после перезагрузки оставаться на той же вкладке.
+  useEffect(() => {
+    try {
+      localStorage.setItem(ACCOUNT_ACTIVE_SECTION_KEY, activeSection);
+    } catch {
+      // ignore localStorage write errors
+    }
+  }, [activeSection]);
+
+  // Защита от сохраненной admin-вкладки для не-админов.
+  useEffect(() => {
+    if (activeSection === 'admin' && user?.role !== 'admin') {
+      setActiveSection('profile');
+    }
+  }, [activeSection, user?.role]);
 
   // Функция загрузки аудио + метаданных лекции на сервер
   const handleAudioTranscription = async (file: File, meta: LectureMeta) => {

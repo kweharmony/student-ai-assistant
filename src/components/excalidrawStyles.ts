@@ -138,13 +138,20 @@ const excalidrawStyles = `
   @media (max-width: 640px) {
     .excalidraw .App-toolbar { border-radius: 16px !important; padding: 4px 8px !important; }
     .excalidraw .ToolIcon_type_button { min-width: 36px !important; min-height: 36px !important; }
-    .excalidraw .layer-ui__wrapper__footer-right { bottom: 70px !important; }
+    .excalidraw .layer-ui__wrapper__footer-right,
+    .excalidraw .layer-ui__wrapper__footer-left { bottom: 92px !important; }
   }
 
-  /* ── Center the tool toolbar ── */
-  .excalidraw .App-toolbar {
-    left: 50% !important;
-    transform: translateX(-50%) !important;
+  /* ── Center the tool toolbar on desktop ── */
+  @media (min-width: 641px) {
+    .excalidraw .App-toolbar {
+      left: 50% !important;
+      right: auto !important;
+      inset-inline-start: 50% !important;
+      inset-inline-end: auto !important;
+      transform: translateX(-50%) !important;
+      margin-left: 0 !important;
+    }
   }
 
   /* ── Hide hamburger / main menu button ── */

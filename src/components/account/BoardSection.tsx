@@ -213,6 +213,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     }
   }, []);
 
+  const openLibraryPanel = useCallback(() => {
+    const api = excalidrawAPI.current;
+    if (!api) return;
+    // Re-try loading library assets before opening to avoid an empty sidebar.
+    loadLibraries(api);
+    api.toggleSidebar({ name: 'library', force: true });
+  }, [loadLibraries]);
+
   // ── auto-save on change ──────────────────────────────────────────────────────
   const handleChange = useCallback(() => {
     if (!activeBoardId || !excalidrawAPI.current) return;
@@ -532,11 +540,16 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
             border: '1px solid var(--border-color)',
             borderRadius: 20,
-            padding: '8px 12px',
+            padding: '8px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
             backdropFilter: 'blur(16px)',
             fontFamily: 'Georgia, serif',
-            maxWidth: 'calc(100vw - 24px)',
+            width: 'calc(100vw - 12px)',
+            maxWidth: 'calc(100vw - 12px)',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            WebkitOverflowScrolling: 'touch',
+            boxSizing: 'border-box',
           }}>
             {saveMsg && (
               <div style={{
@@ -675,7 +688,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               )}
             </div>
 
-            <MobileIconButton icon="menu_book" label="Формы" onClick={() => excalidrawAPI.current?.toggleSidebar({ name: 'library' })} />
+            <MobileIconButton icon="menu_book" label="Формы" onClick={openLibraryPanel} />
             {onToggleTheme && (
               <MobileIconButton icon={isLightTheme ? 'dark_mode' : 'light_mode'} label={isLightTheme ? 'Тёмная' : 'Светлая'} onClick={onToggleTheme} />
             )}
@@ -901,7 +914,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 </div>
 
                 {/* Library */}
-                <PanelButton icon="menu_book" label="Библиотека" onClick={() => excalidrawAPI.current?.toggleSidebar({ name: 'library' })} isLightTheme={isLightTheme} />
+                <PanelButton icon="menu_book" label="Библиотека" onClick={openLibraryPanel} isLightTheme={isLightTheme} />
 
                 <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 4px' }} />
 
@@ -1222,17 +1235,18 @@ const MobileIconButton: React.FC<{ icon: string; label: string; onClick: () => v
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
       background: active ? 'rgba(130,170,130,0.12)' : 'none',
       border: 'none', cursor: 'pointer',
-      padding: '6px 10px', borderRadius: 10,
+      padding: '6px 7px', borderRadius: 10,
       color: danger ? '#b58488' : active ? '#82AA82' : 'var(--text-primary)',
-      fontSize: 10, fontFamily: 'Georgia, serif',
-      minWidth: 44,
+      fontSize: 9, fontFamily: 'Georgia, serif',
+      minWidth: 0,
+      flex: '0 0 auto',
       transition: 'background .15s',
     }}
     onMouseEnter={e => (e.currentTarget.style.background = active ? 'rgba(130,170,130,0.2)' : 'var(--hover-bg)')}
     onMouseLeave={e => (e.currentTarget.style.background = active ? 'rgba(130,170,130,0.12)' : 'none')}
   >
     <span className="material-symbols-outlined" style={{ fontSize: 22 }}>{icon}</span>
-    <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
+    <span style={{ whiteSpace: 'nowrap', maxWidth: 56, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
   </button>
 );
 

@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 from ..dependencies import get_db, require_admin
 from ..models import (
     AdminAction, AudioFile, Lecture, LectureStatus, Transcription, TranscriptionTask,
-    TranscriptionTaskStatus, User, UserRole, StudentProfile, TeacherProfile,
+    TranscriptionTaskStatus, User, UserRole, StudentProfile, TeacherProfile, Board,
 )
 from ..schemas import (
     AdminActionOut,
@@ -445,6 +445,9 @@ async def dashboard_stats(
     # Транскрипции
     total_transcriptions = (await db.execute(select(func.count(Transcription.id)).where(Transcription.is_deleted == False))).scalar() or 0
 
+    # Полотна
+    total_boards = (await db.execute(select(func.count(Board.id)))).scalar() or 0
+
     # Очередь транскрибации (задачи в БД)
     queue_pending = (
         await db.execute(
@@ -471,6 +474,7 @@ async def dashboard_stats(
             "admins": admins,
         },
         "lectures": {"total": total_lectures},
+        "boards": {"total": total_boards},
         "audio": {"total": total_audio},
         "transcriptions": {"total": total_transcriptions},
         "queue": {
@@ -606,4 +610,55 @@ async def list_all_lectures(
             "transcription_count": len([t for t in l.transcriptions if not t.is_deleted]),
         }
         for l in lectures
+    ]
+
+
+# ---------- All boards (admin view) ----------
+
+@router.get("/boards")
+async def list_all_boards(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    search: Optional[str] = Query(None),
+    owner_search: Optional[str] = Query(None),
+):
+    """Список всех полотен (для админа) с фильтрацией."""
+
+    query = select(Board).options(selectinload(Board.owner))
+
+    if search:
+        query = query.where(Board.title.ilike(f"%{search}%"))
+
+    if owner_search:
+        query = query.join(Board.owner).where(
+            or_(
+                User.login.ilike(f"%{owner_search}%"),
+                User.full_name.ilike(f"%{owner_search}%"),
+                User.email.ilike(f"%{owner_search}%"),
+            )
+        )
+
+    query = query.order_by(Board.updated_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(query)
+    boards = result.scalars().unique().all()
+
+    return [
+        {
+            "id": str(b.id),
+            "title": b.title,
+            "is_public": b.is_public,
+            "share_token": b.share_token,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "updated_at": b.updated_at.isoformat() if b.updated_at else None,
+            "owner": {
+                "id": str(b.owner.id),
+                "login": b.owner.login,
+                "email": b.owner.email,
+                "full_name": b.owner.full_name,
+                "role": b.owner.role.value,
+            } if b.owner else None,
+        }
+        for b in boards
     ]
