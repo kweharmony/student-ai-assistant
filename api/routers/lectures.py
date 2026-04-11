@@ -4,7 +4,7 @@
 
 import mimetypes
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
@@ -142,8 +142,10 @@ async def list_my_lectures(
         active_audio = [a for a in lec.audio_files if not a.is_deleted]
 
         task_status: Optional[str] = None
+        audio_expires_at = None
         if active_audio:
             latest_audio = sorted(active_audio, key=lambda a: a.created_at, reverse=True)[0]
+            audio_expires_at = latest_audio.audio_expires_at
             task_result = await db.execute(
                 select(TranscriptionTask)
                 .where(TranscriptionTask.audio_file_id == latest_audio.id)
@@ -172,6 +174,7 @@ async def list_my_lectures(
                 (latest_transcription.processed_text or latest_transcription.raw_text)
             ),
             is_ai_filtered=bool(latest_transcription and latest_transcription.is_ai_filtered),
+            audio_expires_at=audio_expires_at,
             notes=[
                 LectureNoteOut(id=n.id, mode=n.mode, created_at=n.created_at)
                 for n in lec.notes
@@ -290,6 +293,7 @@ async def upload_audio(
         file_name=file.filename or "unknown",
         file_size=len(content),
         mime_type=mime,
+        audio_expires_at=datetime.utcnow() + timedelta(days=7),
     )
     db.add(audio)
     await db.flush()

@@ -136,6 +136,7 @@ class AudioFile(Base):
     is_deleted = Column(Boolean, default=False, nullable=False)
     deleted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     deleted_at = Column(DateTime, nullable=True)
+    audio_expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_now, nullable=False)
 
     lecture = relationship("Lecture", back_populates="audio_files")

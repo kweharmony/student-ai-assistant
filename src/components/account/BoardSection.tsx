@@ -2,8 +2,23 @@ import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { Excalidraw, exportToBlob, exportToSvg, serializeAsJSON } from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
 import { useAuth } from '../../contexts/AuthContext';
+import excalidrawStyles from '../excalidrawStyles';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+interface LectureMeta {
+  id: string;
+  title: string;
+  subject: string | null;
+  has_text: boolean;
+  created_at: string;
+}
+
+interface LectureFull {
+  id: string;
+  title: string;
+  transcriptions: { raw_text: string; processed_text: string | null }[];
+}
 
 interface BoardMeta {
   id: string;
@@ -57,6 +72,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
   // ── exit prompt ──────────────────────────────────────────────────────────────
   const [exitPrompt, setExitPrompt] = useState(false);
 
+  // ── lecture insert ───────────────────────────────────────────────────────────
+  const [lecturePickerOpen, setLecturePickerOpen] = useState(false);
+  const [lectures, setLectures] = useState<LectureMeta[]>([]);
+  const [lecturesLoading, setLecturesLoading] = useState(false);
+  const [selectedLecture, setSelectedLecture] = useState<LectureFull | null>(null);
+  const [lectureDetailLoading, setLectureDetailLoading] = useState(false);
+  const [insertText, setInsertText] = useState('');
+
   // ── mobile detection ─────────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   useEffect(() => {
@@ -105,7 +128,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
   // ── open board by share link ─────────────────────────────────────────────────
   const openByShareLink = async () => {
     setShareError('');
-    const match = shareInput.match(/\/public\/([A-Za-z0-9_-]+)/);
+    const match = shareInput.match(/\/board\/([A-Za-z0-9_-]+)/);
     const token_ = match ? match[1] : shareInput.trim();
     if (!token_) { setShareError('Введите ссылку или токен'); return; }
     const res = await fetch(`${API_BASE}/api/boards/public/${token_}`);
@@ -274,6 +297,89 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
     });
   };
 
+  // ── lecture insert ───────────────────────────────────────────────────────────
+  const openLecturePicker = async () => {
+    setLecturePickerOpen(true);
+    setSelectedLecture(null);
+    setInsertText('');
+    setLecturesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/lectures/my`, { headers: authHeaders() });
+      if (res.ok) setLectures((await res.json()).filter((l: LectureMeta) => l.has_text));
+    } finally {
+      setLecturesLoading(false);
+    }
+  };
+
+  const selectLecture = async (id: string) => {
+    setLectureDetailLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/lectures/${id}`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data: LectureFull = await res.json();
+      setSelectedLecture(data);
+      const best = data.transcriptions[0];
+      setInsertText(best ? (best.processed_text || best.raw_text) : '');
+    } finally {
+      setLectureDetailLoading(false);
+    }
+  };
+
+  const insertLectureText = () => {
+    const api = excalidrawAPI.current;
+    if (!api || !insertText.trim()) return;
+
+    const appState = api.getAppState();
+    const zoom = appState.zoom.value;
+    const x = (-appState.scrollX + window.innerWidth / 2) / zoom - 300;
+    const y = (-appState.scrollY + window.innerHeight / 2) / zoom - 100;
+
+    const lines = insertText.split('\n');
+    const lineHeight = 1.25;
+    const fontSize = 16;
+    const height = lines.length * fontSize * lineHeight + 10;
+
+    const newElement: any = {
+      type: 'text',
+      id: crypto.randomUUID(),
+      x, y,
+      width: 600,
+      height,
+      angle: 0,
+      strokeColor: isLightTheme ? '#44292b' : '#fffff0',
+      backgroundColor: 'transparent',
+      fillStyle: 'solid',
+      strokeWidth: 2,
+      strokeStyle: 'solid',
+      roughness: 1,
+      opacity: 100,
+      groupIds: [],
+      frameId: null,
+      roundness: null,
+      seed: Math.floor(Math.random() * 100000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 100000),
+      isDeleted: false,
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+      text: insertText,
+      originalText: insertText,
+      fontSize,
+      fontFamily: 1,
+      textAlign: 'left',
+      verticalAlign: 'top',
+      containerId: null,
+      lineHeight,
+    };
+
+    api.updateScene({ elements: [...api.getSceneElements(), newElement] });
+    setLecturePickerOpen(false);
+    setSelectedLecture(null);
+    setInsertText('');
+  };
+
   // ── exit ──────────────────────────────────────────────────────────────────────
   const handleExitRequest = () => setExitPrompt(true);
 
@@ -317,13 +423,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
     cursor: 'pointer',
   };
 
+
   // ────────────────────────────────────────────────────────────────────────────
   // CANVAS MODE
   // ────────────────────────────────────────────────────────────────────────────
   if (mode === 'canvas') {
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#fff' }}>
-        <style>{`.excalidraw .ToolIcon__library, .excalidraw [title="Library"], .excalidraw [aria-label="Library"] { display: none !important; }`}</style>
+        <style>{excalidrawStyles}</style>
         {/* Excalidraw fills entire viewport */}
         {initialData !== null && (
           <Excalidraw
@@ -331,6 +438,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
             initialData={initialData}
             onChange={handleChange}
             theme={isLightTheme ? 'light' : 'dark'}
+            langCode="ru-RU"
             UIOptions={{
               canvasActions: {
                 saveToActiveFile: false,
@@ -458,11 +566,11 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
                   ...(isMobile
                     ? { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }
                     : { left: 'calc(100% + 8px)', top: 0 }),
-                  background: isLightTheme ? 'rgba(255,253,245,0.98)' : 'rgba(20,15,17,0.98)',
+                  background: isLightTheme ? '#fffdf5' : '#140f11',
                   border: '1px solid var(--border-color)',
                   borderRadius: 12, padding: 6, minWidth: 190,
                   boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
-                  backdropFilter: 'blur(16px)', zIndex: 400,
+                  zIndex: 400,
                   whiteSpace: 'nowrap',
                 }}>
                   <div style={{ fontSize: 10, color: 'var(--text-secondary)', padding: '4px 10px 6px', letterSpacing: '0.08em', opacity: 0.6 }}>
@@ -491,11 +599,11 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
                   ...(isMobile
                     ? { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }
                     : { left: 'calc(100% + 8px)', top: 0 }),
-                  background: isLightTheme ? 'rgba(255,253,245,0.98)' : 'rgba(20,15,17,0.98)',
+                  background: isLightTheme ? '#fffdf5' : '#140f11',
                   border: '1px solid var(--border-color)',
                   borderRadius: 12, padding: 12, minWidth: 240,
                   boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
-                  backdropFilter: 'blur(16px)', zIndex: 400,
+                  zIndex: 400,
                   whiteSpace: 'nowrap',
                 }}>
                   {activeBoard?.is_public ? (
@@ -530,6 +638,13 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
                 </div>
               )}
             </div>
+          )}
+
+          {/* Insert lecture text */}
+          {activeBoardId && (
+            isMobile
+              ? <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />
+              : <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />
           )}
 
           {/* Divider */}
@@ -583,6 +698,141 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
             </div>
           </div>
         )}
+        {/* ── Lecture picker modal ── */}
+        {lecturePickerOpen && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 500,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '0 16px',
+          }} onClick={e => { if (e.target === e.currentTarget) { setLecturePickerOpen(false); setSelectedLecture(null); } }}>
+            <div style={{
+              ...surface,
+              borderRadius: 16,
+              width: '100%',
+              maxWidth: selectedLecture ? 640 : 480,
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              fontFamily: 'Georgia, serif',
+              overflow: 'hidden',
+            }}>
+              {/* Header */}
+              <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                {selectedLecture && (
+                  <button onClick={() => { setSelectedLecture(null); setInsertText(''); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', padding: 4, borderRadius: 6 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>arrow_back</span>
+                  </button>
+                )}
+                <div>
+                  <div style={{ fontSize: 18, color: 'var(--text-primary)', fontWeight: 400 }}>
+                    {selectedLecture ? selectedLecture.title : 'Вставить из лекции'}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    {selectedLecture ? 'Отредактируйте текст и нажмите «Вставить»' : 'Выберите лекцию для вставки текста'}
+                  </div>
+                </div>
+                <button onClick={() => { setLecturePickerOpen(false); setSelectedLecture(null); }}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', padding: 4, borderRadius: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
+                </button>
+              </div>
+
+              {/* Body */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px' }}>
+                {!selectedLecture ? (
+                  // Lecture list
+                  lecturesLoading ? (
+                    <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 14 }}>
+                      Загрузка...
+                    </div>
+                  ) : lectures.length === 0 ? (
+                    <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 14 }}>
+                      Нет лекций с текстом
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {lectures.map(l => (
+                        <button key={l.id} onClick={() => selectLecture(l.id)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 12,
+                            background: 'none', border: '1px solid var(--border-color)',
+                            borderRadius: 10, padding: '12px 14px', cursor: 'pointer',
+                            textAlign: 'left', fontFamily: 'Georgia, serif',
+                            transition: 'border-color .15s, background .15s',
+                            width: '100%',
+                          }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--hover-bg)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--text-secondary)'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-color)'; }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--text-secondary)', flexShrink: 0 }}>description</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {l.title}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                              {l.subject ? `${l.subject} · ` : ''}{new Date(l.created_at).toLocaleDateString('ru-RU')}
+                            </div>
+                          </div>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-secondary)', flexShrink: 0 }}>chevron_right</span>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  // Text editor
+                  lectureDetailLoading ? (
+                    <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 14 }}>
+                      Загрузка текста...
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        Вы можете отредактировать или сократить текст перед вставкой
+                      </div>
+                      <textarea
+                        value={insertText}
+                        onChange={e => setInsertText(e.target.value)}
+                        rows={14}
+                        style={{
+                          width: '100%',
+                          background: 'var(--hover-bg)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 10,
+                          padding: '12px 14px',
+                          color: 'var(--text-primary)',
+                          fontFamily: 'Georgia, serif',
+                          fontSize: 13,
+                          lineHeight: 1.7,
+                          outline: 'none',
+                          resize: 'vertical',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', textAlign: 'right' }}>
+                        {insertText.length} символов
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* Footer */}
+              {selectedLecture && !lectureDetailLoading && (
+                <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button style={{ ...btnSecondary, fontSize: 13 }} onClick={() => { setLecturePickerOpen(false); setSelectedLecture(null); }}>
+                    Отмена
+                  </button>
+                  <button style={{ ...btnPrimary, fontSize: 13 }} onClick={insertLectureText} disabled={!insertText.trim()}>
+                    Вставить
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     );
   }

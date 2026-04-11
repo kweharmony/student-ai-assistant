@@ -70,11 +70,45 @@ async def _timeout_recovery_loop() -> None:
             await db.commit()
 
 
+async def _audio_cleanup_loop() -> None:
+    """
+    Каждый час находит аудиофайлы с истёкшим сроком хранения (7 дней),
+    удаляет их с диска и помечает is_deleted = True в БД.
+    """
+    from sqlalchemy import select
+    from .database import async_session
+    from .models import AudioFile
+
+    while True:
+        await asyncio.sleep(3600)  # каждый час
+        now = datetime.utcnow()
+        async with async_session() as db:
+            result = await db.execute(
+                select(AudioFile).where(
+                    AudioFile.is_deleted == False,
+                    AudioFile.audio_expires_at.isnot(None),
+                    AudioFile.audio_expires_at < now,
+                )
+            )
+            expired = result.scalars().all()
+            for audio in expired:
+                if audio.file_path and os.path.exists(audio.file_path):
+                    try:
+                        os.remove(audio.file_path)
+                    except OSError:
+                        pass
+                audio.is_deleted = True
+            if expired:
+                await db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     recovery_task = asyncio.create_task(_timeout_recovery_loop())
+    cleanup_task = asyncio.create_task(_audio_cleanup_loop())
     yield
     recovery_task.cancel()
+    cleanup_task.cancel()
 
 
 app = FastAPI(title="MindeSync — Student AI Assistant API", lifespan=lifespan)

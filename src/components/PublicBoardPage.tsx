@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import { useTheme } from '../contexts/ThemeContext';
+import excalidrawStyles from './excalidrawStyles';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -62,18 +63,14 @@ const PublicBoardPage: React.FC = () => {
   );
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#fff' }}>
-      <style>{`
-        .excalidraw .ToolIcon__library,
-        .excalidraw [title="Library"],
-        .excalidraw [aria-label="Library"] { display: none !important; }
-      `}</style>
-
+    <div style={{ position: 'fixed', inset: 0, background: isLightTheme ? '#fffff0' : '#1f1516' }}>
+      <style>{excalidrawStyles}</style>
       {initialData !== null && (
         <Excalidraw
           initialData={initialData}
           viewModeEnabled
           theme={isLightTheme ? 'light' : 'dark'}
+          langCode="ru-RU"
           UIOptions={{ canvasActions: { saveToActiveFile: false, loadScene: false, export: false, toggleTheme: false } }}
         />
       )}

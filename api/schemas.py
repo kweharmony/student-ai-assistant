@@ -238,6 +238,7 @@ class LectureMyOut(BaseModel):
     transcription_id: Optional[UUID] = None
     has_text: bool = False
     is_ai_filtered: bool = False
+    audio_expires_at: Optional[datetime] = None
     notes: List[LectureNoteOut] = []
 
 

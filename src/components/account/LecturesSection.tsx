@@ -22,7 +22,15 @@ interface LectureItem {
   task_status: string | null;
   has_text: boolean;
   is_ai_filtered: boolean;
+  audio_expires_at: string | null;
   notes: NoteInfo[];
+}
+
+function audioExpiryInfo(expires_at: string | null): { daysLeft: number; expired: boolean } {
+  if (!expires_at) return { daysLeft: 0, expired: true };
+  const ms = new Date(expires_at).getTime() - Date.now();
+  if (ms <= 0) return { daysLeft: 0, expired: true };
+  return { daysLeft: Math.ceil(ms / (1000 * 60 * 60 * 24)), expired: false };
 }
 
 interface LecturesSectionProps {
@@ -323,6 +331,9 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   // Per-card actions loading state
   const [filteringId,     setFilteringId]           = useState<string | null>(null);
   const [reTranscribingId, setReTranscribingId]     = useState<string | null>(null);
+  const [reUploadingId,    setReUploadingId]         = useState<string | null>(null);
+  const [reUploadTarget,   setReUploadTarget]        = useState<string | null>(null);
+  const reUploadInputRef = useRef<HTMLInputElement>(null);
   const [confirmDeleteId, setConfirmDeleteId]       = useState<string | null>(null);
 
   // Add-note dropdown
@@ -402,6 +413,38 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
       alert(`Ошибка: ${e.message}`);
     } finally {
       setReTranscribingId(null);
+    }
+  };
+
+  const handleReUploadClick = (lectureId: string) => {
+    setReUploadTarget(lectureId);
+    reUploadInputRef.current?.click();
+  };
+
+  const handleReUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !reUploadTarget) return;
+    const lectureId = reUploadTarget;
+    setReUploadTarget(null);
+    setReUploadingId(lectureId);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_BASE}/api/lectures/${lectureId}/audio`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Ошибка загрузки файла');
+      }
+      await fetchLectures();
+    } catch (e: any) {
+      alert(`Ошибка: ${e.message}`);
+    } finally {
+      setReUploadingId(null);
     }
   };
 
@@ -601,25 +644,77 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                     </div>
                   )}
 
-                  {/* Re-transcribe */}
-                  {!inProgress && (
-                    <button
-                      onClick={() => handleReTranscribe(lecture)}
-                      disabled={isReTranscribing}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
-                      style={{ background: btnBg, color: btnColor }}
-                    >
-                      {isReTranscribing ? (
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                        </svg>
-                      ) : (
-                        <span className="material-symbols-outlined text-base">replay</span>
-                      )}
-                      Повторная транскрибация
-                    </button>
-                  )}
+                  {/* Audio expiry info + re-transcribe / re-upload */}
+                  {!inProgress && (() => {
+                    const expiry = audioExpiryInfo(lecture.audio_expires_at);
+                    const isReUploading = reUploadingId === lecture.id;
+                    if (!expiry.expired) {
+                      // Audio still available — show countdown + re-transcribe button
+                      return (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className="flex items-center gap-1 px-2 py-1 rounded-full text-xs"
+                            style={{
+                              background: expiry.daysLeft <= 2
+                                ? 'rgba(239,68,68,.1)' : 'rgba(34,197,94,.08)',
+                              color: expiry.daysLeft <= 2 ? '#ef4444' : '#22c55e',
+                            }}
+                            title={`Аудиофайл будет удалён ${new Date(lecture.audio_expires_at!).toLocaleDateString('ru-RU')}`}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>
+                              {expiry.daysLeft <= 2 ? 'warning' : 'schedule'}
+                            </span>
+                            {expiry.daysLeft === 1 ? 'Аудио удалится завтра' : `Аудио хранится ещё ${expiry.daysLeft} дн.`}
+                          </span>
+                          <button
+                            onClick={() => handleReTranscribe(lecture)}
+                            disabled={isReTranscribing}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+                            style={{ background: btnBg, color: btnColor }}
+                          >
+                            {isReTranscribing ? (
+                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                              </svg>
+                            ) : (
+                              <span className="material-symbols-outlined text-base">replay</span>
+                            )}
+                            Повторная транскрибация
+                          </button>
+                        </div>
+                      );
+                    } else {
+                      // Audio deleted — show re-upload button
+                      return (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className="flex items-center gap-1 px-2 py-1 rounded-full text-xs"
+                            style={{ background: 'rgba(156,163,175,.1)', color: '#9ca3af' }}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>audio_file</span>
+                            Аудио удалено
+                          </span>
+                          <button
+                            onClick={() => handleReUploadClick(lecture.id)}
+                            disabled={isReUploading}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+                            style={{ background: btnBg, color: btnColor }}
+                          >
+                            {isReUploading ? (
+                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                              </svg>
+                            ) : (
+                              <span className="material-symbols-outlined text-base">upload_file</span>
+                            )}
+                            {isReUploading ? 'Загрузка...' : 'Загрузить аудио снова'}
+                          </button>
+                        </div>
+                      );
+                    }
+                  })()}
 
                   {/* Delete */}
                   <button
@@ -826,6 +921,15 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
           authHeaders={authHeaders}
         />
       )}
+
+      {/* Hidden file input for re-upload */}
+      <input
+        ref={reUploadInputRef}
+        type="file"
+        accept="audio/*,video/*,.mp3,.wav,.m4a,.flac,.ogg,.opus,.mp4,.mov,.avi,.mkv,.webm"
+        style={{ display: 'none' }}
+        onChange={handleReUploadFile}
+      />
     </div>
   );
 };
