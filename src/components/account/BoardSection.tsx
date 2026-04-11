@@ -1211,7 +1211,6 @@ const MobileIconButton: React.FC<{ icon: string; label: string; onClick: () => v
       padding: '7px 10px', borderRadius: 10,
       color: danger ? '#b58488' : active ? '#82AA82' : 'var(--text-primary)',
       fontSize: 10, fontFamily: 'Georgia, serif',
-      minWidth: 0,
       minWidth: 72,
       flex: '0 0 auto',
       transition: 'background .15s',
