@@ -434,7 +434,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         )}
 
         {activeSection === 'board' && (
-          <BoardSection isLightTheme={isLightTheme} onCanvasMode={setIsBoardCanvas} />
+          <BoardSection isLightTheme={isLightTheme} onCanvasMode={setIsBoardCanvas} onToggleTheme={onToggleTheme} />
         )}
         </div>
       </main>

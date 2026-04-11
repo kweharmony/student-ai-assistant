@@ -36,11 +36,25 @@ interface BoardDetail extends BoardMeta {
 interface BoardSectionProps {
   isLightTheme: boolean;
   onCanvasMode?: (active: boolean) => void;
+  onToggleTheme?: () => void;
 }
 
 type Mode = 'modal' | 'canvas';
 
-const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode }) => {
+const BG_MAIN = [
+  { color: '#e8e8e8', label: 'Серый'         },
+  { color: '#35524a', label: 'Меловая доска' },
+  { color: '#ffffff', label: 'Белый'         },
+];
+
+const BG_PALETTE = [
+  '#ffffff', '#f5f5f0', '#e8e8e8', '#b0b0b0', '#555555',
+  '#fff9e6', '#fef3c7', '#fde8c8', '#f5c6a0', '#e8b89a',
+  '#e8f5e9', '#c8e6c9', '#a5d6a7', '#35524a', '#1b3a2d',
+  '#e3f2fd', '#bbdefb', '#90caf9', '#5c6bc0', '#1a237e',
+];
+
+const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode, onToggleTheme }) => {
   const { token } = useAuth();
 
   // ── modal state ──────────────────────────────────────────────────────────────
@@ -72,6 +86,11 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
   // ── exit prompt ──────────────────────────────────────────────────────────────
   const [exitPrompt, setExitPrompt] = useState(false);
 
+  // ── canvas background ────────────────────────────────────────────────────────
+  const [bgMenuOpen, setBgMenuOpen] = useState(false);
+  const [bgPaletteOpen, setBgPaletteOpen] = useState(false);
+  const [canvasBg, setCanvasBg] = useState<string>('transparent');
+
   // ── lecture insert ───────────────────────────────────────────────────────────
   const [lecturePickerOpen, setLecturePickerOpen] = useState(false);
   const [lectures, setLectures] = useState<LectureMeta[]>([]);
@@ -79,6 +98,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
   const [selectedLecture, setSelectedLecture] = useState<LectureFull | null>(null);
   const [lectureDetailLoading, setLectureDetailLoading] = useState(false);
   const [insertText, setInsertText] = useState('');
+
+  // ── library files ────────────────────────────────────────────────────────────
+  const LIBRARY_FILES = [
+    '/libraries/UML-ER-library.excalidrawlib',
+    '/libraries/decision-flow-control.excalidrawlib',
+    '/libraries/mathematical-symbols.excalidrawlib',
+    '/libraries/algorithms-and-data-structures-arrays-matrices-trees.excalidrawlib',
+    '/libraries/charts.excalidrawlib',
+  ];
 
   // ── mobile detection ─────────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
@@ -121,6 +149,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
     setActiveBoardId(id);
     setBoardTitle(detail.title);
     setActiveBoard(detail);
+    setCanvasBg(parsed?.appState?.viewBackgroundColor || 'transparent');
     setMode('canvas');
     onCanvasMode?.(true);
   };
@@ -160,6 +189,26 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
     setNewTitle('');
     await openBoard(board.id);
   };
+
+  // ── load libraries into Excalidraw ──────────────────────────────────────────
+  const loadLibraries = useCallback(async (api: ExcalidrawImperativeAPI) => {
+    try {
+      const items: any[] = [];
+      await Promise.all(
+        LIBRARY_FILES.map(async (path) => {
+          const res = await fetch(path);
+          if (!res.ok) return;
+          const json = await res.json();
+          if (Array.isArray(json.libraryItems)) items.push(...json.libraryItems);
+        })
+      );
+      if (items.length > 0) {
+        api.updateLibrary({ libraryItems: items, merge: false });
+      }
+    } catch {
+      // не критично — холст работает и без библиотек
+    }
+  }, []);
 
   // ── auto-save on change ──────────────────────────────────────────────────────
   const handleChange = useCallback(() => {
@@ -284,6 +333,19 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
     navigator.clipboard.writeText(link);
     setSaveMsg('Ссылка скопирована');
     setTimeout(() => setSaveMsg(''), 2000);
+  };
+
+  // ── canvas background ─────────────────────────────────────────────────────────
+  const changeBg = (color: string) => {
+    setCanvasBg(color);
+    excalidrawAPI.current?.updateScene({ appState: { viewBackgroundColor: color } });
+    setBgMenuOpen(false);
+  };
+
+  const clearCanvas = () => {
+    if (window.confirm('Очистить холст? Все элементы будут удалены.')) {
+      excalidrawAPI.current?.resetScene();
+    }
   };
 
   // ── save title ────────────────────────────────────────────────────────────────
@@ -434,7 +496,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
         {/* Excalidraw fills entire viewport */}
         {initialData !== null && (
           <Excalidraw
-            excalidrawAPI={(api) => { excalidrawAPI.current = api; }}
+            excalidrawAPI={(api) => { excalidrawAPI.current = api; loadLibraries(api); }}
             initialData={initialData}
             onChange={handleChange}
             theme={isLightTheme ? 'light' : 'dark'}
@@ -445,6 +507,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
                 loadScene: false,
                 export: false,
                 toggleTheme: false,
+                clearCanvas: false,
+                changeViewBackgroundColor: false,
               },
             }}
           />
@@ -490,9 +554,17 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
 
           {/* Title block — desktop only */}
           {!isMobile && (
-            <div style={{ padding: '4px 8px 10px', borderBottom: '1px solid var(--border-color)', marginBottom: 4 }}>
-              <div style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: '0.08em', marginBottom: 6, opacity: 0.6 }}>
-                ПОЛОТНО
+            <div style={{ position: 'relative', padding: '4px 8px 10px', borderBottom: '1px solid var(--border-color)', marginBottom: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: '0.08em', opacity: 0.6 }}>ПОЛОТНО</span>
+                {onToggleTheme && (
+                  <button onClick={onToggleTheme} title={isLightTheme ? 'Тёмная тема' : 'Светлая тема'}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-secondary)', display: 'flex', borderRadius: 4 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 15 }}>
+                      {isLightTheme ? 'dark_mode' : 'light_mode'}
+                    </span>
+                  </button>
+                )}
               </div>
               {editingTitle ? (
                 <input
@@ -526,10 +598,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
               )}
               {saveMsg && (
                 <div style={{
+                  position: 'absolute', left: 'calc(100% + 10px)', top: 8,
                   display: 'inline-flex', alignItems: 'center', gap: 4,
-                  marginTop: 6, padding: '2px 8px',
-                  background: 'rgba(130,170,130,0.15)', border: '1px solid rgba(130,170,130,0.3)',
+                  padding: '4px 10px', whiteSpace: 'nowrap',
+                  background: isLightTheme ? '#fffdf5' : '#140f11',
+                  border: '1px solid rgba(130,170,130,0.4)',
                   borderRadius: 20, fontSize: 11, color: '#82AA82',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  pointerEvents: 'none',
                 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 12 }}>check_circle</span>
                   {saveMsg}
@@ -579,8 +655,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
                   <MenuItem label="На профиль" icon="cloud_upload" onClick={async () => { await saveToProfile(); setSaveMenuOpen(false); }} />
                   <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 6px' }} />
                   <MenuItem label="Скачать PNG" icon="image" onClick={exportPNG} />
-                  <MenuItem label="Скачать SVG" icon="vector_square" onClick={exportSVG} />
+                  <MenuItem label="Скачать SVG" icon="shape_line" onClick={exportSVG} />
                   <MenuItem label="Скачать JSON" icon="data_object" onClick={exportJSON} />
+                  <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 6px' }} />
+                  <MenuItem label="Очистить холст" icon="delete_sweep" onClick={() => { setSaveMenuOpen(false); clearCanvas(); }} danger />
                 </div>
               )}
             </div>
@@ -645,6 +723,124 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
             isMobile
               ? <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />
               : <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />
+          )}
+
+          {/* Canvas background */}
+          <div style={{ position: 'relative' }}>
+            {isMobile
+              ? <MobileIconButton icon="format_color_fill" label="Фон" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} />
+              : <PanelButton icon="format_color_fill" label="Фон холста" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
+            }
+            {bgMenuOpen && (
+              <div style={{
+                position: 'absolute',
+                ...(isMobile
+                  ? { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }
+                  : { left: 'calc(100% + 8px)', top: 0 }),
+                background: isLightTheme ? '#fffdf5' : '#140f11',
+                border: '1px solid var(--border-color)',
+                borderRadius: 12, padding: '10px 10px 8px',
+                boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
+                zIndex: 400, minWidth: 210,
+              }}>
+                <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.08em', opacity: 0.6 }}>
+                  ФОН ХОЛСТА
+                </div>
+
+                {/* 3 main presets */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+                  {BG_MAIN.map(p => (
+                    <button key={p.color} onClick={() => { changeBg(p.color); setBgPaletteOpen(false); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        background: canvasBg === p.color ? 'rgba(130,170,130,0.1)' : 'none',
+                        border: canvasBg === p.color ? '1px solid rgba(130,170,130,0.4)' : '1px solid transparent',
+                        borderRadius: 8, padding: '6px 8px', cursor: 'pointer',
+                        fontFamily: 'Georgia, serif', fontSize: 13,
+                        color: 'var(--text-primary)', textAlign: 'left', width: '100%',
+                        transition: 'background .15s',
+                      }}
+                      onMouseEnter={e => { if (canvasBg !== p.color) e.currentTarget.style.background = 'var(--hover-bg)'; }}
+                      onMouseLeave={e => { if (canvasBg !== p.color) e.currentTarget.style.background = 'none'; }}
+                    >
+                      <span style={{
+                        width: 22, height: 22, borderRadius: 5, flexShrink: 0,
+                        background: p.color,
+                        border: '1px solid rgba(0,0,0,0.12)',
+                        boxShadow: p.color === '#ffffff' ? 'inset 0 0 0 1px rgba(0,0,0,0.08)' : 'none',
+                      }} />
+                      {p.label}
+                      {canvasBg === p.color && (
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82', marginLeft: 'auto' }}>check</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 0' }} />
+
+                {/* Palette toggle */}
+                <button onClick={() => setBgPaletteOpen(o => !o)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    background: bgPaletteOpen ? 'rgba(130,170,130,0.1)' : 'none',
+                    border: bgPaletteOpen ? '1px solid rgba(130,170,130,0.4)' : '1px solid transparent',
+                    borderRadius: 8, padding: '6px 8px', cursor: 'pointer',
+                    fontFamily: 'Georgia, serif', fontSize: 13,
+                    color: 'var(--text-primary)', textAlign: 'left', width: '100%',
+                    transition: 'background .15s',
+                  }}
+                  onMouseEnter={e => { if (!bgPaletteOpen) e.currentTarget.style.background = 'var(--hover-bg)'; }}
+                  onMouseLeave={e => { if (!bgPaletteOpen) e.currentTarget.style.background = 'none'; }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-secondary)' }}>palette</span>
+                  Из палитры
+                  <span className="material-symbols-outlined" style={{ fontSize: 14, marginLeft: 'auto', color: 'var(--text-secondary)', transition: 'transform .2s', transform: bgPaletteOpen ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+                </button>
+
+                {/* Palette grid */}
+                {bgPaletteOpen && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, marginBottom: 8 }}>
+                      {BG_PALETTE.map(c => (
+                        <button key={c} title={c} onClick={() => changeBg(c)}
+                          style={{
+                            width: '100%', aspectRatio: '1', borderRadius: 5, cursor: 'pointer',
+                            background: c,
+                            border: canvasBg === c ? '2px solid #82AA82' : '1px solid rgba(0,0,0,0.12)',
+                            transition: 'transform .1s',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.15)')}
+                          onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                        />
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Точный цвет</span>
+                      <input type="color"
+                        value={canvasBg.startsWith('#') ? canvasBg : '#ffffff'}
+                        onChange={e => changeBg(e.target.value)}
+                        style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', padding: 2 }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Library toggle */}
+          {isMobile
+            ? <MobileIconButton icon="menu_book" label="Формы" onClick={() => excalidrawAPI.current?.toggleSidebar({ name: 'library' })} />
+            : <PanelButton icon="menu_book" label="Библиотека" onClick={() => excalidrawAPI.current?.toggleSidebar({ name: 'library' })} isLightTheme={isLightTheme} />
+          }
+
+          {/* Theme toggle — mobile only (desktop is in title block) */}
+          {isMobile && onToggleTheme && (
+            <MobileIconButton
+              icon={isLightTheme ? 'dark_mode' : 'light_mode'}
+              label={isLightTheme ? 'Тёмная' : 'Светлая'}
+              onClick={onToggleTheme}
+            />
           )}
 
           {/* Divider */}
@@ -1011,18 +1207,18 @@ const PanelButton: React.FC<PanelButtonProps> = ({ icon, label, onClick, isLight
   </button>
 );
 
-interface MenuItemProps { label: string; icon: string; onClick: () => void; }
-const MenuItem: React.FC<MenuItemProps> = ({ label, icon, onClick }) => (
+interface MenuItemProps { label: string; icon: string; onClick: () => void; danger?: boolean; }
+const MenuItem: React.FC<MenuItemProps> = ({ label, icon, onClick, danger }) => (
   <button
     onClick={onClick}
     style={{
       display: 'flex', alignItems: 'center', gap: 10,
       background: 'none', border: 'none', cursor: 'pointer',
       padding: '8px 10px', borderRadius: 8,
-      color: 'var(--text-primary)', fontSize: 13,
+      color: danger ? '#b58488' : 'var(--text-primary)', fontSize: 13,
       fontFamily: 'Georgia, serif', width: '100%', textAlign: 'left',
     }}
-    onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover-bg)')}
+    onMouseEnter={e => (e.currentTarget.style.background = danger ? 'rgba(181,132,136,0.1)' : 'var(--hover-bg)')}
     onMouseLeave={e => (e.currentTarget.style.background = 'none')}
   >
     <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{icon}</span>

@@ -187,7 +187,8 @@ async def hard_delete_user(
         .values(admin_id=sys_admin.id)
     )
 
-    await db.delete(target)
+    from sqlalchemy import text
+    await db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": target.id})
     await db.commit()
 
     return {"detail": f"Пользователь удалён. Лекции переназначены на '{sys_admin.login}'."}

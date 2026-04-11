@@ -141,10 +141,22 @@ const excalidrawStyles = `
     .excalidraw .layer-ui__wrapper__footer-right { bottom: 70px !important; }
   }
 
-  /* ── Hide library ── */
+  /* ── Hide hamburger / main menu button ── */
+  .excalidraw .App-menu_top__left,
+  .excalidraw .hamburger-menu,
+  .excalidraw .App-menu__burger,
+  .excalidraw [aria-label="Menu"],
+  .excalidraw [aria-label="Меню"],
+  .excalidraw [title="Menu"],
+  .excalidraw [title="Меню"] { display: none !important; }
+
+  /* ── Hide library toolbar button (we use our own panel button) ── */
   .excalidraw .ToolIcon__library,
   .excalidraw [title="Library"],
-  .excalidraw [aria-label="Library"] { display: none !important; }
+  .excalidraw [title="Библиотека"],
+  .excalidraw [aria-label="Library"],
+  .excalidraw [aria-label="Библиотека"],
+  .excalidraw [data-testid="toolbar-library"] { display: none !important; }
 `;
 
 export default excalidrawStyles;
