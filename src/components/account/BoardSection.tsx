@@ -197,34 +197,72 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const loadLibraries = useCallback(async (api: ExcalidrawImperativeAPI) => {
     try {
       const items: any[] = [];
+      console.log('Загрузка библиотек Excalidraw из файлов...', LIBRARY_FILES);
+      
       await Promise.all(
         LIBRARY_FILES.map(async (path) => {
-          const res = await fetch(path);
-          if (!res.ok) return;
-          const json = await res.json();
-          // Поддерживаем оба формата excalidrawlib: новый (libraryItems) и legacy (library)
-          const rawItems = Array.isArray(json.libraryItems)
-            ? json.libraryItems
-            : Array.isArray(json.library)
-              ? json.library
-              : [];
-          if (rawItems.length > 0) items.push(...rawItems);
+          try {
+            const res = await fetch(path);
+            console.log(`Загрузка ${path}:`, res.status);
+            if (!res.ok) {
+              console.warn(`Файл не найден: ${path}`);
+              return;
+            }
+            const json = await res.json();
+            // Поддерживаем оба формата excalidrawlib: новый (libraryItems) и legacy (library)
+            const rawItems = Array.isArray(json.libraryItems)
+              ? json.libraryItems
+              : Array.isArray(json.library)
+                ? json.library
+                : [];
+            console.log(`Из ${path} загружено ${rawItems.length} элементов`);
+            if (rawItems.length > 0) items.push(...rawItems);
+          } catch (err) {
+            console.error(`Ошибка загрузки ${path}:`, err);
+          }
         })
       );
+      
+      console.log('Всего элементов библиотеки:', items.length);
       if (items.length > 0) {
+        console.log('Обновление библиотеки Excalidraw...');
         await api.updateLibrary({ libraryItems: items, merge: false });
+        console.log('Библиотека успешно обновлена');
+      } else {
+        console.warn('Не удалось загрузить элементы библиотеки');
       }
-    } catch {
-      // не критично — холст работает и без библиотек
+    } catch (err) {
+      console.error('Ошибка при загрузке библиотек:', err);
     }
   }, []);
 
   const openLibraryPanel = useCallback(async () => {
     const api = excalidrawAPI.current;
-    if (!api) return;
-    // Re-try loading library assets before opening to avoid an empty sidebar.
+    if (!api) {
+      console.warn('Excalidraw API не инициализирован');
+      return;
+    }
+    // Загружаем библиотеки, если еще не загружены
     await loadLibraries(api);
-    api.toggleSidebar({ name: 'library', force: true });
+    // Попытаемся открыть сайдбар библиотеки разными методами
+    try {
+      // Способ 1: стандартный метод Excalidraw
+      if (api.toggleSidebar && typeof api.toggleSidebar === 'function') {
+        api.toggleSidebar({ name: 'library', force: true });
+        console.log('Библиотека открыта через toggleSidebar');
+      } 
+      // Способ 2: альтернативный способ через appState
+      else if (api.setState && typeof api.setState === 'function') {
+        api.setState({ openSidebar: { name: 'library' } });
+        console.log('Библиотека открыта через setState');
+      } 
+      // Способ 3: просто логируем, что встроенная кнопка должна работать
+      else {
+        console.log('Используйте встроенную кнопку библиотеки в гофе инструментов');
+      }
+    } catch (err) {
+      console.error('Ошибка при открытии библиотеки:', err);
+    }
   }, [loadLibraries]);
 
   // ── auto-save on change ──────────────────────────────────────────────────────
@@ -576,8 +614,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 <MobileIconButton icon="save" label="Сохранить" onClick={() => { setSaveMenuOpen(o => !o); setShareMenuOpen(false); }} />
                 {saveMenuOpen && (
                   <div style={{
-                    position: 'absolute',
-                    bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+                    position: 'fixed',
+                    bottom: 'calc(100% + 20px)', left: '50%', transform: 'translateX(-50%)',
                     background: isLightTheme ? '#fffdf5' : '#140f11',
                     border: '1px solid var(--border-color)',
                     borderRadius: 12, padding: 6, minWidth: 190,
@@ -602,8 +640,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 <MobileIconButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} active={activeBoard?.is_public} />
                 {shareMenuOpen && (
                   <div style={{
-                    position: 'absolute',
-                    bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+                    position: 'fixed',
+                    bottom: 'calc(100% + 20px)', left: '50%', transform: 'translateX(-50%)',
                     background: isLightTheme ? '#fffdf5' : '#140f11',
                     border: '1px solid var(--border-color)',
                     borderRadius: 12, padding: 12, minWidth: 240,
@@ -641,8 +679,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               <MobileIconButton icon="format_color_fill" label="Фон" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} />
               {bgMenuOpen && (
                 <div style={{
-                  position: 'absolute',
-                  bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+                  position: 'fixed',
+                  bottom: 'calc(100% + 20px)', left: '50%', transform: 'translateX(-50%)',
                   background: isLightTheme ? '#fffdf5' : '#140f11',
                   border: '1px solid var(--border-color)',
                   borderRadius: 12, padding: '10px 10px 8px',
@@ -694,7 +732,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               )}
             </div>
 
-            <MobileIconButton icon="menu_book" label="Формы" onClick={openLibraryPanel} />
             {onToggleTheme && (
               <MobileIconButton icon={isLightTheme ? 'dark_mode' : 'light_mode'} label={isLightTheme ? 'Тёмная' : 'Светлая'} onClick={onToggleTheme} />
             )}

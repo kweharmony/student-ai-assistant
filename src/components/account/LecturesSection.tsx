@@ -555,22 +555,18 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
           </button>
           <button
             onClick={() => setLectureType('general')}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+            disabled
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all opacity-50 cursor-not-allowed"
             style={{
               background: lectureType === 'general' ? 'rgba(68,41,43,.15)' : 'transparent',
               color: lectureType === 'general' ? headingColor : mutedColor,
               border: `1px solid ${lectureType === 'general' ? 'rgba(68,41,43,.3)' : 'rgba(68,41,43,.1)'}`,
             }}
+            title="Общие лекции временно недоступны"
           >
             Общие лекции
           </button>
         </div>
-        
-        <p className="text-base" style={{ color: mutedColor }}>
-          {lectureType === 'my' 
-            ? 'Загруженные записи, транскрипции и обработанные материалы'
-            : 'Общедоступные лекции, которыми поделились другие пользователи'}
-        </p>
       </div>
 
       <div className="flex justify-end mb-4">

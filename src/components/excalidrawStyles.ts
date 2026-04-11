@@ -144,23 +144,22 @@ const excalidrawStyles = `
 
   /* ── Center the tool toolbar on desktop ── */
   @media (min-width: 641px) {
-    .excalidraw .layer-ui__wrapper__top-center {
-      left: 50% !important;
-      right: auto !important;
-      transform: translateX(-50%) !important;
-      width: max-content !important;
-      max-width: calc(100vw - 32px) !important;
+    .excalidraw .layer-ui__wrapper {
+      display: flex !important;
+      justify-content: center !important;
+      align-items: flex-start !important;
     }
 
     .excalidraw .App-toolbar,
     .excalidraw .App-toolbar-container {
+      position: absolute !important;
       left: 50% !important;
+      top: 16px !important;
       right: auto !important;
-      inset-inline-start: 50% !important;
-      inset-inline-end: auto !important;
       transform: translateX(-50%) !important;
-      margin-left: 0 !important;
-      margin-right: 0 !important;
+      width: max-content !important;
+      margin: 0 !important;
+      padding: 8px 12px !important;
     }
   }
 
@@ -175,14 +174,6 @@ const excalidrawStyles = `
   .excalidraw [aria-label="Main menu"],
   .excalidraw [title="Menu"],
   .excalidraw [title="Меню"] { display: none !important; }
-
-  /* ── Hide library toolbar button (we use our own panel button) ── */
-  .excalidraw .ToolIcon__library,
-  .excalidraw [title="Library"],
-  .excalidraw [title="Библиотека"],
-  .excalidraw [aria-label="Library"],
-  .excalidraw [aria-label="Библиотека"],
-  .excalidraw [data-testid="toolbar-library"] { display: none !important; }
 `;
 
 export default excalidrawStyles;
