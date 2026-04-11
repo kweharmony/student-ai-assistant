@@ -244,22 +244,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     }
     // Загружаем библиотеки, если еще не загружены
     await loadLibraries(api);
-    // Попытаемся открыть сайдбар библиотеки разными методами
+    // Открываем сайдбар библиотеки
     try {
-      // Способ 1: стандартный метод Excalidraw
-      if (api.toggleSidebar && typeof api.toggleSidebar === 'function') {
-        api.toggleSidebar({ name: 'library', force: true });
-        console.log('Библиотека открыта через toggleSidebar');
-      } 
-      // Способ 2: альтернативный способ через appState
-      else if (api.setState && typeof api.setState === 'function') {
-        api.setState({ openSidebar: { name: 'library' } });
-        console.log('Библиотека открыта через setState');
-      } 
-      // Способ 3: просто логируем, что встроенная кнопка должна работать
-      else {
-        console.log('Используйте встроенную кнопку библиотеки в гофе инструментов');
-      }
+      api.toggleSidebar({ name: 'library', force: true });
+      console.log('Библиотека открыта через toggleSidebar');
     } catch (err) {
       console.error('Ошибка при открытии библиотеки:', err);
     }
