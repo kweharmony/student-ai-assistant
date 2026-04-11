@@ -141,12 +141,21 @@ const excalidrawStyles = `
     .excalidraw .layer-ui__wrapper__footer-right { bottom: 70px !important; }
   }
 
+  /* ── Center the tool toolbar ── */
+  .excalidraw .App-toolbar {
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+  }
+
   /* ── Hide hamburger / main menu button ── */
   .excalidraw .App-menu_top__left,
   .excalidraw .hamburger-menu,
   .excalidraw .App-menu__burger,
+  .excalidraw [data-testid="main-menu-trigger"],
+  .excalidraw [data-testid="mobile-menu-button"],
   .excalidraw [aria-label="Menu"],
   .excalidraw [aria-label="Меню"],
+  .excalidraw [aria-label="Main menu"],
   .excalidraw [title="Menu"],
   .excalidraw [title="Меню"] { display: none !important; }
 

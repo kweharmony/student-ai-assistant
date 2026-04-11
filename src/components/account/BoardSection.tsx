@@ -91,6 +91,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [bgPaletteOpen, setBgPaletteOpen] = useState(false);
   const [canvasBg, setCanvasBg] = useState<string>('transparent');
 
+  // ── desktop panel toggle ─────────────────────────────────────────────────────
+  const [desktopPanelOpen, setDesktopPanelOpen] = useState(false);
+
   // ── lecture insert ───────────────────────────────────────────────────────────
   const [lecturePickerOpen, setLecturePickerOpen] = useState(false);
   const [lectures, setLectures] = useState<LectureMeta[]>([]);
@@ -514,345 +517,399 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
           />
         )}
 
-        {/* ── Floating panel — left on desktop, bottom on mobile ── */}
-        <div style={isMobile ? {
-          position: 'fixed',
-          bottom: 12,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 300,
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 4,
-          background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
-          border: '1px solid var(--border-color)',
-          borderRadius: 20,
-          padding: '8px 12px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
-          backdropFilter: 'blur(16px)',
-          fontFamily: 'Georgia, serif',
-          maxWidth: 'calc(100vw - 24px)',
-        } : {
-          position: 'fixed',
-          left: 12,
-          top: '80%',
-          transform: 'translateY(-50%)',
-          zIndex: 300,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2,
-          background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
-          border: '1px solid var(--border-color)',
-          borderRadius: 16,
-          padding: '10px 8px',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.22)',
-          backdropFilter: 'blur(16px)',
-          minWidth: 180,
-          fontFamily: 'Georgia, serif',
-        }}>
-
-          {/* Title block — desktop only */}
-          {!isMobile && (
-            <div style={{ position: 'relative', padding: '4px 8px 10px', borderBottom: '1px solid var(--border-color)', marginBottom: 4 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: '0.08em', opacity: 0.6 }}>ПОЛОТНО</span>
-                {onToggleTheme && (
-                  <button onClick={onToggleTheme} title={isLightTheme ? 'Тёмная тема' : 'Светлая тема'}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-secondary)', display: 'flex', borderRadius: 4 }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 15 }}>
-                      {isLightTheme ? 'dark_mode' : 'light_mode'}
-                    </span>
-                  </button>
-                )}
-              </div>
-              {editingTitle ? (
-                <input
-                  autoFocus
-                  value={boardTitle}
-                  onChange={e => setBoardTitle(e.target.value)}
-                  onBlur={saveTitle}
-                  onKeyDown={e => e.key === 'Enter' && saveTitle()}
-                  style={{
-                    width: '100%', background: 'transparent', border: 'none',
-                    borderBottom: '1px solid var(--text-secondary)',
-                    color: 'var(--text-primary)', fontFamily: 'Georgia, serif',
-                    fontSize: 14, outline: 'none', padding: '2px 0',
-                  }}
-                />
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{
-                    fontSize: 14, color: 'var(--text-primary)',
-                    maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                  }}>
-                    {boardTitle}
-                  </span>
-                  {activeBoardId && (
-                    <button onClick={() => setEditingTitle(true)} title="Переименовать"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-secondary)', display: 'flex' }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 14 }}>edit</span>
-                    </button>
-                  )}
-                </div>
-              )}
-              {saveMsg && (
-                <div style={{
-                  position: 'absolute', left: 'calc(100% + 10px)', top: 8,
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  padding: '4px 10px', whiteSpace: 'nowrap',
-                  background: isLightTheme ? '#fffdf5' : '#140f11',
-                  border: '1px solid rgba(130,170,130,0.4)',
-                  borderRadius: 20, fontSize: 11, color: '#82AA82',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  pointerEvents: 'none',
-                }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 12 }}>check_circle</span>
-                  {saveMsg}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Save status on mobile — small pill above panel */}
-          {isMobile && saveMsg && (
-            <div style={{
-              position: 'fixed', bottom: 72, left: '50%', transform: 'translateX(-50%)',
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '4px 12px', background: 'rgba(130,170,130,0.9)',
-              borderRadius: 20, fontSize: 12, color: '#fff',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 350,
-              pointerEvents: 'none',
-            }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>check_circle</span>
-              {saveMsg}
-            </div>
-          )}
-
-          {/* Save button + dropdown */}
-          {activeBoardId && (
-            <div style={{ position: 'relative' }}>
-              {isMobile
-                ? <MobileIconButton icon="save" label="Сохранить" onClick={() => { setSaveMenuOpen(o => !o); setShareMenuOpen(false); }} />
-                : <PanelButton icon="save" label="Сохранить" onClick={() => { setSaveMenuOpen(o => !o); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
-              }
-              {saveMenuOpen && (
-                <div style={{
-                  position: 'absolute',
-                  ...(isMobile
-                    ? { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }
-                    : { left: 'calc(100% + 8px)', top: 0 }),
-                  background: isLightTheme ? '#fffdf5' : '#140f11',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 12, padding: 6, minWidth: 190,
-                  boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
-                  zIndex: 400,
-                  whiteSpace: 'nowrap',
-                }}>
-                  <div style={{ fontSize: 10, color: 'var(--text-secondary)', padding: '4px 10px 6px', letterSpacing: '0.08em', opacity: 0.6 }}>
-                    СОХРАНИТЬ КАК
-                  </div>
-                  <MenuItem label="На профиль" icon="cloud_upload" onClick={async () => { await saveToProfile(); setSaveMenuOpen(false); }} />
-                  <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 6px' }} />
-                  <MenuItem label="Скачать PNG" icon="image" onClick={exportPNG} />
-                  <MenuItem label="Скачать SVG" icon="shape_line" onClick={exportSVG} />
-                  <MenuItem label="Скачать JSON" icon="data_object" onClick={exportJSON} />
-                  <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 6px' }} />
-                  <MenuItem label="Очистить холст" icon="delete_sweep" onClick={() => { setSaveMenuOpen(false); clearCanvas(); }} danger />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Share button + dropdown */}
-          {activeBoardId && (
-            <div style={{ position: 'relative' }}>
-              {isMobile
-                ? <MobileIconButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} active={activeBoard?.is_public} />
-                : <PanelButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} isLightTheme={isLightTheme} active={activeBoard?.is_public} />
-              }
-              {shareMenuOpen && (
-                <div style={{
-                  position: 'absolute',
-                  ...(isMobile
-                    ? { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }
-                    : { left: 'calc(100% + 8px)', top: 0 }),
-                  background: isLightTheme ? '#fffdf5' : '#140f11',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 12, padding: 12, minWidth: 240,
-                  boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
-                  zIndex: 400,
-                  whiteSpace: 'nowrap',
-                }}>
-                  {activeBoard?.is_public ? (
-                    <>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82' }}>check_circle</span>
-                        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Публичная ссылка активна</span>
-                      </div>
-                      <div style={{
-                        fontSize: 11, wordBreak: 'break-all', marginBottom: 10,
-                        color: 'var(--text-primary)', opacity: 0.6,
-                        background: 'var(--hover-bg)', borderRadius: 8, padding: '6px 10px',
-                        fontFamily: 'monospace',
-                      }}>
-                        {`${window.location.origin}/board/${activeBoard.share_token}`}
-                      </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
-                        <button style={{ ...btnSecondary, fontSize: 12, padding: '7px 12px' }} onClick={disableShare}>Отключить</button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
-                        Создайте публичную ссылку для просмотра
-                      </div>
-                      <button style={{ ...btnPrimary, width: '100%', fontSize: 13, padding: '8px 0' }} onClick={enableShare}>
-                        Включить ссылку
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Insert lecture text */}
-          {activeBoardId && (
-            isMobile
-              ? <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />
-              : <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />
-          )}
-
-          {/* Canvas background */}
-          <div style={{ position: 'relative' }}>
-            {isMobile
-              ? <MobileIconButton icon="format_color_fill" label="Фон" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} />
-              : <PanelButton icon="format_color_fill" label="Фон холста" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
-            }
-            {bgMenuOpen && (
+        {/* ── Mobile panel — bottom center ── */}
+        {isMobile && (
+          <div style={{
+            position: 'fixed',
+            bottom: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 300,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 20,
+            padding: '8px 12px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+            backdropFilter: 'blur(16px)',
+            fontFamily: 'Georgia, serif',
+            maxWidth: 'calc(100vw - 24px)',
+          }}>
+            {saveMsg && (
               <div style={{
-                position: 'absolute',
-                ...(isMobile
-                  ? { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }
-                  : { left: 'calc(100% + 8px)', top: 0 }),
-                background: isLightTheme ? '#fffdf5' : '#140f11',
-                border: '1px solid var(--border-color)',
-                borderRadius: 12, padding: '10px 10px 8px',
-                boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
-                zIndex: 400, minWidth: 210,
+                position: 'fixed', bottom: 72, left: '50%', transform: 'translateX(-50%)',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '4px 12px', background: 'rgba(130,170,130,0.9)',
+                borderRadius: 20, fontSize: 12, color: '#fff',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 350,
+                pointerEvents: 'none',
               }}>
-                <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.08em', opacity: 0.6 }}>
-                  ФОН ХОЛСТА
-                </div>
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>check_circle</span>
+                {saveMsg}
+              </div>
+            )}
 
-                {/* 3 main presets */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
-                  {BG_MAIN.map(p => (
-                    <button key={p.color} onClick={() => { changeBg(p.color); setBgPaletteOpen(false); }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        background: canvasBg === p.color ? 'rgba(130,170,130,0.1)' : 'none',
-                        border: canvasBg === p.color ? '1px solid rgba(130,170,130,0.4)' : '1px solid transparent',
-                        borderRadius: 8, padding: '6px 8px', cursor: 'pointer',
-                        fontFamily: 'Georgia, serif', fontSize: 13,
-                        color: 'var(--text-primary)', textAlign: 'left', width: '100%',
-                        transition: 'background .15s',
-                      }}
-                      onMouseEnter={e => { if (canvasBg !== p.color) e.currentTarget.style.background = 'var(--hover-bg)'; }}
-                      onMouseLeave={e => { if (canvasBg !== p.color) e.currentTarget.style.background = 'none'; }}
-                    >
-                      <span style={{
-                        width: 22, height: 22, borderRadius: 5, flexShrink: 0,
-                        background: p.color,
-                        border: '1px solid rgba(0,0,0,0.12)',
-                        boxShadow: p.color === '#ffffff' ? 'inset 0 0 0 1px rgba(0,0,0,0.08)' : 'none',
-                      }} />
-                      {p.label}
-                      {canvasBg === p.color && (
-                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82', marginLeft: 'auto' }}>check</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-
-                <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 0' }} />
-
-                {/* Palette toggle */}
-                <button onClick={() => setBgPaletteOpen(o => !o)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    background: bgPaletteOpen ? 'rgba(130,170,130,0.1)' : 'none',
-                    border: bgPaletteOpen ? '1px solid rgba(130,170,130,0.4)' : '1px solid transparent',
-                    borderRadius: 8, padding: '6px 8px', cursor: 'pointer',
-                    fontFamily: 'Georgia, serif', fontSize: 13,
-                    color: 'var(--text-primary)', textAlign: 'left', width: '100%',
-                    transition: 'background .15s',
-                  }}
-                  onMouseEnter={e => { if (!bgPaletteOpen) e.currentTarget.style.background = 'var(--hover-bg)'; }}
-                  onMouseLeave={e => { if (!bgPaletteOpen) e.currentTarget.style.background = 'none'; }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-secondary)' }}>palette</span>
-                  Из палитры
-                  <span className="material-symbols-outlined" style={{ fontSize: 14, marginLeft: 'auto', color: 'var(--text-secondary)', transition: 'transform .2s', transform: bgPaletteOpen ? 'rotate(180deg)' : 'none' }}>expand_more</span>
-                </button>
-
-                {/* Palette grid */}
-                {bgPaletteOpen && (
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, marginBottom: 8 }}>
-                      {BG_PALETTE.map(c => (
-                        <button key={c} title={c} onClick={() => changeBg(c)}
-                          style={{
-                            width: '100%', aspectRatio: '1', borderRadius: 5, cursor: 'pointer',
-                            background: c,
-                            border: canvasBg === c ? '2px solid #82AA82' : '1px solid rgba(0,0,0,0.12)',
-                            transition: 'transform .1s',
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.15)')}
-                          onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
-                        />
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Точный цвет</span>
-                      <input type="color"
-                        value={canvasBg.startsWith('#') ? canvasBg : '#ffffff'}
-                        onChange={e => changeBg(e.target.value)}
-                        style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', padding: 2 }} />
-                    </div>
+            {activeBoardId && (
+              <div style={{ position: 'relative' }}>
+                <MobileIconButton icon="save" label="Сохранить" onClick={() => { setSaveMenuOpen(o => !o); setShareMenuOpen(false); }} />
+                {saveMenuOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+                    background: isLightTheme ? '#fffdf5' : '#140f11',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 12, padding: 6, minWidth: 190,
+                    boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
+                    zIndex: 400, whiteSpace: 'nowrap',
+                  }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-secondary)', padding: '4px 10px 6px', letterSpacing: '0.08em', opacity: 0.6 }}>СОХРАНИТЬ КАК</div>
+                    <MenuItem label="На профиль" icon="cloud_upload" onClick={async () => { await saveToProfile(); setSaveMenuOpen(false); }} />
+                    <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 6px' }} />
+                    <MenuItem label="Скачать PNG" icon="image" onClick={exportPNG} />
+                    <MenuItem label="Скачать SVG" icon="shape_line" onClick={exportSVG} />
+                    <MenuItem label="Скачать JSON" icon="data_object" onClick={exportJSON} />
+                    <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 6px' }} />
+                    <MenuItem label="Очистить холст" icon="delete_sweep" onClick={() => { setSaveMenuOpen(false); clearCanvas(); }} danger />
                   </div>
                 )}
               </div>
             )}
+
+            {activeBoardId && (
+              <div style={{ position: 'relative' }}>
+                <MobileIconButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} active={activeBoard?.is_public} />
+                {shareMenuOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+                    background: isLightTheme ? '#fffdf5' : '#140f11',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 12, padding: 12, minWidth: 240,
+                    boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
+                    zIndex: 400, whiteSpace: 'nowrap',
+                  }}>
+                    {activeBoard?.is_public ? (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82' }}>check_circle</span>
+                          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Публичная ссылка активна</span>
+                        </div>
+                        <div style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 10, color: 'var(--text-primary)', opacity: 0.6, background: 'var(--hover-bg)', borderRadius: 8, padding: '6px 10px', fontFamily: 'monospace' }}>
+                          {`${window.location.origin}/board/${activeBoard.share_token}`}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
+                          <button style={{ ...btnSecondary, fontSize: 12, padding: '7px 12px' }} onClick={disableShare}>Отключить</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>Создайте публичную ссылку для просмотра</div>
+                        <button style={{ ...btnPrimary, width: '100%', fontSize: 13, padding: '8px 0' }} onClick={enableShare}>Включить ссылку</button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeBoardId && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
+
+            <div style={{ position: 'relative' }}>
+              <MobileIconButton icon="format_color_fill" label="Фон" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} />
+              {bgMenuOpen && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+                  background: isLightTheme ? '#fffdf5' : '#140f11',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 12, padding: '10px 10px 8px',
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
+                  zIndex: 400, minWidth: 210,
+                }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.08em', opacity: 0.6 }}>ФОН ХОЛСТА</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+                    {BG_MAIN.map(p => (
+                      <button key={p.color} onClick={() => { changeBg(p.color); setBgPaletteOpen(false); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, background: canvasBg === p.color ? 'rgba(130,170,130,0.1)' : 'none', border: canvasBg === p.color ? '1px solid rgba(130,170,130,0.4)' : '1px solid transparent', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: 13, color: 'var(--text-primary)', textAlign: 'left', width: '100%', transition: 'background .15s' }}
+                        onMouseEnter={e => { if (canvasBg !== p.color) e.currentTarget.style.background = 'var(--hover-bg)'; }}
+                        onMouseLeave={e => { if (canvasBg !== p.color) e.currentTarget.style.background = 'none'; }}
+                      >
+                        <span style={{ width: 22, height: 22, borderRadius: 5, flexShrink: 0, background: p.color, border: '1px solid rgba(0,0,0,0.12)', boxShadow: p.color === '#ffffff' ? 'inset 0 0 0 1px rgba(0,0,0,0.08)' : 'none' }} />
+                        {p.label}
+                        {canvasBg === p.color && <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82', marginLeft: 'auto' }}>check</span>}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 0' }} />
+                  <button onClick={() => setBgPaletteOpen(o => !o)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, background: bgPaletteOpen ? 'rgba(130,170,130,0.1)' : 'none', border: bgPaletteOpen ? '1px solid rgba(130,170,130,0.4)' : '1px solid transparent', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: 13, color: 'var(--text-primary)', textAlign: 'left', width: '100%', transition: 'background .15s' }}
+                    onMouseEnter={e => { if (!bgPaletteOpen) e.currentTarget.style.background = 'var(--hover-bg)'; }}
+                    onMouseLeave={e => { if (!bgPaletteOpen) e.currentTarget.style.background = 'none'; }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-secondary)' }}>palette</span>
+                    Из палитры
+                    <span className="material-symbols-outlined" style={{ fontSize: 14, marginLeft: 'auto', color: 'var(--text-secondary)', transition: 'transform .2s', transform: bgPaletteOpen ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+                  </button>
+                  {bgPaletteOpen && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, marginBottom: 8 }}>
+                        {BG_PALETTE.map(c => (
+                          <button key={c} title={c} onClick={() => changeBg(c)}
+                            style={{ width: '100%', aspectRatio: '1', borderRadius: 5, cursor: 'pointer', background: c, border: canvasBg === c ? '2px solid #82AA82' : '1px solid rgba(0,0,0,0.12)', transition: 'transform .1s' }}
+                            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.15)')}
+                            onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                          />
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Точный цвет</span>
+                        <input type="color" value={canvasBg.startsWith('#') ? canvasBg : '#ffffff'} onChange={e => changeBg(e.target.value)} style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', padding: 2 }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <MobileIconButton icon="menu_book" label="Формы" onClick={() => excalidrawAPI.current?.toggleSidebar({ name: 'library' })} />
+            {onToggleTheme && (
+              <MobileIconButton icon={isLightTheme ? 'dark_mode' : 'light_mode'} label={isLightTheme ? 'Тёмная' : 'Светлая'} onClick={onToggleTheme} />
+            )}
+            <div style={{ width: 1, background: 'var(--border-color)', margin: '0 4px', alignSelf: 'stretch' }} />
+            <MobileIconButton icon="logout" label="Выйти" onClick={handleExitRequest} danger />
           </div>
+        )}
 
-          {/* Library toggle */}
-          {isMobile
-            ? <MobileIconButton icon="menu_book" label="Формы" onClick={() => excalidrawAPI.current?.toggleSidebar({ name: 'library' })} />
-            : <PanelButton icon="menu_book" label="Библиотека" onClick={() => excalidrawAPI.current?.toggleSidebar({ name: 'library' })} isLightTheme={isLightTheme} />
-          }
+        {/* ── Desktop panel — hamburger style top-left ── */}
+        {!isMobile && (
+          <div style={{ position: 'fixed', left: 12, top: 12, zIndex: 300 }}>
+            <button
+              onClick={() => setDesktopPanelOpen(o => !o)}
+              title="Меню полотна"
+              style={{
+                width: 40, height: 40,
+                background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 10,
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                backdropFilter: 'blur(16px)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+                {desktopPanelOpen ? 'close' : 'menu'}
+              </span>
+            </button>
 
-          {/* Theme toggle — mobile only (desktop is in title block) */}
-          {isMobile && onToggleTheme && (
-            <MobileIconButton
-              icon={isLightTheme ? 'dark_mode' : 'light_mode'}
-              label={isLightTheme ? 'Тёмная' : 'Светлая'}
-              onClick={onToggleTheme}
-            />
-          )}
+            {desktopPanelOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                left: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+                background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 16,
+                padding: '10px 8px',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.22)',
+                backdropFilter: 'blur(16px)',
+                minWidth: 180,
+                fontFamily: 'Georgia, serif',
+              }}>
+                {/* Title block */}
+                <div style={{ position: 'relative', padding: '4px 8px 10px', borderBottom: '1px solid var(--border-color)', marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: '0.08em', opacity: 0.6 }}>ПОЛОТНО</span>
+                    {onToggleTheme && (
+                      <button onClick={onToggleTheme} title={isLightTheme ? 'Тёмная тема' : 'Светлая тема'}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-secondary)', display: 'flex', borderRadius: 4 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 15 }}>
+                          {isLightTheme ? 'dark_mode' : 'light_mode'}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                  {editingTitle ? (
+                    <input
+                      autoFocus
+                      value={boardTitle}
+                      onChange={e => setBoardTitle(e.target.value)}
+                      onBlur={saveTitle}
+                      onKeyDown={e => e.key === 'Enter' && saveTitle()}
+                      style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid var(--text-secondary)', color: 'var(--text-primary)', fontFamily: 'Georgia, serif', fontSize: 14, outline: 'none', padding: '2px 0' }}
+                    />
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 14, color: 'var(--text-primary)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {boardTitle}
+                      </span>
+                      {activeBoardId && (
+                        <button onClick={() => setEditingTitle(true)} title="Переименовать"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-secondary)', display: 'flex' }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>edit</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {saveMsg && (
+                    <div style={{
+                      position: 'absolute', left: 'calc(100% + 10px)', top: 8,
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '4px 10px', whiteSpace: 'nowrap',
+                      background: isLightTheme ? '#fffdf5' : '#140f11',
+                      border: '1px solid rgba(130,170,130,0.4)',
+                      borderRadius: 20, fontSize: 11, color: '#82AA82',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      pointerEvents: 'none',
+                    }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 12 }}>check_circle</span>
+                      {saveMsg}
+                    </div>
+                  )}
+                </div>
 
-          {/* Divider */}
-          {!isMobile && <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 4px' }} />}
-          {isMobile && <div style={{ width: 1, background: 'var(--border-color)', margin: '0 4px', alignSelf: 'stretch' }} />}
+                {/* Save */}
+                {activeBoardId && (
+                  <div style={{ position: 'relative' }}>
+                    <PanelButton icon="save" label="Сохранить" onClick={() => { setSaveMenuOpen(o => !o); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
+                    {saveMenuOpen && (
+                      <div style={{
+                        position: 'absolute', left: 'calc(100% + 8px)', top: 0,
+                        background: isLightTheme ? '#fffdf5' : '#140f11',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 12, padding: 6, minWidth: 190,
+                        boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
+                        zIndex: 400, whiteSpace: 'nowrap',
+                      }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-secondary)', padding: '4px 10px 6px', letterSpacing: '0.08em', opacity: 0.6 }}>СОХРАНИТЬ КАК</div>
+                        <MenuItem label="На профиль" icon="cloud_upload" onClick={async () => { await saveToProfile(); setSaveMenuOpen(false); }} />
+                        <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 6px' }} />
+                        <MenuItem label="Скачать PNG" icon="image" onClick={exportPNG} />
+                        <MenuItem label="Скачать SVG" icon="shape_line" onClick={exportSVG} />
+                        <MenuItem label="Скачать JSON" icon="data_object" onClick={exportJSON} />
+                        <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 6px' }} />
+                        <MenuItem label="Очистить холст" icon="delete_sweep" onClick={() => { setSaveMenuOpen(false); clearCanvas(); }} danger />
+                      </div>
+                    )}
+                  </div>
+                )}
 
-          {/* Exit button */}
-          {isMobile
-            ? <MobileIconButton icon="logout" label="Выйти" onClick={handleExitRequest} danger />
-            : <PanelButton icon="logout" label="Выйти" onClick={handleExitRequest} isLightTheme={isLightTheme} danger />
-          }
-        </div>
+                {/* Share */}
+                {activeBoardId && (
+                  <div style={{ position: 'relative' }}>
+                    <PanelButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} isLightTheme={isLightTheme} active={activeBoard?.is_public} />
+                    {shareMenuOpen && (
+                      <div style={{
+                        position: 'absolute', left: 'calc(100% + 8px)', top: 0,
+                        background: isLightTheme ? '#fffdf5' : '#140f11',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 12, padding: 12, minWidth: 240,
+                        boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
+                        zIndex: 400, whiteSpace: 'nowrap',
+                      }}>
+                        {activeBoard?.is_public ? (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82' }}>check_circle</span>
+                              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Публичная ссылка активна</span>
+                            </div>
+                            <div style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 10, color: 'var(--text-primary)', opacity: 0.6, background: 'var(--hover-bg)', borderRadius: 8, padding: '6px 10px', fontFamily: 'monospace' }}>
+                              {`${window.location.origin}/board/${activeBoard.share_token}`}
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
+                              <button style={{ ...btnSecondary, fontSize: 12, padding: '7px 12px' }} onClick={disableShare}>Отключить</button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>Создайте публичную ссылку для просмотра</div>
+                            <button style={{ ...btnPrimary, width: '100%', fontSize: 13, padding: '8px 0' }} onClick={enableShare}>Включить ссылку</button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Lecture */}
+                {activeBoardId && <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />}
+
+                {/* Background */}
+                <div style={{ position: 'relative' }}>
+                  <PanelButton icon="format_color_fill" label="Фон холста" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
+                  {bgMenuOpen && (
+                    <div style={{
+                      position: 'absolute', left: 'calc(100% + 8px)', top: 0,
+                      background: isLightTheme ? '#fffdf5' : '#140f11',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 12, padding: '10px 10px 8px',
+                      boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
+                      zIndex: 400, minWidth: 210,
+                    }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.08em', opacity: 0.6 }}>ФОН ХОЛСТА</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+                        {BG_MAIN.map(p => (
+                          <button key={p.color} onClick={() => { changeBg(p.color); setBgPaletteOpen(false); }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, background: canvasBg === p.color ? 'rgba(130,170,130,0.1)' : 'none', border: canvasBg === p.color ? '1px solid rgba(130,170,130,0.4)' : '1px solid transparent', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: 13, color: 'var(--text-primary)', textAlign: 'left', width: '100%', transition: 'background .15s' }}
+                            onMouseEnter={e => { if (canvasBg !== p.color) e.currentTarget.style.background = 'var(--hover-bg)'; }}
+                            onMouseLeave={e => { if (canvasBg !== p.color) e.currentTarget.style.background = 'none'; }}
+                          >
+                            <span style={{ width: 22, height: 22, borderRadius: 5, flexShrink: 0, background: p.color, border: '1px solid rgba(0,0,0,0.12)', boxShadow: p.color === '#ffffff' ? 'inset 0 0 0 1px rgba(0,0,0,0.08)' : 'none' }} />
+                            {p.label}
+                            {canvasBg === p.color && <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82', marginLeft: 'auto' }}>check</span>}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 0' }} />
+                      <button onClick={() => setBgPaletteOpen(o => !o)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, background: bgPaletteOpen ? 'rgba(130,170,130,0.1)' : 'none', border: bgPaletteOpen ? '1px solid rgba(130,170,130,0.4)' : '1px solid transparent', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: 13, color: 'var(--text-primary)', textAlign: 'left', width: '100%', transition: 'background .15s' }}
+                        onMouseEnter={e => { if (!bgPaletteOpen) e.currentTarget.style.background = 'var(--hover-bg)'; }}
+                        onMouseLeave={e => { if (!bgPaletteOpen) e.currentTarget.style.background = 'none'; }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-secondary)' }}>palette</span>
+                        Из палитры
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, marginLeft: 'auto', color: 'var(--text-secondary)', transition: 'transform .2s', transform: bgPaletteOpen ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+                      </button>
+                      {bgPaletteOpen && (
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, marginBottom: 8 }}>
+                            {BG_PALETTE.map(c => (
+                              <button key={c} title={c} onClick={() => changeBg(c)}
+                                style={{ width: '100%', aspectRatio: '1', borderRadius: 5, cursor: 'pointer', background: c, border: canvasBg === c ? '2px solid #82AA82' : '1px solid rgba(0,0,0,0.12)', transition: 'transform .1s' }}
+                                onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.15)')}
+                                onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                              />
+                            ))}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Точный цвет</span>
+                            <input type="color" value={canvasBg.startsWith('#') ? canvasBg : '#ffffff'} onChange={e => changeBg(e.target.value)} style={{ flex: 1, height: 26, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', padding: 2 }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Library */}
+                <PanelButton icon="menu_book" label="Библиотека" onClick={() => excalidrawAPI.current?.toggleSidebar({ name: 'library' })} isLightTheme={isLightTheme} />
+
+                <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 4px' }} />
+
+                <PanelButton icon="logout" label="Выйти" onClick={handleExitRequest} isLightTheme={isLightTheme} danger />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Exit confirmation prompt ── */}
         {exitPrompt && (
