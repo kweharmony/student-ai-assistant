@@ -517,12 +517,11 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
           }}>
             {saveMsg && (
               <div style={{
-                position: 'fixed', bottom: 72, left: '50%', transform: 'translateX(-50%)',
-                    position: 'fixed',
-                    left: 12,
-                    right: 12,
-                    bottom: 88,
-                    transform: 'none',
+                position: 'fixed',
+                left: 12,
+                right: 12,
+                bottom: 88,
+                transform: 'none',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
                 padding: '4px 12px', background: 'rgba(130,170,130,0.9)',
                 borderRadius: 20, fontSize: 12, color: '#fff',
@@ -540,12 +539,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 {saveMenuOpen && (
                   <div style={{
                     position: 'fixed',
-                    bottom: 'calc(100% + 20px)', left: '50%', transform: 'translateX(-50%)',
+                    left: 12,
+                    right: 12,
+                    bottom: 88,
+                    transform: 'none',
                     background: isLightTheme ? '#fffdf5' : '#140f11',
                     border: '1px solid var(--border-color)',
-                    borderRadius: 12, padding: 6, minWidth: 190,
+                    borderRadius: 12, padding: 6, minWidth: 0,
                     boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
-                    zIndex: 400, whiteSpace: 'nowrap',
+                    zIndex: 400, whiteSpace: 'normal',
                   }}>
                     <div style={{ fontSize: 10, color: 'var(--text-secondary)', padding: '4px 10px 6px', letterSpacing: '0.08em', opacity: 0.6 }}>СОХРАНИТЬ КАК</div>
                     <MenuItem label="На профиль" icon="cloud_upload" onClick={async () => { await saveToProfile(); setSaveMenuOpen(false); }} />
@@ -607,16 +609,16 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               <MobileIconButton icon="format_color_fill" label="Фон" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} />
               {bgMenuOpen && (
                 <div style={{
-                    position: 'fixed',
-                    left: 12,
-                    right: 12,
-                    bottom: 88,
-                    transform: 'none',
+                  position: 'fixed',
+                  left: 12,
+                  right: 12,
+                  bottom: 88,
+                  transform: 'none',
                   background: isLightTheme ? '#fffdf5' : '#140f11',
                   border: '1px solid var(--border-color)',
-                    borderRadius: 12, padding: '10px 10px 8px',
+                  borderRadius: 12, padding: '10px 10px 8px',
                   boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
-                    zIndex: 400, minWidth: 0,
+                  zIndex: 400, minWidth: 0,
                 }}>
                   <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.08em', opacity: 0.6 }}>ФОН ХОЛСТА</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
