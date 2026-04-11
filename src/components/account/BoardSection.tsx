@@ -54,6 +54,14 @@ const BG_PALETTE = [
   '#e3f2fd', '#bbdefb', '#90caf9', '#5c6bc0', '#1a237e',
 ];
 
+const LIBRARY_FILES = [
+  { path: '/libraries/UML-ER-library.excalidrawlib', label: 'UML / ER' },
+  { path: '/libraries/decision-flow-control.excalidrawlib', label: 'Условия и ветвления' },
+  { path: '/libraries/mathematical-symbols.excalidrawlib', label: 'Математические символы' },
+  { path: '/libraries/algorithms-and-data-structures-arrays-matrices-trees.excalidrawlib', label: 'Алгоритмы и структуры данных' },
+  { path: '/libraries/charts.excalidrawlib', label: 'Графики' },
+];
+
 const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode, onToggleTheme }) => {
   const { token } = useAuth();
 
@@ -95,6 +103,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // ── desktop panel toggle ─────────────────────────────────────────────────────
   const [desktopPanelOpen, setDesktopPanelOpen] = useState(false);
 
+  // ── library panel ───────────────────────────────────────────────────────────
+  const [libraryPanelOpen, setLibraryPanelOpen] = useState(false);
+
   // ── lecture insert ───────────────────────────────────────────────────────────
   const [lecturePickerOpen, setLecturePickerOpen] = useState(false);
   const [lectures, setLectures] = useState<LectureMeta[]>([]);
@@ -102,15 +113,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [selectedLecture, setSelectedLecture] = useState<LectureFull | null>(null);
   const [lectureDetailLoading, setLectureDetailLoading] = useState(false);
   const [insertText, setInsertText] = useState('');
-
-  // ── library files ────────────────────────────────────────────────────────────
-  const LIBRARY_FILES = [
-    '/libraries/UML-ER-library.excalidrawlib',
-    '/libraries/decision-flow-control.excalidrawlib',
-    '/libraries/mathematical-symbols.excalidrawlib',
-    '/libraries/algorithms-and-data-structures-arrays-matrices-trees.excalidrawlib',
-    '/libraries/charts.excalidrawlib',
-  ];
 
   // ── mobile detection ─────────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
@@ -195,12 +197,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   };
 
   // ── load libraries into Excalidraw ──────────────────────────────────────────
-  const loadLibraries = useCallback(async (api: ExcalidrawImperativeAPI, openMenu = false) => {
+  const loadLibraries = useCallback(async (api: ExcalidrawImperativeAPI) => {
     try {
       if (librariesLoadedRef.current) {
-        if (openMenu) {
-          api.toggleSidebar({ name: 'library', force: true });
-        }
         return;
       }
 
@@ -208,7 +207,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       console.log('Загрузка библиотек Excalidraw из файлов...', LIBRARY_FILES);
       
       await Promise.all(
-        LIBRARY_FILES.map(async (path) => {
+        LIBRARY_FILES.map(async ({ path }) => {
           try {
             const res = await fetch(path);
             console.log(`Загрузка ${path}:`, res.status);
@@ -234,34 +233,16 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       console.log('Всего элементов библиотеки:', items.length);
       if (items.length > 0) {
         console.log('Обновление библиотеки Excalidraw...');
-        await api.updateLibrary({ libraryItems: items, merge: false, openLibraryMenu: openMenu });
+        await api.updateLibrary({ libraryItems: items, merge: false });
         librariesLoadedRef.current = true;
         console.log('Библиотека успешно обновлена');
       } else {
         console.warn('Не удалось загрузить элементы библиотеки');
-        if (openMenu) {
-          api.toggleSidebar({ name: 'library', force: true });
-        }
       }
     } catch (err) {
       console.error('Ошибка при загрузке библиотек:', err);
-      if (openMenu) {
-        try {
-          api.toggleSidebar({ name: 'library', force: true });
-        } catch {}
-      }
     }
   }, []);
-
-  const openLibraryPanel = useCallback(async () => {
-    const api = excalidrawAPI.current;
-    if (!api) {
-      console.warn('Excalidraw API не инициализирован');
-      return;
-    }
-    // Загружаем библиотеки и сразу открываем меню библиотеки.
-    await loadLibraries(api, true);
-  }, [loadLibraries]);
 
   // ── auto-save on change ──────────────────────────────────────────────────────
   const handleChange = useCallback(() => {
@@ -673,7 +654,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
             {activeBoardId && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
 
-            <MobileIconButton icon="menu_book" label="Библиотека" onClick={openLibraryPanel} />
+            <MobileIconButton icon="menu_book" label="Библиотека" onClick={() => setLibraryPanelOpen(true)} active={libraryPanelOpen} />
 
             <div style={{ position: 'relative' }}>
               <MobileIconButton icon="format_color_fill" label="Фон" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} />
@@ -899,6 +880,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 {/* Lecture */}
                 {activeBoardId && <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />}
 
+                {/* Library */}
+                <PanelButton icon="menu_book" label="Библиотека" onClick={() => setLibraryPanelOpen(true)} isLightTheme={isLightTheme} active={libraryPanelOpen} />
+
                 {/* Background */}
                 <div style={{ position: 'relative' }}>
                   <PanelButton icon="format_color_fill" label="Фон холста" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
@@ -956,14 +940,83 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                   )}
                 </div>
 
-                {/* Library */}
-                <PanelButton icon="menu_book" label="Библиотека" onClick={openLibraryPanel} isLightTheme={isLightTheme} />
-
                 <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 4px' }} />
 
                 <PanelButton icon="logout" label="Выйти" onClick={handleExitRequest} isLightTheme={isLightTheme} danger />
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Library panel ── */}
+        {libraryPanelOpen && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 500,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '0 16px',
+          }} onClick={e => { if (e.target === e.currentTarget) setLibraryPanelOpen(false); }}>
+            <div style={{
+              ...surface,
+              borderRadius: 16,
+              width: '100%',
+              maxWidth: 520,
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              fontFamily: 'Georgia, serif',
+              overflow: 'hidden',
+            }}>
+              <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 18, color: 'var(--text-primary)', fontWeight: 400 }}>
+                    Библиотеки
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    Только локальные файлы для скачивания
+                  </div>
+                </div>
+                <button onClick={() => setLibraryPanelOpen(false)}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', padding: 4, borderRadius: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
+                </button>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 18px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {LIBRARY_FILES.map(file => (
+                    <div key={file.path} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                      border: '1px solid var(--border-color)', borderRadius: 12,
+                      padding: '12px 14px', background: 'var(--hover-bg)',
+                    }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{file.label}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, wordBreak: 'break-all' }}>
+                          {file.path.replace('/libraries/', '')}
+                        </div>
+                      </div>
+                      <a
+                        href={file.path}
+                        download
+                        style={{
+                          flexShrink: 0,
+                          display: 'inline-flex', alignItems: 'center', gap: 8,
+                          padding: '8px 12px', borderRadius: 10,
+                          background: isLightTheme ? '#fffff0' : '#2a1d1e',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-primary)', textDecoration: 'none',
+                          fontSize: 13,
+                        }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
+                        Скачать
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

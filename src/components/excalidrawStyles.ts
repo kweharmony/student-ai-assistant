@@ -63,6 +63,36 @@ const excalidrawStyles = `
     border: 1px solid rgba(255,255,240,0.08) !important;
   }
 
+  /* ── Native sidebar trigger (Library) ── */
+  .excalidraw .default-sidebar-trigger,
+  .excalidraw .sidebar-trigger {
+    border-radius: 10px !important;
+    font-family: Georgia, serif !important;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease !important;
+  }
+  .excalidraw.theme--light .default-sidebar-trigger,
+  .excalidraw.theme--light .sidebar-trigger {
+    background: #fffff0 !important;
+    border: 1px solid rgba(68,41,43,0.12) !important;
+    color: #44292b !important;
+    box-shadow: var(--island-shadow) !important;
+  }
+  .excalidraw.theme--dark .default-sidebar-trigger,
+  .excalidraw.theme--dark .sidebar-trigger {
+    background: #2a1d1e !important;
+    border: 1px solid rgba(255,255,240,0.08) !important;
+    color: #fffff0 !important;
+    box-shadow: var(--island-shadow) !important;
+  }
+  .excalidraw .default-sidebar-trigger:hover,
+  .excalidraw .sidebar-trigger:hover {
+    transform: translateY(-1px) !important;
+  }
+  .excalidraw .sidebar-trigger__label {
+    font-size: 13px !important;
+    letter-spacing: 0.01em;
+  }
+
   /* ── Toolbar buttons ── */
   .excalidraw .ToolIcon_type_button,
   .excalidraw .ToolIcon__keybinding {
@@ -169,7 +199,8 @@ const excalidrawStyles = `
   .excalidraw [aria-label="Main menu"],
   .excalidraw [title="Menu"],
   .excalidraw [title="Меню"],
-  .excalidraw .default-sidebar-trigger { display: none !important; }
+  .excalidraw .default-sidebar-trigger,
+  .excalidraw .default-sidebar-trigger--hidden { display: none !important; }
 `;
 
 export default excalidrawStyles;
