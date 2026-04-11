@@ -47,6 +47,21 @@ async def create_board(
     return board
 
 
+# ── публичный доступ по токену (только чтение) ────────────────────────────────
+@router.get("/public/{token}", response_model=BoardDetailOut)
+async def get_public_board(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Board).where(Board.share_token == token, Board.is_public == True)
+    )
+    board = result.scalar_one_or_none()
+    if not board:
+        raise HTTPException(status_code=404, detail="Полотно не найдено или ссылка недействительна")
+    return board
+
+
 # ── получить полотно с данными ─────────────────────────────────────────────────
 @router.get("/{board_id}", response_model=BoardDetailOut)
 async def get_board(
@@ -118,21 +133,6 @@ async def disable_sharing(
     board.is_public = False
     await db.commit()
     await db.refresh(board)
-    return board
-
-
-# ── публичный доступ по токену (только чтение) ────────────────────────────────
-@router.get("/public/{token}", response_model=BoardDetailOut)
-async def get_public_board(
-    token: str,
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(
-        select(Board).where(Board.share_token == token, Board.is_public == True)
-    )
-    board = result.scalar_one_or_none()
-    if not board:
-        raise HTTPException(status_code=404, detail="Полотно не найдено или ссылка недействительна")
     return board
 
 

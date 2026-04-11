@@ -8,6 +8,7 @@ import Footer from './components/Footer';
 import AuthPage from './components/AuthPage';
 import AccountPage from './components/account/AccountPage';
 import PricingPage from './components/PricingPage';
+import PublicBoardPage from './components/PublicBoardPage';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
@@ -92,6 +93,7 @@ function App() {
             <Route path="/auth" element={<AuthPageWrapper />} />
             <Route path="/account" element={<AccountPageWrapper />} />
             <Route path="/pricing" element={<PricingPageWrapper />} />
+            <Route path="/board/:token" element={<PublicBoardPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>

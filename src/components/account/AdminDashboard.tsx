@@ -213,7 +213,7 @@ const AdminDashboard: React.FC = () => {
   const handleHardDelete = async () => {
     if (!hardDeleteModal) return;
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${hardDeleteModal.userId}/hard`, {
+      const res = await fetch(`${API_BASE}/api/admin/users/${hardDeleteModal.userId}`, {
         method: 'DELETE', headers,
       });
       const data = await res.json().catch(() => ({}));

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Excalidraw, exportToBlob, exportToSvg, serializeAsJSON } from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -56,6 +56,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
 
   // ── exit prompt ──────────────────────────────────────────────────────────────
   const [exitPrompt, setExitPrompt] = useState(false);
+
+  // ── mobile detection ─────────────────────────────────────────────────────────
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   const authHeaders = useCallback(
     () => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }),
@@ -334,8 +342,26 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
           />
         )}
 
-        {/* ── Floating left panel (vertically centered) ── */}
-        <div style={{
+        {/* ── Floating panel — left on desktop, bottom on mobile ── */}
+        <div style={isMobile ? {
+          position: 'fixed',
+          bottom: 12,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 300,
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 4,
+          background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
+          border: '1px solid var(--border-color)',
+          borderRadius: 20,
+          padding: '8px 12px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+          backdropFilter: 'blur(16px)',
+          fontFamily: 'Georgia, serif',
+          maxWidth: 'calc(100vw - 24px)',
+        } : {
           position: 'fixed',
           left: 12,
           top: '80%',
@@ -343,55 +369,78 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
           zIndex: 300,
           display: 'flex',
           flexDirection: 'column',
-          gap: 8,
-          background: isLightTheme ? 'rgba(255,255,245,0.96)' : 'rgba(30,22,24,0.96)',
+          gap: 2,
+          background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
           border: '1px solid var(--border-color)',
-          borderRadius: 14,
-          padding: '12px 8px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-          backdropFilter: 'blur(12px)',
-          minWidth: 44,
+          borderRadius: 16,
+          padding: '10px 8px',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.22)',
+          backdropFilter: 'blur(16px)',
+          minWidth: 180,
+          fontFamily: 'Georgia, serif',
         }}>
-          {/* Board title */}
-          <div style={{ padding: '0 4px 6px', borderBottom: '1px solid var(--border-color)' }}>
-            {editingTitle ? (
-              <input
-                autoFocus
-                value={boardTitle}
-                onChange={e => setBoardTitle(e.target.value)}
-                onBlur={saveTitle}
-                onKeyDown={e => e.key === 'Enter' && saveTitle()}
-                style={{
-                  width: 130,
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: '1px solid var(--text-secondary)',
-                  color: 'var(--text-primary)',
-                  fontFamily: 'Georgia, serif',
-                  fontSize: 13,
-                  outline: 'none',
-                  padding: '2px 0',
-                }}
-              />
-            ) : (
-              <button
-                onClick={() => activeBoardId && setEditingTitle(true)}
-                title="Переименовать"
-                style={{
-                  background: 'none', border: 'none', cursor: activeBoardId ? 'pointer' : 'default',
-                  color: 'var(--text-primary)', fontFamily: 'Georgia, serif', fontSize: 13,
-                  maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  padding: 0,
-                }}
-              >
-                {boardTitle}
-              </button>
-            )}
-          </div>
 
-          {/* Save status */}
-          {saveMsg && (
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', textAlign: 'center', padding: '0 4px' }}>
+          {/* Title block — desktop only */}
+          {!isMobile && (
+            <div style={{ padding: '4px 8px 10px', borderBottom: '1px solid var(--border-color)', marginBottom: 4 }}>
+              <div style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: '0.08em', marginBottom: 6, opacity: 0.6 }}>
+                ПОЛОТНО
+              </div>
+              {editingTitle ? (
+                <input
+                  autoFocus
+                  value={boardTitle}
+                  onChange={e => setBoardTitle(e.target.value)}
+                  onBlur={saveTitle}
+                  onKeyDown={e => e.key === 'Enter' && saveTitle()}
+                  style={{
+                    width: '100%', background: 'transparent', border: 'none',
+                    borderBottom: '1px solid var(--text-secondary)',
+                    color: 'var(--text-primary)', fontFamily: 'Georgia, serif',
+                    fontSize: 14, outline: 'none', padding: '2px 0',
+                  }}
+                />
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    fontSize: 14, color: 'var(--text-primary)',
+                    maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+                  }}>
+                    {boardTitle}
+                  </span>
+                  {activeBoardId && (
+                    <button onClick={() => setEditingTitle(true)} title="Переименовать"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-secondary)', display: 'flex' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 14 }}>edit</span>
+                    </button>
+                  )}
+                </div>
+              )}
+              {saveMsg && (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  marginTop: 6, padding: '2px 8px',
+                  background: 'rgba(130,170,130,0.15)', border: '1px solid rgba(130,170,130,0.3)',
+                  borderRadius: 20, fontSize: 11, color: '#82AA82',
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 12 }}>check_circle</span>
+                  {saveMsg}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Save status on mobile — small pill above panel */}
+          {isMobile && saveMsg && (
+            <div style={{
+              position: 'fixed', bottom: 72, left: '50%', transform: 'translateX(-50%)',
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '4px 12px', background: 'rgba(130,170,130,0.9)',
+              borderRadius: 20, fontSize: 12, color: '#fff',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 350,
+              pointerEvents: 'none',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>check_circle</span>
               {saveMsg}
             </div>
           )}
@@ -399,22 +448,28 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
           {/* Save button + dropdown */}
           {activeBoardId && (
             <div style={{ position: 'relative' }}>
-              <PanelButton
-                icon="save"
-                label="Сохранить"
-                onClick={() => setSaveMenuOpen(o => !o)}
-                isLightTheme={isLightTheme}
-              />
+              {isMobile
+                ? <MobileIconButton icon="save" label="Сохранить" onClick={() => { setSaveMenuOpen(o => !o); setShareMenuOpen(false); }} />
+                : <PanelButton icon="save" label="Сохранить" onClick={() => { setSaveMenuOpen(o => !o); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
+              }
               {saveMenuOpen && (
                 <div style={{
-                  position: 'absolute', left: 50, top: 0,
-                  background: isLightTheme ? '#fffdf5' : '#1e1618',
+                  position: 'absolute',
+                  ...(isMobile
+                    ? { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }
+                    : { left: 'calc(100% + 8px)', top: 0 }),
+                  background: isLightTheme ? 'rgba(255,253,245,0.98)' : 'rgba(20,15,17,0.98)',
                   border: '1px solid var(--border-color)',
-                  borderRadius: 10, padding: 8, minWidth: 180,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-                  zIndex: 400,
+                  borderRadius: 12, padding: 6, minWidth: 190,
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
+                  backdropFilter: 'blur(16px)', zIndex: 400,
+                  whiteSpace: 'nowrap',
                 }}>
-                  <MenuItem label="Сохранить на профиль" icon="cloud_upload" onClick={async () => { await saveToProfile(); setSaveMenuOpen(false); }} />
+                  <div style={{ fontSize: 10, color: 'var(--text-secondary)', padding: '4px 10px 6px', letterSpacing: '0.08em', opacity: 0.6 }}>
+                    СОХРАНИТЬ КАК
+                  </div>
+                  <MenuItem label="На профиль" icon="cloud_upload" onClick={async () => { await saveToProfile(); setSaveMenuOpen(false); }} />
+                  <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 6px' }} />
                   <MenuItem label="Скачать PNG" icon="image" onClick={exportPNG} />
                   <MenuItem label="Скачать SVG" icon="vector_square" onClick={exportSVG} />
                   <MenuItem label="Скачать JSON" icon="data_object" onClick={exportJSON} />
@@ -423,46 +478,51 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
             </div>
           )}
 
-          {/* Share button */}
+          {/* Share button + dropdown */}
           {activeBoardId && (
             <div style={{ position: 'relative' }}>
-              <PanelButton
-                icon="share"
-                label="Поделиться"
-                onClick={() => setShareMenuOpen(o => !o)}
-                isLightTheme={isLightTheme}
-              />
+              {isMobile
+                ? <MobileIconButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} active={activeBoard?.is_public} />
+                : <PanelButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} isLightTheme={isLightTheme} active={activeBoard?.is_public} />
+              }
               {shareMenuOpen && (
                 <div style={{
-                  position: 'absolute', left: 50, top: 0,
-                  background: isLightTheme ? '#fffdf5' : '#1e1618',
+                  position: 'absolute',
+                  ...(isMobile
+                    ? { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }
+                    : { left: 'calc(100% + 8px)', top: 0 }),
+                  background: isLightTheme ? 'rgba(255,253,245,0.98)' : 'rgba(20,15,17,0.98)',
                   border: '1px solid var(--border-color)',
-                  borderRadius: 10, padding: 12, minWidth: 220,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-                  zIndex: 400,
+                  borderRadius: 12, padding: 12, minWidth: 240,
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
+                  backdropFilter: 'blur(16px)', zIndex: 400,
+                  whiteSpace: 'nowrap',
                 }}>
                   {activeBoard?.is_public ? (
                     <>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                        Публичная ссылка активна
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82' }}>check_circle</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Публичная ссылка активна</span>
                       </div>
                       <div style={{
-                        fontSize: 11, wordBreak: 'break-all', marginBottom: 8,
-                        color: 'var(--text-primary)', opacity: 0.7,
+                        fontSize: 11, wordBreak: 'break-all', marginBottom: 10,
+                        color: 'var(--text-primary)', opacity: 0.6,
+                        background: 'var(--hover-bg)', borderRadius: 8, padding: '6px 10px',
+                        fontFamily: 'monospace',
                       }}>
                         {`${window.location.origin}/board/${activeBoard.share_token}`}
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button style={{ ...btnPrimary, fontSize: 12, padding: '6px 12px' }} onClick={copyShareLink}>Скопировать</button>
-                        <button style={{ ...btnSecondary, fontSize: 12, padding: '6px 12px' }} onClick={disableShare}>Отключить</button>
+                        <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
+                        <button style={{ ...btnSecondary, fontSize: 12, padding: '7px 12px' }} onClick={disableShare}>Отключить</button>
                       </div>
                     </>
                   ) : (
                     <>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                        Публичный доступ отключён
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                        Создайте публичную ссылку для просмотра
                       </div>
-                      <button style={{ ...btnPrimary, fontSize: 12, padding: '6px 14px' }} onClick={enableShare}>
+                      <button style={{ ...btnPrimary, width: '100%', fontSize: 13, padding: '8px 0' }} onClick={enableShare}>
                         Включить ссылку
                       </button>
                     </>
@@ -473,16 +533,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
           )}
 
           {/* Divider */}
-          <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 0' }} />
+          {!isMobile && <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 4px' }} />}
+          {isMobile && <div style={{ width: 1, background: 'var(--border-color)', margin: '0 4px', alignSelf: 'stretch' }} />}
 
           {/* Exit button */}
-          <PanelButton
-            icon="logout"
-            label="Выйти"
-            onClick={handleExitRequest}
-            isLightTheme={isLightTheme}
-            danger
-          />
+          {isMobile
+            ? <MobileIconButton icon="logout" label="Выйти" onClick={handleExitRequest} danger />
+            : <PanelButton icon="logout" label="Выйти" onClick={handleExitRequest} isLightTheme={isLightTheme} danger />
+          }
         </div>
 
         {/* ── Exit confirmation prompt ── */}
@@ -491,30 +549,35 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
             position: 'fixed', inset: 0, zIndex: 500,
             background: 'rgba(0,0,0,0.5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '0 16px',
           }}>
             <div style={{
               ...surface,
               borderRadius: 16,
-              padding: 32,
-              maxWidth: 380,
-              width: '90%',
+              padding: 28,
+              maxWidth: 400,
+              width: '100%',
               fontFamily: 'Georgia, serif',
             }}>
-              <div style={{ fontSize: 20, fontWeight: 400, marginBottom: 12, color: 'var(--text-primary)' }}>
+              <div style={{ fontSize: 20, fontWeight: 400, marginBottom: 8, color: 'var(--text-primary)' }}>
                 Выйти с полотна?
               </div>
-              <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>
+              <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.6 }}>
                 {activeBoardId
-                  ? 'Несохранённые изменения будут потеряны. Сохранить перед выходом?'
+                  ? 'Несохранённые изменения будут потеряны.'
                   : 'Вы просматривали полотно в режиме только для чтения.'}
               </div>
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                <button style={btnSecondary} onClick={() => setExitPrompt(false)}>Отмена</button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {activeBoardId && (
-                  <button style={btnSecondary} onClick={() => confirmExit(false)}>Выйти без сохранения</button>
+                  <button style={{ ...btnPrimary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(true)}>
+                    Сохранить и выйти
+                  </button>
                 )}
-                <button style={btnPrimary} onClick={() => confirmExit(activeBoardId ? true : false)}>
-                  {activeBoardId ? 'Сохранить и выйти' : 'Выйти'}
+                <button style={{ ...btnSecondary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(false)}>
+                  {activeBoardId ? 'Выйти без сохранения' : 'Выйти'}
+                </button>
+                <button style={{ ...btnSecondary, width: '100%', textAlign: 'center', opacity: 0.7 }} onClick={() => setExitPrompt(false)}>
+                  Отмена
                 </button>
               </div>
             </div>
@@ -534,7 +597,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode 
         Интерактивная доска для визуализации лекций, рисунков и схем
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, maxWidth: 700 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, maxWidth: 700 }}>
 
         {/* ── Create new board ── */}
         <div style={{
@@ -645,9 +708,32 @@ interface PanelButtonProps {
   onClick: () => void;
   isLightTheme: boolean;
   danger?: boolean;
+  active?: boolean;
 }
 
-const PanelButton: React.FC<PanelButtonProps> = ({ icon, label, onClick, isLightTheme, danger }) => (
+const MobileIconButton: React.FC<{ icon: string; label: string; onClick: () => void; danger?: boolean; active?: boolean }> = ({ icon, label, onClick, danger, active }) => (
+  <button
+    onClick={onClick}
+    title={label}
+    style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+      background: active ? 'rgba(130,170,130,0.12)' : 'none',
+      border: 'none', cursor: 'pointer',
+      padding: '6px 10px', borderRadius: 10,
+      color: danger ? '#b58488' : active ? '#82AA82' : 'var(--text-primary)',
+      fontSize: 10, fontFamily: 'Georgia, serif',
+      minWidth: 44,
+      transition: 'background .15s',
+    }}
+    onMouseEnter={e => (e.currentTarget.style.background = active ? 'rgba(130,170,130,0.2)' : 'var(--hover-bg)')}
+    onMouseLeave={e => (e.currentTarget.style.background = active ? 'rgba(130,170,130,0.12)' : 'none')}
+  >
+    <span className="material-symbols-outlined" style={{ fontSize: 22 }}>{icon}</span>
+    <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
+  </button>
+);
+
+const PanelButton: React.FC<PanelButtonProps> = ({ icon, label, onClick, isLightTheme, danger, active }) => (
   <button
     onClick={onClick}
     title={label}
@@ -655,20 +741,20 @@ const PanelButton: React.FC<PanelButtonProps> = ({ icon, label, onClick, isLight
       display: 'flex',
       alignItems: 'center',
       gap: 8,
-      background: 'none',
+      background: active ? 'rgba(130,170,130,0.12)' : 'none',
       border: 'none',
       cursor: 'pointer',
       padding: '8px 10px',
       borderRadius: 8,
-      color: danger ? '#b58488' : 'var(--text-primary)',
+      color: danger ? '#b58488' : active ? '#82AA82' : 'var(--text-primary)',
       fontSize: 13,
       fontFamily: 'Georgia, serif',
       width: '100%',
       textAlign: 'left',
       transition: 'background .15s',
     }}
-    onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover-bg)')}
-    onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+    onMouseEnter={e => (e.currentTarget.style.background = active ? 'rgba(130,170,130,0.2)' : 'var(--hover-bg)')}
+    onMouseLeave={e => (e.currentTarget.style.background = active ? 'rgba(130,170,130,0.12)' : 'none')}
   >
     <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{icon}</span>
     <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
