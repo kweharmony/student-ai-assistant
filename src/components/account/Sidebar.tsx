@@ -25,7 +25,7 @@ const sidebarItems: SidebarItem[] = [
   { id: 'profile', label: 'Профиль', icon: 'account_circle' },
   { id: 'calendar', label: 'Календарь', icon: 'calendar_today' },
   { id: 'transcriber', label: 'Транскрибатор', icon: 'mic' },
-  { id: 'lectures', label: 'Мои лекции', icon: 'library_books' },
+  { id: 'lectures', label: 'Лекции', icon: 'library_books' },
   { id: 'text-processing', label: 'Обработка текста', icon: 'edit_note' },
   { id: 'board', label: 'Полотно', icon: 'dashboard' },
   { id: 'exit', label: 'Выход', icon: 'close' },

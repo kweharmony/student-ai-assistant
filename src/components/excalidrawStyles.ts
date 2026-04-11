@@ -144,13 +144,23 @@ const excalidrawStyles = `
 
   /* ── Center the tool toolbar on desktop ── */
   @media (min-width: 641px) {
-    .excalidraw .App-toolbar {
+    .excalidraw .layer-ui__wrapper__top-center {
+      left: 50% !important;
+      right: auto !important;
+      transform: translateX(-50%) !important;
+      width: max-content !important;
+      max-width: calc(100vw - 32px) !important;
+    }
+
+    .excalidraw .App-toolbar,
+    .excalidraw .App-toolbar-container {
       left: 50% !important;
       right: auto !important;
       inset-inline-start: 50% !important;
       inset-inline-end: auto !important;
       transform: translateX(-50%) !important;
       margin-left: 0 !important;
+      margin-right: 0 !important;
     }
   }
 

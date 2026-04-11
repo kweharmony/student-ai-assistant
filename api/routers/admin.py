@@ -613,6 +613,107 @@ async def list_all_lectures(
     ]
 
 
+# ---------- Audio files with expiry info (admin view) ----------
+
+@router.get("/lectures/audio/with-expiry")
+async def list_lectures_with_audio_expiry(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    search: Optional[str] = Query(None),
+    subject: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    uploader_search: Optional[str] = Query(None),
+):
+    """Список лекций с подробной информацией об аудиофайлах и времени их истечения."""
+    
+    query = select(Lecture).options(
+        selectinload(Lecture.uploader),
+        selectinload(Lecture.audio_files),
+    ).where(Lecture.is_deleted == False)
+
+    if search:
+        query = query.where(
+            or_(
+                Lecture.title.ilike(f"%{search}%"),
+                Lecture.subject.ilike(f"%{search}%"),
+            )
+        )
+
+    if subject:
+        query = query.where(Lecture.subject.ilike(f"%{subject}%"))
+
+    if date_from:
+        try:
+            query = query.where(Lecture.created_at >= datetime.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            dt_to = datetime.fromisoformat(date_to).replace(hour=23, minute=59, second=59)
+            query = query.where(Lecture.created_at <= dt_to)
+        except ValueError:
+            pass
+
+    if uploader_search:
+        query = query.join(Lecture.uploader).where(
+            or_(
+                User.login.ilike(f"%{uploader_search}%"),
+                User.full_name.ilike(f"%{uploader_search}%"),
+            )
+        )
+
+    query = query.order_by(Lecture.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(query)
+    lectures = result.scalars().unique().all()
+
+    now = datetime.utcnow()
+    
+    response = []
+    for lecture in lectures:
+        audio_files = []
+        for audio in lecture.audio_files:
+            if not audio.is_deleted:
+                days_left = 0
+                expired = True
+                if audio.audio_expires_at:
+                    delta = audio.audio_expires_at - now
+                    total_seconds = delta.total_seconds()
+                    if total_seconds > 0:
+                        days_left = int(total_seconds / (60 * 60 * 24)) + 1
+                        expired = False
+                
+                audio_files.append({
+                    "id": str(audio.id),
+                    "file_name": audio.file_name,
+                    "file_size": audio.file_size,
+                    "duration_seconds": audio.duration_seconds,
+                    "created_at": audio.created_at.isoformat() if audio.created_at else None,
+                    "audio_expires_at": audio.audio_expires_at.isoformat() if audio.audio_expires_at else None,
+                    "days_left": days_left,
+                    "expired": expired,
+                })
+        
+        response.append({
+            "id": str(lecture.id),
+            "title": lecture.title,
+            "subject": lecture.subject,
+            "created_at": lecture.created_at.isoformat() if lecture.created_at else None,
+            "uploader": {
+                "id": str(lecture.uploader.id),
+                "login": lecture.uploader.login,
+                "full_name": lecture.uploader.full_name,
+            } if lecture.uploader else None,
+            "audio_files": audio_files,
+            "audio_count": len(audio_files),
+        })
+    
+    return response
+
+
 # ---------- All boards (admin view) ----------
 
 @router.get("/boards")

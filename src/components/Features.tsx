@@ -3,19 +3,34 @@ import React from 'react';
 const Features: React.FC = () => {
   const features = [
     {
-      icon: 'target',
-      title: 'Высокая точность',
-      description: 'Современные алгоритмы AI обеспечивают точность распознавания речи в сложных условиях.'
+      icon: 'mic',
+      title: 'Транскрибация лекций',
+      description: 'Загружайте аудио и получайте текст с отслеживанием статуса обработки через очередь воркеров.'
     },
     {
-      icon: 'bolt',
-      title: 'Быстрая обработка',
-      description: 'Часовая запись обрабатывается за несколько минут. Никаких длительных ожиданий.'
+      icon: 'auto_fix_high',
+      title: 'AI-очистка текста',
+      description: 'Автоматически улучшайте расшифровку: исправление структуры, пунктуации и читабельности.'
     },
     {
-      icon: 'lock',
-      title: 'Защита данных',
-      description: 'Ваши файлы защищены шифрованием. Безопасность превыше всего.'
+      icon: 'library_books',
+      title: 'База лекций',
+      description: 'Храните все материалы в одном месте, быстро находите нужные записи и открывайте их в редакторе.'
+    },
+    {
+      icon: 'dashboard',
+      title: 'Интерактивные доски',
+      description: 'Создавайте полотна для схем и конспектов, делитесь публичной ссылкой и возвращайтесь к ним позже.'
+    },
+    {
+      icon: 'admin_panel_settings',
+      title: 'Админ-панель',
+      description: 'Контролируйте пользователей, воркеров, лекции и доски через единый обзор и управленческие вкладки.'
+    },
+    {
+      icon: 'devices',
+      title: 'Работа с любого устройства',
+      description: 'Продолжайте работу после перезагрузки: активные разделы сохраняются, а интерфейс адаптирован под экран.'
     }
   ];
 
@@ -29,7 +44,7 @@ const Features: React.FC = () => {
           className="text-center text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-light mb-5 sm:mb-7 leading-tight tracking-tight opacity-95"
           style={{ color: 'var(--text-primary)', fontFamily: 'Georgia, serif' }}
         >
-          Особенности платформы
+          Возможности платформы
         </h2>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8 md:gap-12 mb-15 sm:mb-25 md:mb-30 max-w-5xl mx-auto">

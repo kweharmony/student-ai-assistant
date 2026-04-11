@@ -1,10 +1,17 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const ACCOUNT_ACTIVE_SECTION_KEY = 'mindesync_account_active_section';
+
 const UploadDemo: React.FC = () => {
   const navigate = useNavigate();
 
   const handleBoardsClick = () => {
+    try {
+      localStorage.setItem(ACCOUNT_ACTIVE_SECTION_KEY, 'board');
+    } catch {
+      // ignore localStorage write errors
+    }
     navigate('/account');
     // Прокрутка к началу страницы после навигации
     setTimeout(() => {
@@ -17,21 +24,25 @@ const UploadDemo: React.FC = () => {
       className="mt-20 sm:mt-30 md:mt-40 max-w-5xl mx-auto py-10 sm:py-14 md:py-18 px-4 sm:px-8 md:px-12 border rounded-2xl relative overflow-hidden"
       style={{ 
         borderColor: 'var(--border-color)',
-        background: 'linear-gradient(135deg, var(--hover-bg) 0%, rgba(148, 163, 184, 0.08) 100%)'
+        background: 'linear-gradient(135deg, rgba(255, 255, 240, 0.04), rgba(255, 255, 240, 0.015))',
+        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.12)'
       }}
     >
       <div
-        className="absolute -top-24 -right-20 w-72 h-72 rounded-full blur-3xl"
-        style={{ background: 'rgba(14, 116, 144, 0.12)' }}
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(circle at top left, rgba(255, 255, 240, 0.08), transparent 42%), radial-gradient(circle at bottom right, rgba(255, 255, 240, 0.05), transparent 36%)',
+          opacity: 0.7,
+        }}
       />
-      <div
-        className="absolute -bottom-28 -left-16 w-72 h-72 rounded-full blur-3xl"
-        style={{ background: 'rgba(30, 64, 175, 0.10)' }}
-      />
-
       <div className="relative z-10">
         <div className="mb-4 sm:mb-5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border"
-          style={{ borderColor: 'var(--border-color)', background: 'rgba(255,255,255,0.45)' }}
+          style={{
+            borderColor: 'var(--border-color)',
+            background: 'rgba(255, 255, 240, 0.04)',
+            backdropFilter: 'blur(8px)',
+          }}
         >
           <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-primary)' }}>draw</span>
           <span className="text-xs sm:text-sm" style={{ color: 'var(--text-secondary)' }}>Интерактивные доски</span>
@@ -63,9 +74,13 @@ const UploadDemo: React.FC = () => {
             <div
               key={idx}
               className="rounded-xl border p-4"
-              style={{ borderColor: 'var(--border-color)', background: 'rgba(255,255,255,0.55)' }}
+              style={{
+                borderColor: 'var(--border-color)',
+                background: 'rgba(255, 255, 240, 0.03)',
+                backdropFilter: 'blur(8px)',
+              }}
             >
-              <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg mb-2" style={{ background: 'rgba(15, 23, 42, 0.08)' }}>
+              <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg mb-2" style={{ background: 'rgba(255, 255, 240, 0.06)' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-primary)' }}>{item.icon}</span>
               </div>
               <h4 className="text-sm sm:text-base mb-1" style={{ color: 'var(--text-primary)' }}>{item.title}</h4>

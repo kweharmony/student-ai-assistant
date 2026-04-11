@@ -71,6 +71,27 @@ interface AdminBoardItem {
   owner: { id: string; login: string; email: string; full_name: string | null; role: string } | null;
 }
 
+interface AudioFileWithExpiry {
+  id: string;
+  file_name: string;
+  file_size: number | null;
+  duration_seconds: number | null;
+  created_at: string | null;
+  audio_expires_at: string | null;
+  days_left: number;
+  expired: boolean;
+}
+
+interface LectureWithAudio {
+  id: string;
+  title: string;
+  subject: string | null;
+  created_at: string | null;
+  uploader: { id: string; login: string; full_name: string | null } | null;
+  audio_files: AudioFileWithExpiry[];
+  audio_count: number;
+}
+
 type AdminTab = 'overview' | 'users' | 'queue' | 'workers' | 'lectures' | 'boards';
 
 // ==================== Component ====================
@@ -84,6 +105,7 @@ const AdminDashboard: React.FC = () => {
   const [workerStats, setWorkerStats] = useState<WorkerStats | null>(null);
   const [lectures, setLectures] = useState<LectureItem[]>([]);
   const [boards, setBoards] = useState<AdminBoardItem[]>([]);
+  const [lecturesWithAudio, setLecturesWithAudio] = useState<LectureWithAudio[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,6 +124,13 @@ const AdminDashboard: React.FC = () => {
   // Board filters
   const [boardSearch, setBoardSearch] = useState('');
   const [boardOwnerSearch, setBoardOwnerSearch] = useState('');
+
+  // Audio filters
+  const [audioSearch, setAudioSearch] = useState('');
+  const [audioSubject, setAudioSubject] = useState('');
+  const [audioDateFrom, setAudioDateFrom] = useState('');
+  const [audioDateTo, setAudioDateTo] = useState('');
+  const [audioUploader, setAudioUploader] = useState('');
 
   // Block modal
   const [blockModal, setBlockModal] = useState<{ userId: string; login: string } | null>(null);
@@ -192,17 +221,36 @@ const AdminDashboard: React.FC = () => {
     setLoading(false);
   }, [token]);
 
+  const fetchLecturesWithAudio = useCallback(async (filters?: {
+    search?: string; subject?: string;
+    dateFrom?: string; dateTo?: string; uploader?: string;
+  }) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: '200' });
+      if (filters?.search) params.set('search', filters.search);
+      if (filters?.subject) params.set('subject', filters.subject);
+      if (filters?.dateFrom) params.set('date_from', filters.dateFrom);
+      if (filters?.dateTo) params.set('date_to', filters.dateTo);
+      if (filters?.uploader) params.set('uploader_search', filters.uploader);
+      const res = await fetch(`${API_BASE}/api/admin/lectures/audio/with-expiry?${params}`, { headers });
+      if (!res.ok) throw new Error('Ошибка загрузки аудио лекций');
+      setLecturesWithAudio(await res.json());
+    } catch (e: any) { setError(e.message); }
+    setLoading(false);
+  }, [token]);
+
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
 
   useEffect(() => {
     if (activeTab === 'users') fetchUsers();
-    if (activeTab === 'queue') fetchQueue();
+    if (activeTab === 'queue') fetchLecturesWithAudio({});
     if (activeTab === 'workers') fetchWorkers();
     if (activeTab === 'lectures') fetchLectures({});
     if (activeTab === 'boards') fetchBoards({});
-  }, [activeTab, fetchUsers, fetchQueue, fetchWorkers, fetchLectures, fetchBoards]);
+  }, [activeTab, fetchUsers, fetchQueue, fetchWorkers, fetchLectures, fetchBoards, fetchLecturesWithAudio]);
 
   // Actions
   const handleBlock = async () => {
@@ -318,7 +366,7 @@ const AdminDashboard: React.FC = () => {
   const tabs: { id: AdminTab; label: string }[] = [
     { id: 'overview', label: 'Обзор' },
     { id: 'users', label: 'Пользователи' },
-    { id: 'queue', label: 'Очередь аудио' },
+    { id: 'queue', label: 'Аудио' },
     { id: 'workers', label: 'Воркеры' },
     { id: 'lectures', label: 'Лекции' },
     { id: 'boards', label: 'Доски' },
@@ -531,34 +579,156 @@ const AdminDashboard: React.FC = () => {
         <div>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm opacity-60" style={{ color: 'var(--text-secondary)' }}>
-              Статус задач транскрибации
+              Аудио лекции и сроки их хранения (7 дней)
             </p>
-            <button onClick={fetchQueue} className="text-xs px-3 py-1.5 rounded-lg border transition-all hover:opacity-80" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+            <button onClick={() => fetchLecturesWithAudio({ search: audioSearch, subject: audioSubject, dateFrom: audioDateFrom, dateTo: audioDateTo, uploader: audioUploader })} className="text-xs px-3 py-1.5 rounded-lg border transition-all hover:opacity-80" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
               Обновить
             </button>
           </div>
 
+          {/* Filters */}
+          <div className="border rounded-xl p-4 mb-4 space-y-3" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="text"
+                value={audioSearch}
+                onChange={e => setAudioSearch(e.target.value)}
+                placeholder="Поиск по названию лекции..."
+                className="text-xs px-3 py-2 rounded-lg border flex-1 min-w-48"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              />
+              <input
+                type="text"
+                value={audioSubject}
+                onChange={e => setAudioSubject(e.target.value)}
+                placeholder="Предмет"
+                className="text-xs px-3 py-2 rounded-lg border"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', width: 120 }}
+              />
+              <input
+                type="text"
+                value={audioUploader}
+                onChange={e => setAudioUploader(e.target.value)}
+                placeholder="Автор (логин)"
+                className="text-xs px-3 py-2 rounded-lg border"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', width: 140 }}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs opacity-50" style={{ color: 'var(--text-secondary)' }}>Дата создания:</span>
+              <input
+                type="date"
+                value={audioDateFrom}
+                onChange={e => setAudioDateFrom(e.target.value)}
+                className="text-xs px-3 py-2 rounded-lg border"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              />
+              <span className="text-xs opacity-40" style={{ color: 'var(--text-secondary)' }}>—</span>
+              <input
+                type="date"
+                value={audioDateTo}
+                onChange={e => setAudioDateTo(e.target.value)}
+                className="text-xs px-3 py-2 rounded-lg border"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              />
+              <button
+                onClick={() => fetchLecturesWithAudio({ search: audioSearch, subject: audioSubject, dateFrom: audioDateFrom, dateTo: audioDateTo, uploader: audioUploader })}
+                className="text-xs px-4 py-2 rounded-lg transition-all"
+                style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
+              >
+                Найти
+              </button>
+              {(audioSearch || audioSubject || audioDateFrom || audioDateTo || audioUploader) && (
+                <button
+                  onClick={() => {
+                    setAudioSearch(''); setAudioSubject('');
+                    setAudioDateFrom(''); setAudioDateTo(''); setAudioUploader('');
+                    fetchLecturesWithAudio();
+                  }}
+                  className="text-xs px-3 py-2 rounded-lg border"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                >
+                  Сбросить
+                </button>
+              )}
+            </div>
+          </div>
+
+          <p className="text-xs opacity-40 mb-3" style={{ color: 'var(--text-secondary)' }}>
+            Найдено: {lecturesWithAudio.length} лекций с аудио
+          </p>
+
           {loading ? (
             <p className="text-center opacity-60 py-8" style={{ color: 'var(--text-secondary)' }}>Загрузка...</p>
-          ) : workerStats ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-              {[
-                { label: 'В очереди', value: workerStats.pending, color: '#eab308', bg: 'rgba(234,179,8,0.1)' },
-                { label: 'Обрабатывается', value: workerStats.processing, color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' },
-                { label: 'Завершено', value: workerStats.completed, color: '#22c55e', bg: 'rgba(34,197,94,0.1)' },
-                { label: 'Ошибки', value: workerStats.error, color: '#f97316', bg: 'rgba(249,115,22,0.1)' },
-                { label: 'Провалено', value: workerStats.failed, color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
-                { label: 'Активных воркеров', value: workerStats.active_workers.length, color: '#a855f7', bg: 'rgba(168,85,247,0.1)' },
-              ].map((card, i) => (
-                <div key={i} className="border rounded-xl p-4" style={{ borderColor: 'var(--border-color)', background: card.bg }}>
-                  <div className="text-2xl font-light mb-1" style={{ color: card.color }}>{card.value}</div>
-                  <div className="text-xs opacity-70" style={{ color: 'var(--text-secondary)' }}>{card.label}</div>
-                </div>
-              ))}
+          ) : lecturesWithAudio.length === 0 ? (
+            <div className="text-center py-12 border rounded-xl" style={{ borderColor: 'var(--border-color)' }}>
+              <p className="text-lg opacity-40 mb-2" style={{ color: 'var(--text-secondary)' }}>Лекций с аудио нет</p>
             </div>
           ) : (
-            <div className="text-center py-12 border rounded-xl" style={{ borderColor: 'var(--border-color)' }}>
-              <p className="text-lg opacity-40 mb-2" style={{ color: 'var(--text-secondary)' }}>Нет данных</p>
+            <div className="space-y-4">
+              {lecturesWithAudio.map(lecture => (
+                <div key={lecture.id} className="border rounded-xl p-4" style={{ borderColor: 'var(--border-color)' }}>
+                  {/* Lecture header */}
+                  <div className="flex flex-col md:flex-row md:items-center gap-2 mb-3 pb-3 border-b" style={{ borderColor: 'var(--border-color)' }}>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>{lecture.title}</h4>
+                      <div className="flex items-center gap-2 flex-wrap mt-1">
+                        {lecture.subject && (
+                          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.15)', color: '#6366f1' }}>
+                            {lecture.subject}
+                          </span>
+                        )}
+                        {lecture.uploader && (
+                          <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
+                            {lecture.uploader.login}
+                          </span>
+                        )}
+                        <span className="text-xs opacity-50" style={{ color: 'var(--text-secondary)' }}>
+                          {formatDate(lecture.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-xs px-2 py-0.5 rounded-full opacity-70" style={{ background: 'var(--hover-bg)', color: 'var(--text-secondary)' }}>
+                      {lecture.audio_count} файл{lecture.audio_count === 1 ? '' : 'ов'}
+                    </span>
+                  </div>
+
+                  {/* Audio files list */}
+                  <div className="space-y-2">
+                    {lecture.audio_files.map(audio => {
+                      const expiryColor = audio.expired ? '#ef4444' : (audio.days_left <= 2 ? '#f59e0b' : '#22c55e');
+                      const expiryBg = audio.expired ? 'rgba(239,68,68,0.1)' : (audio.days_left <= 2 ? 'rgba(245,158,11,0.1)' : 'rgba(34,197,94,0.1)');
+                      
+                      return (
+                        <div key={audio.id} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-lg" style={{ background: 'var(--hover-bg)' }}>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                              {audio.file_name}
+                            </div>
+                            <div className="text-xs opacity-50 mt-0.5 flex flex-wrap gap-2" style={{ color: 'var(--text-secondary)' }}>
+                              {audio.file_size && (
+                                <span>{(audio.file_size / (1024 * 1024)).toFixed(1)} МБ</span>
+                              )}
+                              {audio.duration_seconds && (
+                                <span>{Math.round(audio.duration_seconds / 60)} мин</span>
+                              )}
+                              {audio.created_at && (
+                                <span>Загружено: {formatDate(audio.created_at)}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs" style={{ background: expiryBg, color: expiryColor }}>
+                              <span className="material-symbols-outlined text-base">schedule</span>
+                              {audio.expired ? 'Истекло' : `${audio.days_left} дн.`}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -726,6 +896,19 @@ const AdminDashboard: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>{lecture.title}</span>
+                        {lecture.status && (
+                          <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{
+                            background: lecture.status === 'ready' ? 'rgba(34,197,94,0.15)' : 
+                                       lecture.status === 'processing' ? 'rgba(59,130,246,0.15)' :
+                                       'rgba(239,68,68,0.15)',
+                            color: lecture.status === 'ready' ? '#22c55e' : 
+                                   lecture.status === 'processing' ? '#3b82f6' :
+                                   '#ef4444'
+                          }}>
+                            {lecture.status === 'processing' && <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
+                            {lecture.status === 'ready' ? 'Готова' : lecture.status === 'processing' ? 'Обрабатывается' : 'Ошибка'}
+                          </span>
+                        )}
                         {lecture.subject && (
                           <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.15)', color: '#6366f1' }}>
                             {lecture.subject}

@@ -36,7 +36,7 @@ const Footer: React.FC = () => {
             className="text-secondary mb-10 leading-8 opacity-50 text-lg max-w-lg font-light"
             style={{ color: 'var(--text-secondary)' }}
           >
-            Мы создаём инструменты для преобразования звука в текст. Делаем информацию доступной, понятной и удобной для работы.
+            Мы создаём рабочую платформу для лекций: транскрибация аудио, AI-обработка текста, интерактивные доски и удобное управление материалами в одном месте.
           </p>
           <div className="flex gap-4 mt-10">
             {['flight', 'bolt', 'diamond'].map((icon, index) => (
@@ -91,7 +91,7 @@ const Footer: React.FC = () => {
           borderColor: 'var(--border-color)'
         }}
       >
-        <div>© 2025 MindeSync.</div>
+        <div>© 2026 MindeSync.</div>
         <div className="flex flex-col md:flex-row gap-4 md:gap-10 text-center md:text-left">
           {['Условия использования', 'Конфиденциальность', 'Cookies'].map((link, index) => (
             <a 

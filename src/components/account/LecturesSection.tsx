@@ -323,6 +323,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const { token } = useAuth();
   const [lectures, setLectures] = useState<LectureItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lectureType, setLectureType] = useState<'my' | 'general'>('my'); // мои или общие лекции
 
   // Modal state
   const [textModalLecture, setTextModalLecture]     = useState<LectureItem | null>(null);
@@ -352,13 +353,14 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const fetchLectures = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/lectures/my`, { headers: authHeaders() });
+      const endpoint = lectureType === 'my' ? `${API_BASE}/api/lectures/my` : `${API_BASE}/api/lectures`;
+      const res = await fetch(endpoint, { headers: authHeaders() });
       if (!res.ok) return;
       setLectures(await res.json());
     } finally {
       setLoading(false);
     }
-  }, [authHeaders]);
+  }, [authHeaders, lectureType]);
 
   useEffect(() => { fetchLectures(); }, [fetchLectures]);
 
@@ -535,10 +537,39 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
       {/* Header */}
       <div className="text-center mb-8 px-4">
         <h1 className="text-3xl lg:text-4xl font-light mb-3 tracking-wide" style={{ color: headingColor }}>
-          Мои лекции
+          Лекции
         </h1>
+        
+        {/* Lecture Type Selector */}
+        <div className="flex gap-2 justify-center mb-4">
+          <button
+            onClick={() => setLectureType('my')}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+            style={{
+              background: lectureType === 'my' ? 'rgba(68,41,43,.15)' : 'transparent',
+              color: lectureType === 'my' ? headingColor : mutedColor,
+              border: `1px solid ${lectureType === 'my' ? 'rgba(68,41,43,.3)' : 'rgba(68,41,43,.1)'}`,
+            }}
+          >
+            Мои лекции
+          </button>
+          <button
+            onClick={() => setLectureType('general')}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+            style={{
+              background: lectureType === 'general' ? 'rgba(68,41,43,.15)' : 'transparent',
+              color: lectureType === 'general' ? headingColor : mutedColor,
+              border: `1px solid ${lectureType === 'general' ? 'rgba(68,41,43,.3)' : 'rgba(68,41,43,.1)'}`,
+            }}
+          >
+            Общие лекции
+          </button>
+        </div>
+        
         <p className="text-base" style={{ color: mutedColor }}>
-          Загруженные записи, транскрипции и обработанные материалы
+          {lectureType === 'my' 
+            ? 'Загруженные записи, транскрипции и обработанные материалы'
+            : 'Общедоступные лекции, которыми поделились другие пользователи'}
         </p>
       </div>
 
@@ -563,8 +594,17 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
       ) : lectures.length === 0 ? (
         <div className="text-center py-16" style={{ color: mutedColor }}>
           <span className="material-symbols-outlined text-5xl mb-4 block">library_books</span>
-          <p>У вас ещё нет загруженных лекций.</p>
-          <p className="text-sm mt-1">Перейдите в раздел «Транскрибатор», чтобы загрузить первую.</p>
+          {lectureType === 'my' ? (
+            <>
+              <p>У вас ещё нет загруженных лекций.</p>
+              <p className="text-sm mt-1">Перейдите в раздел «Транскрибатор», чтобы загрузить первую.</p>
+            </>
+          ) : (
+            <>
+              <p>Общих лекций нет.</p>
+              <p className="text-sm mt-1">В будущем здесь появятся лекции других пользователей.</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

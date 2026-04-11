@@ -202,22 +202,28 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
           const res = await fetch(path);
           if (!res.ok) return;
           const json = await res.json();
-          if (Array.isArray(json.libraryItems)) items.push(...json.libraryItems);
+          // Поддерживаем оба формата excalidrawlib: новый (libraryItems) и legacy (library)
+          const rawItems = Array.isArray(json.libraryItems)
+            ? json.libraryItems
+            : Array.isArray(json.library)
+              ? json.library
+              : [];
+          if (rawItems.length > 0) items.push(...rawItems);
         })
       );
       if (items.length > 0) {
-        api.updateLibrary({ libraryItems: items, merge: false });
+        await api.updateLibrary({ libraryItems: items, merge: false });
       }
     } catch {
       // не критично — холст работает и без библиотек
     }
   }, []);
 
-  const openLibraryPanel = useCallback(() => {
+  const openLibraryPanel = useCallback(async () => {
     const api = excalidrawAPI.current;
     if (!api) return;
     // Re-try loading library assets before opening to avoid an empty sidebar.
-    loadLibraries(api);
+    await loadLibraries(api);
     api.toggleSidebar({ name: 'library', force: true });
   }, [loadLibraries]);
 
