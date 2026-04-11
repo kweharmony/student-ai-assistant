@@ -507,14 +507,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             borderRadius: 20,
             padding: '8px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
-            backdropFilter: 'blur(16px)',
             fontFamily: 'Georgia, serif',
             width: 'auto',
             maxWidth: 'none',
             overflowX: 'auto',
-            overflowY: 'hidden',
+            overflowY: 'visible',
             WebkitOverflowScrolling: 'touch',
             boxSizing: 'border-box',
+            WebkitBackdropFilter: 'none',
+            backdropFilter: 'none',
           }}>
             {saveMsg && (
               <div style={{
