@@ -54,14 +54,6 @@ const BG_PALETTE = [
   '#e3f2fd', '#bbdefb', '#90caf9', '#5c6bc0', '#1a237e',
 ];
 
-const LIBRARY_FILES = [
-  { path: '/libraries/UML-ER-library.excalidrawlib', label: 'UML / ER' },
-  { path: '/libraries/decision-flow-control.excalidrawlib', label: 'Условия и ветвления' },
-  { path: '/libraries/mathematical-symbols.excalidrawlib', label: 'Математические символы' },
-  { path: '/libraries/algorithms-and-data-structures-arrays-matrices-trees.excalidrawlib', label: 'Алгоритмы и структуры данных' },
-  { path: '/libraries/charts.excalidrawlib', label: 'Графики' },
-];
-
 const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode, onToggleTheme }) => {
   const { token } = useAuth();
 
@@ -81,7 +73,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [initialData, setInitialData] = useState<any>(null);
   const excalidrawAPI = useRef<ExcalidrawImperativeAPI | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const librariesLoadedRef = useRef(false);
 
   // ── save panel ───────────────────────────────────────────────────────────────
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
@@ -102,9 +93,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   // ── desktop panel toggle ─────────────────────────────────────────────────────
   const [desktopPanelOpen, setDesktopPanelOpen] = useState(false);
-
-  // ── library panel ───────────────────────────────────────────────────────────
-  const [libraryPanelOpen, setLibraryPanelOpen] = useState(false);
 
   // ── lecture insert ───────────────────────────────────────────────────────────
   const [lecturePickerOpen, setLecturePickerOpen] = useState(false);
@@ -195,54 +183,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setNewTitle('');
     await openBoard(board.id);
   };
-
-  // ── load libraries into Excalidraw ──────────────────────────────────────────
-  const loadLibraries = useCallback(async (api: ExcalidrawImperativeAPI) => {
-    try {
-      if (librariesLoadedRef.current) {
-        return;
-      }
-
-      const items: any[] = [];
-      console.log('Загрузка библиотек Excalidraw из файлов...', LIBRARY_FILES);
-      
-      await Promise.all(
-        LIBRARY_FILES.map(async ({ path }) => {
-          try {
-            const res = await fetch(path);
-            console.log(`Загрузка ${path}:`, res.status);
-            if (!res.ok) {
-              console.warn(`Файл не найден: ${path}`);
-              return;
-            }
-            const json = await res.json();
-            // Поддерживаем оба формата excalidrawlib: новый (libraryItems) и legacy (library)
-            const rawItems = Array.isArray(json.libraryItems)
-              ? json.libraryItems
-              : Array.isArray(json.library)
-                ? json.library
-                : [];
-            console.log(`Из ${path} загружено ${rawItems.length} элементов`);
-            if (rawItems.length > 0) items.push(...rawItems);
-          } catch (err) {
-            console.error(`Ошибка загрузки ${path}:`, err);
-          }
-        })
-      );
-      
-      console.log('Всего элементов библиотеки:', items.length);
-      if (items.length > 0) {
-        console.log('Обновление библиотеки Excalidraw...');
-        await api.updateLibrary({ libraryItems: items, merge: false });
-        librariesLoadedRef.current = true;
-        console.log('Библиотека успешно обновлена');
-      } else {
-        console.warn('Не удалось загрузить элементы библиотеки');
-      }
-    } catch (err) {
-      console.error('Ошибка при загрузке библиотек:', err);
-    }
-  }, []);
 
   // ── auto-save on change ──────────────────────────────────────────────────────
   const handleChange = useCallback(() => {
@@ -530,7 +470,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         {/* Excalidraw fills entire viewport */}
         {initialData !== null && (
           <Excalidraw
-            excalidrawAPI={(api) => { excalidrawAPI.current = api; loadLibraries(api); }}
+            excalidrawAPI={(api) => { excalidrawAPI.current = api; }}
             initialData={initialData}
             onChange={handleChange}
             theme={isLightTheme ? 'light' : 'dark'}
@@ -558,6 +498,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             zIndex: 300,
             display: 'flex',
             flexDirection: 'row',
+            flexWrap: 'wrap',
             alignItems: 'center',
             gap: 4,
             background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
@@ -569,14 +510,19 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             fontFamily: 'Georgia, serif',
             width: 'calc(100vw - 12px)',
             maxWidth: 'calc(100vw - 12px)',
-            overflowX: 'auto',
-            overflowY: 'hidden',
+            overflowX: 'visible',
+            overflowY: 'visible',
             WebkitOverflowScrolling: 'touch',
             boxSizing: 'border-box',
           }}>
             {saveMsg && (
               <div style={{
                 position: 'fixed', bottom: 72, left: '50%', transform: 'translateX(-50%)',
+                    position: 'fixed',
+                    left: 12,
+                    right: 12,
+                    bottom: 88,
+                    transform: 'none',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
                 padding: '4px 12px', background: 'rgba(130,170,130,0.9)',
                 borderRadius: 20, fontSize: 12, color: '#fff',
@@ -620,12 +566,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 {shareMenuOpen && (
                   <div style={{
                     position: 'fixed',
-                    bottom: 'calc(100% + 20px)', left: '50%', transform: 'translateX(-50%)',
+                    left: 12,
+                    right: 12,
+                    bottom: 88,
+                    transform: 'none',
                     background: isLightTheme ? '#fffdf5' : '#140f11',
                     border: '1px solid var(--border-color)',
-                    borderRadius: 12, padding: 12, minWidth: 240,
+                    borderRadius: 12, padding: 12, minWidth: 0,
                     boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
-                    zIndex: 400, whiteSpace: 'nowrap',
+                    zIndex: 400, whiteSpace: 'normal',
                   }}>
                     {activeBoard?.is_public ? (
                       <>
@@ -654,19 +603,20 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
             {activeBoardId && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
 
-            <MobileIconButton icon="menu_book" label="Библиотека" onClick={() => setLibraryPanelOpen(true)} active={libraryPanelOpen} />
-
             <div style={{ position: 'relative' }}>
               <MobileIconButton icon="format_color_fill" label="Фон" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} />
               {bgMenuOpen && (
                 <div style={{
-                  position: 'fixed',
-                  bottom: 'calc(100% + 20px)', left: '50%', transform: 'translateX(-50%)',
+                    position: 'fixed',
+                    left: 12,
+                    right: 12,
+                    bottom: 88,
+                    transform: 'none',
                   background: isLightTheme ? '#fffdf5' : '#140f11',
                   border: '1px solid var(--border-color)',
-                  borderRadius: 12, padding: '10px 10px 8px',
+                    borderRadius: 12, padding: '10px 10px 8px',
                   boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
-                  zIndex: 400, minWidth: 210,
+                    zIndex: 400, minWidth: 0,
                 }}>
                   <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.08em', opacity: 0.6 }}>ФОН ХОЛСТА</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
@@ -880,9 +830,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 {/* Lecture */}
                 {activeBoardId && <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />}
 
-                {/* Library */}
-                <PanelButton icon="menu_book" label="Библиотека" onClick={() => setLibraryPanelOpen(true)} isLightTheme={isLightTheme} active={libraryPanelOpen} />
-
                 {/* Background */}
                 <div style={{ position: 'relative' }}>
                   <PanelButton icon="format_color_fill" label="Фон холста" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
@@ -945,78 +892,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 <PanelButton icon="logout" label="Выйти" onClick={handleExitRequest} isLightTheme={isLightTheme} danger />
               </div>
             )}
-          </div>
-        )}
-
-        {/* ── Library panel ── */}
-        {libraryPanelOpen && (
-          <div style={{
-            position: 'fixed', inset: 0, zIndex: 500,
-            background: 'rgba(0,0,0,0.55)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '0 16px',
-          }} onClick={e => { if (e.target === e.currentTarget) setLibraryPanelOpen(false); }}>
-            <div style={{
-              ...surface,
-              borderRadius: 16,
-              width: '100%',
-              maxWidth: 520,
-              maxHeight: '80vh',
-              display: 'flex',
-              flexDirection: 'column',
-              fontFamily: 'Georgia, serif',
-              overflow: 'hidden',
-            }}>
-              <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 18, color: 'var(--text-primary)', fontWeight: 400 }}>
-                    Библиотеки
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    Только локальные файлы для скачивания
-                  </div>
-                </div>
-                <button onClick={() => setLibraryPanelOpen(false)}
-                  style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', padding: 4, borderRadius: 6 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
-                </button>
-              </div>
-
-              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 18px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {LIBRARY_FILES.map(file => (
-                    <div key={file.path} style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                      border: '1px solid var(--border-color)', borderRadius: 12,
-                      padding: '12px 14px', background: 'var(--hover-bg)',
-                    }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{file.label}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, wordBreak: 'break-all' }}>
-                          {file.path.replace('/libraries/', '')}
-                        </div>
-                      </div>
-                      <a
-                        href={file.path}
-                        download
-                        style={{
-                          flexShrink: 0,
-                          display: 'inline-flex', alignItems: 'center', gap: 8,
-                          padding: '8px 12px', borderRadius: 10,
-                          background: isLightTheme ? '#fffff0' : '#2a1d1e',
-                          border: '1px solid var(--border-color)',
-                          color: 'var(--text-primary)', textDecoration: 'none',
-                          fontSize: 13,
-                        }}
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
-                        Скачать
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -1331,18 +1206,19 @@ const MobileIconButton: React.FC<{ icon: string; label: string; onClick: () => v
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
       background: active ? 'rgba(130,170,130,0.12)' : 'none',
       border: 'none', cursor: 'pointer',
-      padding: '6px 7px', borderRadius: 10,
+      padding: '7px 10px', borderRadius: 10,
       color: danger ? '#b58488' : active ? '#82AA82' : 'var(--text-primary)',
-      fontSize: 9, fontFamily: 'Georgia, serif',
+      fontSize: 10, fontFamily: 'Georgia, serif',
       minWidth: 0,
+      minWidth: 72,
       flex: '0 0 auto',
       transition: 'background .15s',
     }}
     onMouseEnter={e => (e.currentTarget.style.background = active ? 'rgba(130,170,130,0.2)' : 'var(--hover-bg)')}
     onMouseLeave={e => (e.currentTarget.style.background = active ? 'rgba(130,170,130,0.12)' : 'none')}
   >
-    <span className="material-symbols-outlined" style={{ fontSize: 22 }}>{icon}</span>
-    <span style={{ whiteSpace: 'nowrap', maxWidth: 56, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{icon}</span>
+    <span style={{ whiteSpace: 'normal', textAlign: 'center', lineHeight: 1.1 }}>{label}</span>
   </button>
 );
 
