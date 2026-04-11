@@ -144,40 +144,22 @@ const excalidrawStyles = `
 
   /* ── Center the tool toolbar on desktop ── */
   @media (min-width: 641px) {
-    .excalidraw .App-top-bar {
-      position: absolute !important;
-      inset: 16px 0 auto 0 !important;
-      width: 100% !important;
-      pointer-events: none !important;
-    }
-
     .excalidraw .App-menu_top {
-      width: 100% !important;
-      grid-template-columns: 1fr auto 1fr !important;
-      grid-gap: 0 !important;
+      grid-template-columns: 1fr 2fr 1fr !important;
+      grid-gap: 2rem !important;
       align-items: flex-start !important;
-      justify-items: center !important;
     }
 
-    .excalidraw .App-menu_top__left {
-      display: none !important;
+    .excalidraw .shapes-section {
+      justify-content: center !important;
     }
 
-    .excalidraw .App-toolbar,
     .excalidraw .App-toolbar-container {
-      position: relative !important;
-      left: auto !important;
-      top: auto !important;
-      right: auto !important;
-      transform: none !important;
-      width: max-content !important;
-      margin: 0 !important;
-      padding: 8px 12px !important;
+      margin: 0 auto !important;
     }
   }
 
   /* ── Hide hamburger / main menu button ── */
-  .excalidraw .App-menu_top__left,
   .excalidraw .hamburger-menu,
   .excalidraw .App-menu__burger,
   .excalidraw [data-testid="main-menu-trigger"],

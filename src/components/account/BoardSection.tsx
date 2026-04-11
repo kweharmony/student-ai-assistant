@@ -73,6 +73,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [initialData, setInitialData] = useState<any>(null);
   const excalidrawAPI = useRef<ExcalidrawImperativeAPI | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const librariesLoadedRef = useRef(false);
 
   // ── save panel ───────────────────────────────────────────────────────────────
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
@@ -194,8 +195,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   };
 
   // ── load libraries into Excalidraw ──────────────────────────────────────────
-  const loadLibraries = useCallback(async (api: ExcalidrawImperativeAPI) => {
+  const loadLibraries = useCallback(async (api: ExcalidrawImperativeAPI, openMenu = false) => {
     try {
+      if (librariesLoadedRef.current) {
+        if (openMenu) {
+          api.toggleSidebar({ name: 'library', force: true });
+        }
+        return;
+      }
+
       const items: any[] = [];
       console.log('Загрузка библиотек Excalidraw из файлов...', LIBRARY_FILES);
       
@@ -226,13 +234,22 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       console.log('Всего элементов библиотеки:', items.length);
       if (items.length > 0) {
         console.log('Обновление библиотеки Excalidraw...');
-        await api.updateLibrary({ libraryItems: items, merge: false });
+        await api.updateLibrary({ libraryItems: items, merge: false, openLibraryMenu: openMenu });
+        librariesLoadedRef.current = true;
         console.log('Библиотека успешно обновлена');
       } else {
         console.warn('Не удалось загрузить элементы библиотеки');
+        if (openMenu) {
+          api.toggleSidebar({ name: 'library', force: true });
+        }
       }
     } catch (err) {
       console.error('Ошибка при загрузке библиотек:', err);
+      if (openMenu) {
+        try {
+          api.toggleSidebar({ name: 'library', force: true });
+        } catch {}
+      }
     }
   }, []);
 
@@ -242,15 +259,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       console.warn('Excalidraw API не инициализирован');
       return;
     }
-    // Загружаем библиотеки, если еще не загружены
-    await loadLibraries(api);
-    // Открываем сайдбар библиотеки
-    try {
-      api.toggleSidebar({ name: 'library', force: true });
-      console.log('Библиотека открыта через toggleSidebar');
-    } catch (err) {
-      console.error('Ошибка при открытии библиотеки:', err);
-    }
+    // Загружаем библиотеки и сразу открываем меню библиотеки.
+    await loadLibraries(api, true);
   }, [loadLibraries]);
 
   // ── auto-save on change ──────────────────────────────────────────────────────
@@ -662,6 +672,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             )}
 
             {activeBoardId && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
+
+            <MobileIconButton icon="menu_book" label="Библиотека" onClick={openLibraryPanel} />
 
             <div style={{ position: 'relative' }}>
               <MobileIconButton icon="format_color_fill" label="Фон" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} />
