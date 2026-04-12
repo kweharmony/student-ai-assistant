@@ -33,6 +33,7 @@ from api.models import (  # noqa: F401
     Lecture, AudioFile, Transcription, AdminAction,
     TranscriptionTask, Board, BoardVisit,
     Faculty, Direction, Stream, LectureCatalogItem, LecturePublicationRequest,
+    CatalogDisciplineTemplate, CatalogLecturerTemplate,
 )
 
 target_metadata = Base.metadata
