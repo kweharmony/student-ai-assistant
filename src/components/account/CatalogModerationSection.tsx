@@ -35,6 +35,13 @@ interface CatalogModerationSectionProps {
 const statusLabel: Record<string, string> = { pending: 'На модерации', approved: 'Одобрено', rejected: 'Отклонено' };
 const statusColor: Record<string, string> = { pending: '#f59e0b', approved: '#22c55e', rejected: '#ef4444' };
 type NodeType = 'root' | 'faculty' | 'direction' | 'stream';
+const normalizeSemesterForApi = (value: string | null | undefined): 'winter' | 'spring' | null => {
+  const lower = (value || '').trim().toLowerCase();
+  if (!lower) return null;
+  if (lower === 'winter' || lower === 'зимний' || lower === 'зимний семестр') return 'winter';
+  if (lower === 'spring' || lower === 'весенний' || lower === 'весенний семестр') return 'spring';
+  return null;
+};
 
 const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isLightTheme }) => {
   const { token, user } = useAuth();
@@ -235,7 +242,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     const discipline = (disciplineText[id] || '').trim();
     const lecturer_name = (lecturerText[id] || '').trim();
     const course_text = (courseText[id] || '').trim();
-    const semester_text = (semesterText[id] || '').trim();
+    const semester_text = normalizeSemesterForApi(semesterText[id]);
     const lecture_number_text = (lectureNumberText[id] || '').trim();
     const study_year_text = (studyYearText[id] || '').trim();
     if (action === 'approve' && !discipline) return alert('Для одобрения укажите дисциплину.');
@@ -250,7 +257,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
           discipline: discipline || null,
           lecturer_name: lecturer_name || null,
           course_text: course_text || null,
-          semester_text: semester_text || null,
+          semester_text,
           lecture_number_text: lecture_number_text || null,
           study_year_text: study_year_text || null,
         }),
@@ -336,15 +343,19 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
         discipline: manual.discipline,
         lecturer_name: manual.lecturer_name || null,
         course_text: manual.course_text || null,
-        semester_text: manual.semester_text || null,
+        semester_text: normalizeSemesterForApi(manual.semester_text),
         lecture_number_text: manual.lecture_number_text || null,
         study_year_text: manual.study_year_text || null,
       }),
     });
     if (res.ok) {
       setManual(prev => ({ ...prev, lecture_id: '', discipline: '', lecturer_name: '', course_text: '', semester_text: 'winter', lecture_number_text: '', study_year_text: '' }));
-      await loadRequests();
+      await Promise.all([loadRequests(), loadLookups()]);
       alert('Лекция опубликована в базу.');
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(err.detail || 'Не удалось опубликовать лекцию в базу.');
     }
   };
 

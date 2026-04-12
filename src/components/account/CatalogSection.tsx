@@ -44,6 +44,8 @@ const normalizeSemester = (value: string | null | undefined): Semester | '' => {
   const lower = (value || '').trim().toLowerCase();
   if (lower === 'winter') return 'winter';
   if (lower === 'spring') return 'spring';
+  if (lower === 'зимний' || lower === 'зимний семестр') return 'winter';
+  if (lower === 'весенний' || lower === 'весенний семестр') return 'spring';
   return '';
 };
 const normalizeCourse = (value: string | null | undefined) => (value || '').trim() || NO_COURSE;
@@ -104,6 +106,11 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   }, [headers]);
 
   useEffect(() => { fetchLookups(); fetchCatalog(); }, [fetchLookups, fetchCatalog]);
+  useEffect(() => {
+    const onCatalogRefresh = () => { fetchLookups(); fetchCatalog(); };
+    window.addEventListener('catalog:refresh', onCatalogRefresh);
+    return () => window.removeEventListener('catalog:refresh', onCatalogRefresh);
+  }, [fetchLookups, fetchCatalog]);
 
   useEffect(() => {
     const filtered = allItems.filter(i =>
