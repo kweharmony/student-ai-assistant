@@ -460,6 +460,46 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setInsertText('');
   };
 
+  const insertBoundedTextBlock = () => {
+    const api = excalidrawAPI.current;
+    if (!api || !boardCanEdit) return;
+
+    const appState = api.getAppState();
+    const zoom = appState.zoom.value;
+    const x = (-appState.scrollX + window.innerWidth / 2) / zoom - 220;
+    const y = (-appState.scrollY + window.innerHeight / 2) / zoom - 80;
+    const boxWidth = 440;
+    const boxHeight = 180;
+
+    const newElements = convertToExcalidrawElements([
+      {
+        type: 'rectangle',
+        x,
+        y,
+        width: boxWidth,
+        height: boxHeight,
+        backgroundColor: 'transparent',
+        fillStyle: 'solid',
+        strokeColor: isLightTheme ? '#44292b' : '#fffff0',
+        strokeWidth: 1,
+        strokeStyle: 'dashed',
+        textAutoResize: 'none',
+        label: {
+          text: 'Текст',
+          textAlign: 'left',
+          verticalAlign: 'top',
+          fontSize: 16,
+          strokeColor: isLightTheme ? '#44292b' : '#fffff0',
+        },
+      },
+    ]);
+
+    api.updateScene({
+      elements: [...api.getSceneElements(), ...newElements],
+    });
+    api.scrollToContent?.(newElements[0], { fitToViewport: true });
+  };
+
   // ── exit ──────────────────────────────────────────────────────────────────────
   const handleExitRequest = () => setExitPrompt(true);
 
@@ -522,6 +562,31 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             viewModeEnabled={!boardCanEdit}
             theme={isLightTheme ? 'light' : 'dark'}
             langCode="ru-RU"
+            renderTopRightUI={(isMobile) => (
+              boardCanEdit ? (
+                <button
+                  onClick={insertBoundedTextBlock}
+                  title="Вставить текстовый блок"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 10,
+                    background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    padding: isMobile ? '7px 10px' : '8px 12px',
+                    cursor: 'pointer',
+                    fontFamily: 'Georgia, serif',
+                    fontSize: 13,
+                    lineHeight: 1,
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>text_fields</span>
+                  {!isMobile && <span>Текст-блок</span>}
+                </button>
+              ) : null
+            )}
             UIOptions={{
               canvasActions: {
                 saveToActiveFile: false,
