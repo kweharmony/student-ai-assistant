@@ -37,6 +37,10 @@ interface LookupItem {
   name: string;
 }
 
+interface DirectionItem extends LookupItem {
+  faculty_id: string;
+}
+
 interface StreamItem {
   id: string;
   direction_id: string;
@@ -363,7 +367,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [suggestModalLecture, setSuggestModalLecture] = useState<LectureItem | null>(null);
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
-  const [directions, setDirections] = useState<LookupItem[]>([]);
+  const [directions, setDirections] = useState<DirectionItem[]>([]);
   const [streams, setStreams] = useState<StreamItem[]>([]);
   const [suggestData, setSuggestData] = useState({
     faculty_id: '',
@@ -1082,36 +1086,39 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
           >
             <h2 className="text-lg font-medium mb-1" style={{ color: headingColor }}>Предложение в базу лекций</h2>
             <p className="text-xs mb-4" style={{ color: mutedColor }}>{suggestModalLecture.title}</p>
+            <p className="text-xs mb-2" style={{ color: mutedColor }}>
+              Путь: {faculties.find(f => f.id === suggestData.faculty_id)?.name || 'Факультет'} / {directions.find(d => d.id === suggestData.direction_id)?.name || 'Направление'} / {streams.find(s => s.id === suggestData.stream_id)?.name || 'Поток'}
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
               <select value={suggestData.faculty_id} onChange={(e) => setSuggestData(prev => ({ ...prev, faculty_id: e.target.value, direction_id: '', stream_id: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
-                <option value="">Факультет</option>
-                {faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Факультет</option>
+                {faculties.map(f => <option key={f.id} value={f.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{f.name}</option>)}
               </select>
               <select value={suggestData.direction_id} onChange={(e) => setSuggestData(prev => ({ ...prev, direction_id: e.target.value, stream_id: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
-                <option value="">Направление</option>
-                {directions.filter(d => !suggestData.faculty_id || (d as any).faculty_id === suggestData.faculty_id).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Направление</option>
+                {directions.filter(d => !suggestData.faculty_id || d.faculty_id === suggestData.faculty_id).map(d => <option key={d.id} value={d.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{d.name}</option>)}
               </select>
               <select value={suggestData.stream_id} onChange={(e) => setSuggestData(prev => ({ ...prev, stream_id: e.target.value }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
-                <option value="">Поток</option>
-                {streams.filter(s => !suggestData.direction_id || s.direction_id === suggestData.direction_id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Поток</option>
+                {streams.filter(s => !suggestData.direction_id || s.direction_id === suggestData.direction_id).map(s => <option key={s.id} value={s.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{s.name}</option>)}
               </select>
-              <input value={suggestData.discipline} onChange={(e) => setSuggestData(prev => ({ ...prev, discipline: e.target.value }))} placeholder="Дисциплина" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              <input value={suggestData.discipline} onChange={(e) => setSuggestData(prev => ({ ...prev, discipline: e.target.value }))} placeholder="Дисциплина (опц.)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
               <input value={suggestData.lecturer_name} onChange={(e) => setSuggestData(prev => ({ ...prev, lecturer_name: e.target.value }))} placeholder="Лектор" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
-              <input value={suggestData.course_text} onChange={(e) => setSuggestData(prev => ({ ...prev, course_text: e.target.value }))} placeholder="Курс" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
-              <input value={suggestData.study_year_text} onChange={(e) => setSuggestData(prev => ({ ...prev, study_year_text: e.target.value }))} placeholder="Год обучения" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              <input value={suggestData.course_text} onChange={(e) => setSuggestData(prev => ({ ...prev, course_text: e.target.value }))} placeholder="Курс (опц.)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              <input value={suggestData.study_year_text} onChange={(e) => setSuggestData(prev => ({ ...prev, study_year_text: e.target.value }))} placeholder="Год обучения (опц.)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
             </div>
             <textarea value={suggestData.comment} onChange={(e) => setSuggestData(prev => ({ ...prev, comment: e.target.value }))} placeholder="Комментарий для модератора" className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ background: btnBg, color: headingColor, border: cardBorder }} rows={3} />
             <div className="flex gap-2">
               <button
                 onClick={async () => {
-                  if (!suggestData.stream_id || !suggestData.discipline.trim()) return;
+                  if (!suggestData.stream_id) return;
                   const res = await fetch(`${API_BASE}/api/catalog/requests`, {
                     method: 'POST',
                     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       lecture_id: suggestModalLecture.id,
                       stream_id: suggestData.stream_id,
-                      discipline: suggestData.discipline.trim(),
+                      discipline: suggestData.discipline.trim() || suggestModalLecture.subject || suggestModalLecture.title,
                       lecturer_name: suggestData.lecturer_name.trim() || null,
                       course_text: suggestData.course_text.trim() || null,
                       study_year_text: suggestData.study_year_text.trim() || null,

@@ -8,6 +8,10 @@ interface LookupItem {
   name: string;
 }
 
+interface DirectionItem extends LookupItem {
+  faculty_id: string;
+}
+
 interface StreamItem {
   id: string;
   direction_id: string;
@@ -42,7 +46,7 @@ interface CatalogSectionProps {
 const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme }) => {
   const { token } = useAuth();
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
-  const [directions, setDirections] = useState<LookupItem[]>([]);
+  const [directions, setDirections] = useState<DirectionItem[]>([]);
   const [streams, setStreams] = useState<StreamItem[]>([]);
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -52,59 +56,103 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme }) => {
   const [streamId, setStreamId] = useState('');
   const [discipline, setDiscipline] = useState('');
   const [lecturerName, setLecturerName] = useState('');
-  const [courseText, setCourseText] = useState('');
-  const [studyYearText, setStudyYearText] = useState('');
   const [search, setSearch] = useState('');
 
+  const [expandedFaculties, setExpandedFaculties] = useState<Record<string, boolean>>({});
+  const [expandedDirections, setExpandedDirections] = useState<Record<string, boolean>>({});
+
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
+  const headingColor = isLightTheme ? '#2a1918' : '#fff7ec';
+  const mutedColor = isLightTheme ? '#7a5a5c' : '#c6b7a7';
+
+  const selectedFaculty = faculties.find(f => f.id === facultyId);
+  const selectedDirection = directions.find(d => d.id === directionId);
+  const selectedStream = streams.find(s => s.id === streamId);
 
   const fetchFaculties = useCallback(async () => {
     const res = await fetch(`${API_BASE}/api/catalog/faculties`, { headers });
-    if (res.ok) setFaculties(await res.json());
+    if (res.ok) {
+      const data: LookupItem[] = await res.json();
+      setFaculties(data);
+      setExpandedFaculties(prev => {
+        const next = { ...prev };
+        data.forEach(f => { if (!(f.id in next)) next[f.id] = false; });
+        return next;
+      });
+    }
   }, [headers]);
 
-  const fetchDirections = useCallback(async (selectedFacultyId?: string) => {
-    const params = new URLSearchParams();
-    if (selectedFacultyId) params.set('faculty_id', selectedFacultyId);
-    const res = await fetch(`${API_BASE}/api/catalog/directions?${params}`, { headers });
-    if (res.ok) setDirections(await res.json());
+  const fetchDirections = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/api/catalog/directions`, { headers });
+    if (res.ok) {
+      const data: DirectionItem[] = await res.json();
+      setDirections(data);
+      setExpandedDirections(prev => {
+        const next = { ...prev };
+        data.forEach(d => { if (!(d.id in next)) next[d.id] = false; });
+        return next;
+      });
+    }
   }, [headers]);
 
-  const fetchStreams = useCallback(async (selectedDirectionId?: string) => {
-    const params = new URLSearchParams();
-    if (selectedDirectionId) params.set('direction_id', selectedDirectionId);
-    const res = await fetch(`${API_BASE}/api/catalog/streams?${params}`, { headers });
+  const fetchStreams = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/api/catalog/streams`, { headers });
     if (res.ok) setStreams(await res.json());
   }, [headers]);
 
   const fetchCatalog = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (facultyId) params.set('faculty_id', facultyId);
-    if (directionId) params.set('direction_id', directionId);
-    if (streamId) params.set('stream_id', streamId);
-    if (discipline.trim()) params.set('discipline', discipline.trim());
-    if (lecturerName.trim()) params.set('lecturer_name', lecturerName.trim());
-    if (courseText.trim()) params.set('course_text', courseText.trim());
-    if (studyYearText.trim()) params.set('study_year_text', studyYearText.trim());
-    if (search.trim()) params.set('search', search.trim());
-    params.set('limit', '200');
-
     try {
+      const params = new URLSearchParams();
+      if (facultyId) params.set('faculty_id', facultyId);
+      if (directionId) params.set('direction_id', directionId);
+      if (streamId) params.set('stream_id', streamId);
+      if (discipline.trim()) params.set('discipline', discipline.trim());
+      if (lecturerName.trim()) params.set('lecturer_name', lecturerName.trim());
+      if (search.trim()) params.set('search', search.trim());
+      params.set('limit', '200');
       const res = await fetch(`${API_BASE}/api/catalog/items?${params}`, { headers });
       if (res.ok) setItems(await res.json());
     } finally {
       setLoading(false);
     }
-  }, [headers, facultyId, directionId, streamId, discipline, lecturerName, courseText, studyYearText, search]);
+  }, [headers, facultyId, directionId, streamId, discipline, lecturerName, search]);
 
   useEffect(() => { fetchFaculties(); }, [fetchFaculties]);
-  useEffect(() => { fetchDirections(facultyId || undefined); }, [fetchDirections, facultyId]);
-  useEffect(() => { fetchStreams(directionId || undefined); }, [fetchStreams, directionId]);
+  useEffect(() => { fetchDirections(); }, [fetchDirections]);
+  useEffect(() => { fetchStreams(); }, [fetchStreams]);
   useEffect(() => { fetchCatalog(); }, [fetchCatalog]);
 
-  const headingColor = isLightTheme ? '#2a1918' : '#fff7ec';
-  const mutedColor = isLightTheme ? '#7a5a5c' : '#c6b7a7';
+  const directionsByFaculty = useMemo(() => {
+    const map: Record<string, DirectionItem[]> = {};
+    directions.forEach(d => {
+      if (!map[d.faculty_id]) map[d.faculty_id] = [];
+      map[d.faculty_id].push(d);
+    });
+    return map;
+  }, [directions]);
+
+  const streamsByDirection = useMemo(() => {
+    const map: Record<string, StreamItem[]> = {};
+    streams.forEach(s => {
+      if (!map[s.direction_id]) map[s.direction_id] = [];
+      map[s.direction_id].push(s);
+    });
+    return map;
+  }, [streams]);
+
+  const setPath = (fId?: string, dId?: string, sId?: string) => {
+    setFacultyId(fId || '');
+    setDirectionId(dId || '');
+    setStreamId(sId || '');
+  };
+
+  const toggleFaculty = (id: string) => {
+    setExpandedFaculties(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+  const toggleDirection = (id: string) => {
+    setExpandedDirections(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const openLecture = async (lectureId: string) => {
     const res = await fetch(`${API_BASE}/api/lectures/${lectureId}`, { headers });
@@ -122,37 +170,105 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme }) => {
           База лекций
         </h1>
         <p className="text-sm opacity-70" style={{ color: mutedColor }}>
-          Просмотр лекций всех потоков. Добавление и обработка материалов — только админ/староста.
+          Проводник с деревом и хлебными крошками.
         </p>
       </div>
 
       <div className="border rounded-xl p-4 mb-5" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <select value={facultyId} onChange={(e) => { setFacultyId(e.target.value); setDirectionId(''); setStreamId(''); }} className="px-3 py-2 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
-            <option value="">Факультет</option>
-            {faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
-          <select value={directionId} onChange={(e) => { setDirectionId(e.target.value); setStreamId(''); }} className="px-3 py-2 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
-            <option value="">Направление</option>
-            {directions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-          <select value={streamId} onChange={(e) => setStreamId(e.target.value)} className="px-3 py-2 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
-            <option value="">Поток</option>
-            {streams.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <input value={discipline} onChange={(e) => setDiscipline(e.target.value)} placeholder="Дисциплина" className="px-3 py-2 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-          <input value={lecturerName} onChange={(e) => setLecturerName(e.target.value)} placeholder="Лектор" className="px-3 py-2 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-          <input value={courseText} onChange={(e) => setCourseText(e.target.value)} placeholder="Курс" className="px-3 py-2 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-          <input value={studyYearText} onChange={(e) => setStudyYearText(e.target.value)} placeholder="Год обучения" className="px-3 py-2 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по названию/дисциплине/лектору" className="px-3 py-2 rounded-lg border md:col-span-2" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+        <div className="flex flex-wrap items-center gap-2 text-xs mb-3" style={{ color: mutedColor }}>
+          <span>Путь:</span>
+          <button onClick={() => setPath()} className="underline underline-offset-2">Каталог</button>
+          {selectedFaculty && (
+            <>
+              <span>/</span>
+              <button onClick={() => setPath(selectedFaculty.id)} className="underline underline-offset-2">{selectedFaculty.name}</button>
+            </>
+          )}
+          {selectedDirection && (
+            <>
+              <span>/</span>
+              <button onClick={() => setPath(selectedFaculty?.id, selectedDirection.id)} className="underline underline-offset-2">{selectedDirection.name}</button>
+            </>
+          )}
+          {selectedStream && (
+            <>
+              <span>/</span>
+              <button onClick={() => setPath(selectedFaculty?.id, selectedDirection?.id, selectedStream.id)} className="underline underline-offset-2">{selectedStream.name}</button>
+            </>
+          )}
+          {(facultyId || directionId || streamId) && (
+            <button onClick={() => setPath()} className="ml-2 px-2 py-1 rounded border" style={{ borderColor: 'var(--border-color)' }}>
+              Сбросить путь
+            </button>
+          )}
         </div>
-        <div className="mt-3 flex gap-2">
-          <button onClick={fetchCatalog} className="px-4 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>
-            Применить
-          </button>
-          <button onClick={() => { setFacultyId(''); setDirectionId(''); setStreamId(''); setDiscipline(''); setLecturerName(''); setCourseText(''); setStudyYearText(''); setSearch(''); }} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
-            Сбросить
-          </button>
+
+        <div className="border rounded-lg p-3 max-h-72 overflow-y-auto mb-3" style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+          {faculties.map(f => {
+            const isFacultySelected = facultyId === f.id;
+            const isFacultyOpen = expandedFaculties[f.id];
+            const dirList = directionsByFaculty[f.id] || [];
+            return (
+              <div key={f.id} className="mb-1">
+                <div className="flex items-center gap-1">
+                  <button onClick={() => toggleFaculty(f.id)} className="text-xs w-5">{isFacultyOpen ? '▾' : '▸'}</button>
+                  <button
+                    onClick={() => setPath(f.id)}
+                    className="text-left px-2 py-1 rounded text-sm"
+                    style={{ background: isFacultySelected ? 'var(--text-primary)' : 'transparent', color: isFacultySelected ? 'var(--bg-primary)' : 'var(--text-primary)' }}
+                  >
+                    {f.name}
+                  </button>
+                </div>
+                {isFacultyOpen && (
+                  <div className="ml-6 mt-1">
+                    {dirList.map(d => {
+                      const isDirectionOpen = expandedDirections[d.id];
+                      const isDirectionSelected = directionId === d.id;
+                      const streamList = streamsByDirection[d.id] || [];
+                      return (
+                        <div key={d.id} className="mb-1">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => toggleDirection(d.id)} className="text-xs w-5">{isDirectionOpen ? '▾' : '▸'}</button>
+                            <button
+                              onClick={() => setPath(f.id, d.id)}
+                              className="text-left px-2 py-1 rounded text-sm"
+                              style={{ background: isDirectionSelected ? 'var(--text-primary)' : 'transparent', color: isDirectionSelected ? 'var(--bg-primary)' : 'var(--text-primary)' }}
+                            >
+                              {d.name}
+                            </button>
+                          </div>
+                          {isDirectionOpen && (
+                            <div className="ml-6 mt-1">
+                              {streamList.map(s => {
+                                const isStreamSelected = streamId === s.id;
+                                return (
+                                  <button
+                                    key={s.id}
+                                    onClick={() => setPath(f.id, d.id, s.id)}
+                                    className="block text-left px-2 py-1 rounded text-sm mb-1 w-full"
+                                    style={{ background: isStreamSelected ? 'var(--text-primary)' : 'transparent', color: isStreamSelected ? 'var(--bg-primary)' : 'var(--text-primary)' }}
+                                  >
+                                    {s.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <input value={discipline} onChange={(e) => setDiscipline(e.target.value)} placeholder="Дисциплина (опц.)" className="px-3 py-2 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+          <input value={lecturerName} onChange={(e) => setLecturerName(e.target.value)} placeholder="Лектор (опц.)" className="px-3 py-2 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по названию" className="px-3 py-2 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
         </div>
       </div>
 
