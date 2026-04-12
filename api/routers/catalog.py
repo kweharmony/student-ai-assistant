@@ -15,6 +15,8 @@ from ..dependencies import (
     require_catalog_moderator,
 )
 from ..models import (
+    CatalogDisciplineTemplate,
+    CatalogLecturerTemplate,
     Direction,
     Faculty,
     Lecture,
@@ -26,7 +28,12 @@ from ..models import (
 )
 from ..schemas import (
     AdminSetGroupHeadIn,
+    CatalogDisciplineTemplateCreateIn,
+    CatalogDisciplineTemplateOut,
     CatalogItemOut,
+    CatalogLectureOptionOut,
+    CatalogLecturerTemplateCreateIn,
+    CatalogLecturerTemplateOut,
     DirectionCreateIn,
     DirectionOut,
     FacultyCreateIn,
@@ -55,6 +62,22 @@ async def list_disciplines(
     user: User = Depends(get_current_user),
 ):
     del user
+    collected: set[str] = set()
+    stmt_templates = select(CatalogDisciplineTemplate.name)
+    if direction_id is not None:
+        stmt_templates = stmt_templates.where(CatalogDisciplineTemplate.direction_id == direction_id)
+    elif stream_id is not None:
+        stream_result = await db.execute(select(Stream).where(Stream.id == stream_id))
+        stream_obj = stream_result.scalar_one_or_none()
+        if stream_obj is not None:
+            stmt_templates = stmt_templates.where(CatalogDisciplineTemplate.direction_id == stream_obj.direction_id)
+        else:
+            stmt_templates = stmt_templates.where(CatalogDisciplineTemplate.direction_id.is_(None))  # no rows
+    templates_result = await db.execute(stmt_templates)
+    for row in templates_result.all():
+        if row[0]:
+            collected.add(row[0])
+
     stmt = (
         select(LectureCatalogItem.discipline)
         .join(Stream, Stream.id == LectureCatalogItem.stream_id)
@@ -66,7 +89,116 @@ async def list_disciplines(
         stmt = stmt.where(Stream.direction_id == direction_id)
     stmt = stmt.distinct().order_by(LectureCatalogItem.discipline.asc())
     result = await db.execute(stmt)
-    return [row[0] for row in result.all()]
+    for row in result.all():
+        if row[0]:
+            collected.add(row[0])
+    return sorted(collected)
+
+
+@router.get("/lecturers")
+async def list_lecturers(
+    stream_id: Optional[UUID] = Query(None),
+    direction_id: Optional[UUID] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    del user
+    collected: set[str] = set()
+
+    tmpl_stmt = select(CatalogLecturerTemplate.name)
+    if stream_id is not None:
+        tmpl_stmt = tmpl_stmt.where(CatalogLecturerTemplate.stream_id == stream_id)
+    elif direction_id is not None:
+        stream_ids_result = await db.execute(select(Stream.id).where(Stream.direction_id == direction_id))
+        stream_ids = [r[0] for r in stream_ids_result.all()]
+        if stream_ids:
+            tmpl_stmt = tmpl_stmt.where(CatalogLecturerTemplate.stream_id.in_(stream_ids))
+        else:
+            tmpl_stmt = tmpl_stmt.where(CatalogLecturerTemplate.stream_id.is_(None))  # no rows
+    tmpl_res = await db.execute(tmpl_stmt)
+    for row in tmpl_res.all():
+        if row[0]:
+            collected.add(row[0])
+
+    stmt = (
+        select(LectureCatalogItem.lecturer_name)
+        .join(Stream, Stream.id == LectureCatalogItem.stream_id)
+        .where(LectureCatalogItem.lecturer_name.isnot(None), LectureCatalogItem.lecturer_name != "")
+    )
+    if stream_id is not None:
+        stmt = stmt.where(Stream.id == stream_id)
+    elif direction_id is not None:
+        stmt = stmt.where(Stream.direction_id == direction_id)
+    stmt = stmt.distinct()
+    result = await db.execute(stmt)
+    for row in result.all():
+        if row[0]:
+            collected.add(row[0])
+    return sorted(collected)
+
+
+@router.post("/discipline-templates", response_model=CatalogDisciplineTemplateOut, status_code=status.HTTP_201_CREATED)
+async def create_discipline_template(
+    body: CatalogDisciplineTemplateCreateIn,
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    direction_result = await db.execute(select(Direction).where(Direction.id == body.direction_id))
+    direction = direction_result.scalar_one_or_none()
+    if direction is None:
+        raise HTTPException(status_code=404, detail="Направление не найдено")
+
+    if moderator.role != "admin":
+        stream_result = await db.execute(select(Stream).where(Stream.id == moderator.stream_id))
+        own_stream = stream_result.scalar_one_or_none()
+        if own_stream is None or own_stream.direction_id != body.direction_id:
+            raise HTTPException(status_code=403, detail="Нет прав для этого направления")
+
+    name = body.name.strip()
+    exists = await db.execute(
+        select(CatalogDisciplineTemplate).where(
+            CatalogDisciplineTemplate.direction_id == body.direction_id,
+            CatalogDisciplineTemplate.name == name,
+        )
+    )
+    if exists.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Дисциплина уже существует для этого направления")
+
+    obj = CatalogDisciplineTemplate(direction_id=body.direction_id, name=name, created_by=moderator.id)
+    db.add(obj)
+    await db.commit()
+    await db.refresh(obj)
+    return obj
+
+
+@router.post("/lecturer-templates", response_model=CatalogLecturerTemplateOut, status_code=status.HTTP_201_CREATED)
+async def create_lecturer_template(
+    body: CatalogLecturerTemplateCreateIn,
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    stream_result = await db.execute(select(Stream).where(Stream.id == body.stream_id))
+    stream = stream_result.scalar_one_or_none()
+    if stream is None:
+        raise HTTPException(status_code=404, detail="Поток не найден")
+    if not _is_catalog_editor(moderator, stream.id):
+        raise HTTPException(status_code=403, detail="Нет прав для этого потока")
+
+    name = body.name.strip()
+    exists = await db.execute(
+        select(CatalogLecturerTemplate).where(
+            CatalogLecturerTemplate.stream_id == body.stream_id,
+            CatalogLecturerTemplate.name == name,
+        )
+    )
+    if exists.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Лектор уже существует для этого потока")
+
+    obj = CatalogLecturerTemplate(stream_id=body.stream_id, name=name, created_by=moderator.id)
+    db.add(obj)
+    await db.commit()
+    await db.refresh(obj)
+    return obj
 
 
 @router.get("/faculties", response_model=List[FacultyOut])
@@ -160,12 +292,40 @@ async def create_stream(
         direction_id=body.direction_id,
         name=body.name.strip(),
         course=body.course,
-        study_year_start=body.study_year_start,
     )
     db.add(obj)
     await db.commit()
     await db.refresh(obj)
     return obj
+
+
+@router.get("/lecture-options", response_model=List[CatalogLectureOptionOut])
+async def lecture_options(
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    del moderator
+    stmt = (
+        select(Lecture, User)
+        .join(User, User.id == Lecture.uploaded_by)
+        .where(Lecture.is_deleted == False)
+        .order_by(Lecture.created_at.desc())
+        .limit(limit)
+    )
+    if search:
+        stmt = stmt.where(or_(Lecture.title.ilike(f"%{search}%"), User.login.ilike(f"%{search}%")))
+    result = await db.execute(stmt)
+    rows = result.all()
+    return [
+        CatalogLectureOptionOut(
+            lecture_id=lecture.id,
+            lecture_title=lecture.title,
+            uploader_login=uploader.login,
+        )
+        for lecture, uploader in rows
+    ]
 
 
 @router.get("/items", response_model=List[CatalogItemOut])
@@ -176,6 +336,7 @@ async def list_catalog_items(
     discipline: Optional[str] = Query(None),
     lecturer_name: Optional[str] = Query(None),
     course_text: Optional[str] = Query(None),
+    semester_text: Optional[str] = Query(None),
     study_year_text: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=300),
@@ -217,6 +378,8 @@ async def list_catalog_items(
         conditions.append(LectureCatalogItem.lecturer_name.ilike(f"%{lecturer_name}%"))
     if course_text:
         conditions.append(LectureCatalogItem.course_text.ilike(f"%{course_text}%"))
+    if semester_text:
+        conditions.append(LectureCatalogItem.semester_text.ilike(f"%{semester_text}%"))
     if study_year_text:
         conditions.append(LectureCatalogItem.study_year_text.ilike(f"%{study_year_text}%"))
     if search:
@@ -241,6 +404,7 @@ async def list_catalog_items(
             discipline=item.discipline,
             lecturer_name=item.lecturer_name,
             course_text=item.course_text,
+            semester_text=item.semester_text,
             lecture_number_text=item.lecture_number_text,
             study_year_text=item.study_year_text,
             stream_id=stream.id,
@@ -314,6 +478,7 @@ async def create_publication_request(
         discipline=lecture.subject or lecture.title,
         lecturer_name=None,
         course_text=None,
+        semester_text=None,
         lecture_number_text=(body.lecture_number_text or "").strip() or None,
         study_year_text=(body.study_year_text or "").strip() or None,
         comment=(body.comment or "").strip() or None,
@@ -338,6 +503,7 @@ async def create_publication_request(
         discipline=req.discipline,
         lecturer_name=req.lecturer_name,
         course_text=req.course_text,
+        semester_text=req.semester_text,
         lecture_number_text=req.lecture_number_text,
         study_year_text=req.study_year_text,
         comment=req.comment,
@@ -389,6 +555,7 @@ async def _ensure_catalog_item(
     discipline: str,
     lecturer_name: Optional[str],
     course_text: Optional[str],
+    semester_text: Optional[str],
     lecture_number_text: Optional[str],
     study_year_text: Optional[str],
     publisher: User,
@@ -415,6 +582,7 @@ async def _ensure_catalog_item(
         item.discipline = discipline
         item.lecturer_name = lecturer_name
         item.course_text = course_text
+        item.semester_text = semester_text
         item.lecture_number_text = lecture_number_text
         item.study_year_text = study_year_text
         item.published_by = publisher.id
@@ -426,6 +594,7 @@ async def _ensure_catalog_item(
             discipline=discipline,
             lecturer_name=lecturer_name,
             course_text=course_text,
+            semester_text=semester_text,
             lecture_number_text=lecture_number_text,
             study_year_text=study_year_text,
             published_by=publisher.id,
@@ -449,6 +618,7 @@ async def publish_catalog_item_manual(
         discipline=body.discipline.strip(),
         lecturer_name=(body.lecturer_name or "").strip() or None,
         course_text=(body.course_text or "").strip() or None,
+        semester_text=(body.semester_text or "").strip() or None,
         lecture_number_text=(body.lecture_number_text or "").strip() or None,
         study_year_text=(body.study_year_text or "").strip() or None,
         publisher=moderator,
@@ -482,6 +652,7 @@ async def publish_catalog_item_manual(
         discipline=item.discipline,
         lecturer_name=item.lecturer_name,
         course_text=item.course_text,
+        semester_text=item.semester_text,
         lecture_number_text=item.lecture_number_text,
         study_year_text=item.study_year_text,
         stream_id=stream.id,
@@ -516,6 +687,7 @@ async def approve_publication_request(
     discipline = (body.discipline or "").strip() or req.discipline
     lecturer_name = (body.lecturer_name or "").strip() or req.lecturer_name
     course_text = (body.course_text or "").strip() or req.course_text
+    semester_text = (body.semester_text or "").strip() or req.semester_text
     lecture_number_text = (body.lecture_number_text or "").strip() or req.lecture_number_text
     study_year_text = (body.study_year_text or "").strip() or req.study_year_text
 
@@ -529,6 +701,7 @@ async def approve_publication_request(
         discipline=discipline,
         lecturer_name=lecturer_name,
         course_text=course_text,
+        semester_text=semester_text,
         lecture_number_text=lecture_number_text,
         study_year_text=study_year_text,
         publisher=moderator,
@@ -537,6 +710,7 @@ async def approve_publication_request(
     req.discipline = discipline
     req.lecturer_name = lecturer_name
     req.course_text = course_text
+    req.semester_text = semester_text
     req.lecture_number_text = lecture_number_text
     req.study_year_text = study_year_text
     req.status = PublicationRequestStatus.approved
@@ -609,6 +783,7 @@ async def _request_out(db: AsyncSession, req: LecturePublicationRequest) -> Publ
         discipline=req.discipline,
         lecturer_name=req.lecturer_name,
         course_text=req.course_text,
+        semester_text=req.semester_text,
         lecture_number_text=req.lecture_number_text,
         study_year_text=req.study_year_text,
         comment=req.comment,

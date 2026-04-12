@@ -312,6 +312,40 @@ class Stream(Base):
     )
 
 
+class CatalogDisciplineTemplate(Base):
+    __tablename__ = "catalog_discipline_templates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    direction_id = Column(UUID(as_uuid=True), ForeignKey("directions.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    direction = relationship("Direction")
+    creator = relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (
+        UniqueConstraint("direction_id", "name", name="uq_catalog_discipline_direction_name"),
+    )
+
+
+class CatalogLecturerTemplate(Base):
+    __tablename__ = "catalog_lecturer_templates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    stream = relationship("Stream")
+    creator = relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (
+        UniqueConstraint("stream_id", "name", name="uq_catalog_lecturer_stream_name"),
+    )
+
+
 class PublicationRequestStatus(str, enum.Enum):
     pending = "pending"
     approved = "approved"
@@ -328,6 +362,7 @@ class LecturePublicationRequest(Base):
     discipline = Column(String(150), nullable=False)
     lecturer_name = Column(String(150), nullable=True)
     course_text = Column(String(50), nullable=True)
+    semester_text = Column(String(20), nullable=True)
     lecture_number_text = Column(String(50), nullable=True)
     study_year_text = Column(String(50), nullable=True)
     comment = Column(String(500), nullable=True)
@@ -358,6 +393,7 @@ class LectureCatalogItem(Base):
     discipline = Column(String(150), nullable=False, index=True)
     lecturer_name = Column(String(150), nullable=True, index=True)
     course_text = Column(String(50), nullable=True, index=True)
+    semester_text = Column(String(20), nullable=True, index=True)
     lecture_number_text = Column(String(50), nullable=True, index=True)
     study_year_text = Column(String(50), nullable=True, index=True)
     published_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)

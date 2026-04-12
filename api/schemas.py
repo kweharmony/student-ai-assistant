@@ -287,6 +287,7 @@ class CatalogItemOut(BaseModel):
     discipline: str
     lecturer_name: Optional[str] = None
     course_text: Optional[str] = None
+    semester_text: Optional[str] = None
     lecture_number_text: Optional[str] = None
     study_year_text: Optional[str] = None
     stream_id: UUID
@@ -297,6 +298,12 @@ class CatalogItemOut(BaseModel):
     faculty_name: str
     published_by_login: str
     created_at: datetime
+
+
+class CatalogLectureOptionOut(BaseModel):
+    lecture_id: UUID
+    lecture_title: str
+    uploader_login: str
 
 
 class PublicationRequestCreateIn(BaseModel):
@@ -311,6 +318,7 @@ class PublicationRequestModerateIn(BaseModel):
     discipline: Optional[str] = Field(None, min_length=1, max_length=150)
     lecturer_name: Optional[str] = Field(None, max_length=150)
     course_text: Optional[str] = Field(None, max_length=50)
+    semester_text: Optional[str] = Field(None, max_length=20)
     lecture_number_text: Optional[str] = Field(None, max_length=50)
     study_year_text: Optional[str] = Field(None, max_length=50)
     review_comment: Optional[str] = Field(None, max_length=500)
@@ -322,6 +330,7 @@ class ManualCatalogPublishIn(BaseModel):
     discipline: str = Field(..., min_length=1, max_length=150)
     lecturer_name: Optional[str] = Field(None, max_length=150)
     course_text: Optional[str] = Field(None, max_length=50)
+    semester_text: Optional[str] = Field(None, max_length=20)
     lecture_number_text: Optional[str] = Field(None, max_length=50)
     study_year_text: Optional[str] = Field(None, max_length=50)
 
@@ -341,6 +350,7 @@ class PublicationRequestOut(BaseModel):
     discipline: str
     lecturer_name: Optional[str] = None
     course_text: Optional[str] = None
+    semester_text: Optional[str] = None
     lecture_number_text: Optional[str] = None
     study_year_text: Optional[str] = None
     comment: Optional[str] = None
@@ -371,7 +381,32 @@ class StreamCreateIn(BaseModel):
     direction_id: UUID
     name: str = Field(..., min_length=1, max_length=150)
     course: Optional[int] = Field(None, ge=1, le=6)
-    study_year_start: Optional[int] = Field(None, ge=2000, le=2100)
+
+
+class CatalogDisciplineTemplateOut(BaseModel):
+    id: UUID
+    direction_id: UUID
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class CatalogDisciplineTemplateCreateIn(BaseModel):
+    direction_id: UUID
+    name: str = Field(..., min_length=1, max_length=150)
+
+
+class CatalogLecturerTemplateOut(BaseModel):
+    id: UUID
+    stream_id: UUID
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class CatalogLecturerTemplateCreateIn(BaseModel):
+    stream_id: UUID
+    name: str = Field(..., min_length=1, max_length=150)
 
 
 class AdminSetGroupHeadIn(BaseModel):
