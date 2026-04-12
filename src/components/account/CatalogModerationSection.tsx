@@ -24,6 +24,12 @@ interface ReqItem {
 }
 
 interface LookupItem { id: string; name: string }
+interface DirectionItem extends LookupItem { faculty_id: string }
+interface StreamItem extends LookupItem {
+  direction_id: string;
+  course: number | null;
+  study_year_start: number | null;
+}
 
 interface CatalogModerationSectionProps {
   isLightTheme: boolean;
@@ -40,6 +46,8 @@ const statusColor: Record<string, string> = {
   approved: '#22c55e',
   rejected: '#ef4444',
 };
+
+type NodeType = 'root' | 'faculty' | 'direction' | 'stream';
 
 const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isLightTheme }) => {
   const { token, user } = useAuth();
@@ -60,8 +68,20 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
-  const [directions, setDirections] = useState<LookupItem[]>([]);
-  const [streams, setStreams] = useState<LookupItem[]>([]);
+  const [directions, setDirections] = useState<DirectionItem[]>([]);
+  const [streams, setStreams] = useState<StreamItem[]>([]);
+  const [expandedFaculties, setExpandedFaculties] = useState<Record<string, boolean>>({});
+  const [expandedDirections, setExpandedDirections] = useState<Record<string, boolean>>({});
+  const [activeNodeType, setActiveNodeType] = useState<NodeType>('root');
+  const [activeFacultyId, setActiveFacultyId] = useState('');
+  const [activeDirectionId, setActiveDirectionId] = useState('');
+  const [activeStreamId, setActiveStreamId] = useState('');
+
+  const [newFacultyName, setNewFacultyName] = useState('');
+  const [newDirectionName, setNewDirectionName] = useState('');
+  const [newStreamName, setNewStreamName] = useState('');
+  const [newStreamCourse, setNewStreamCourse] = useState('');
+  const [newStreamYear, setNewStreamYear] = useState('');
   const [manual, setManual] = useState({
     lecture_id: '',
     stream_id: '',
@@ -93,7 +113,6 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   }, [headers, statusFilter]);
 
   const loadLookups = useCallback(async () => {
-    if (user?.role !== 'admin') return;
     const [f, d, s] = await Promise.all([
       fetch(`${API_BASE}/api/catalog/faculties`, { headers }),
       fetch(`${API_BASE}/api/catalog/directions`, { headers }),
@@ -102,7 +121,29 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     if (f.ok) setFaculties(await f.json());
     if (d.ok) setDirections(await d.json());
     if (s.ok) setStreams(await s.json());
-  }, [headers, user?.role]);
+  }, [headers]);
+
+  const directionsByFaculty = useMemo(() => {
+    const map: Record<string, DirectionItem[]> = {};
+    directions.forEach(d => {
+      if (!map[d.faculty_id]) map[d.faculty_id] = [];
+      map[d.faculty_id].push(d);
+    });
+    return map;
+  }, [directions]);
+
+  const streamsByDirection = useMemo(() => {
+    const map: Record<string, StreamItem[]> = {};
+    streams.forEach(s => {
+      if (!map[s.direction_id]) map[s.direction_id] = [];
+      map[s.direction_id].push(s);
+    });
+    return map;
+  }, [streams]);
+
+  const activeFaculty = faculties.find(f => f.id === activeFacultyId) || null;
+  const activeDirection = directions.find(d => d.id === activeDirectionId) || null;
+  const activeStream = streams.find(s => s.id === activeStreamId) || null;
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -133,19 +174,44 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     setStudyYearText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.study_year_text ?? '' }));
   }, [selected]);
   useEffect(() => {
-    if (!selected?.direction_name) {
+    if (!selected?.stream_id) {
       setDisciplineOptions([]);
       return;
     }
     (async () => {
-      const dir = directions.find(d => d.name === selected.direction_name);
-      if (!dir) { setDisciplineOptions([]); return; }
-      const res = await fetch(`${API_BASE}/api/catalog/disciplines?direction_id=${dir.id}`, { headers });
+      const res = await fetch(`${API_BASE}/api/catalog/disciplines?stream_id=${selected.stream_id}`, { headers });
       if (!res.ok) { setDisciplineOptions([]); return; }
       const data: string[] = await res.json();
       setDisciplineOptions(data);
     })();
-  }, [selected?.id, selected?.direction_name, directions, headers]);
+  }, [selected?.id, selected?.stream_id, headers]);
+
+  const selectFacultyNode = (facultyId: string) => {
+    setActiveNodeType('faculty');
+    setActiveFacultyId(facultyId);
+    setActiveDirectionId('');
+    setActiveStreamId('');
+    setExpandedFaculties(prev => ({ ...prev, [facultyId]: true }));
+  };
+
+  const selectDirectionNode = (facultyId: string, directionId: string) => {
+    setActiveNodeType('direction');
+    setActiveFacultyId(facultyId);
+    setActiveDirectionId(directionId);
+    setActiveStreamId('');
+    setExpandedFaculties(prev => ({ ...prev, [facultyId]: true }));
+    setExpandedDirections(prev => ({ ...prev, [directionId]: true }));
+  };
+
+  const selectStreamNode = (facultyId: string, directionId: string, streamId: string) => {
+    setActiveNodeType('stream');
+    setActiveFacultyId(facultyId);
+    setActiveDirectionId(directionId);
+    setActiveStreamId(streamId);
+    setManual(prev => ({ ...prev, stream_id: streamId }));
+    setExpandedFaculties(prev => ({ ...prev, [facultyId]: true }));
+    setExpandedDirections(prev => ({ ...prev, [directionId]: true }));
+  };
 
   const moderate = async (id: string, action: 'approve' | 'reject') => {
     const review_comment = (reviewText[id] || '').trim();
@@ -203,41 +269,61 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   };
 
   const createFaculty = async () => {
-    const name = window.prompt('Название факультета');
+    const name = newFacultyName.trim();
     if (!name) return;
     const res = await fetch(`${API_BASE}/api/catalog/faculties`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    if (res.ok) loadLookups();
+    if (res.ok) {
+      setNewFacultyName('');
+      await loadLookups();
+    }
   };
 
   const createDirection = async () => {
-    const faculty_id = window.prompt('ID факультета');
-    const name = window.prompt('Название направления');
-    if (!faculty_id || !name) return;
+    const name = newDirectionName.trim();
+    if (!activeFacultyId || !name) return;
     const res = await fetch(`${API_BASE}/api/catalog/directions`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ faculty_id, name }),
+      body: JSON.stringify({ faculty_id: activeFacultyId, name }),
     });
-    if (res.ok) loadLookups();
+    if (res.ok) {
+      setNewDirectionName('');
+      await loadLookups();
+      setExpandedFaculties(prev => ({ ...prev, [activeFacultyId]: true }));
+    }
   };
 
   const createStream = async () => {
-    const direction_id = window.prompt('ID направления');
-    const name = window.prompt('Название потока');
-    if (!direction_id || !name) return;
+    const name = newStreamName.trim();
+    if (!activeDirectionId || !name) return;
+    const course = Number(newStreamCourse);
+    const study_year_start = Number(newStreamYear);
+    const body: Record<string, unknown> = { direction_id: activeDirectionId, name };
+    if (!Number.isNaN(course) && newStreamCourse.trim()) body.course = course;
+    if (!Number.isNaN(study_year_start) && newStreamYear.trim()) body.study_year_start = study_year_start;
     const res = await fetch(`${API_BASE}/api/catalog/streams`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ direction_id, name }),
+      body: JSON.stringify(body),
     });
-    if (res.ok) loadLookups();
+    if (res.ok) {
+      setNewStreamName('');
+      setNewStreamCourse('');
+      setNewStreamYear('');
+      await loadLookups();
+      setExpandedDirections(prev => ({ ...prev, [activeDirectionId]: true }));
+    }
   };
 
   const publishManual = async () => {
+    if (!manual.stream_id) {
+      alert('Выберите поток в дереве слева.');
+      return;
+    }
     const res = await fetch(`${API_BASE}/api/catalog/publish`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
@@ -245,11 +331,20 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
         ...manual,
         lecturer_name: manual.lecturer_name || null,
         course_text: manual.course_text || null,
+        lecture_number_text: manual.lecture_number_text || null,
         study_year_text: manual.study_year_text || null,
       }),
     });
     if (res.ok) {
-      setManual({ lecture_id: '', stream_id: '', discipline: '', lecturer_name: '', course_text: '', lecture_number_text: '', study_year_text: '' });
+      setManual({
+        lecture_id: '',
+        stream_id: activeStreamId || '',
+        discipline: '',
+        lecturer_name: '',
+        course_text: '',
+        lecture_number_text: '',
+        study_year_text: '',
+      });
       loadRequests();
     }
   };
@@ -261,7 +356,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
           Модерация базы лекций
         </h1>
         <p className="text-sm opacity-70" style={{ color: mutedColor }}>
-          {user?.role === 'admin' ? 'Inbox всех заявок' : 'Inbox заявок вашего потока'}
+          {user?.role === 'admin' ? 'Inbox всех заявок + проводник каталога' : 'Inbox заявок потока + публикация через проводник'}
         </p>
       </div>
 
@@ -312,7 +407,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                     {statusLabel[req.status]}
                   </span>
                 </div>
-                <p className="text-xs mt-1 truncate" style={{ color: mutedColor }}>{req.stream_name} · {req.discipline}</p>
+                <p className="text-xs mt-1 truncate" style={{ color: mutedColor }}>{req.stream_name} · {req.discipline || 'Без дисциплины'}</p>
                 <p className="text-xs mt-0.5 truncate" style={{ color: mutedColor }}>От: {req.requested_by_login}</p>
               </button>
             ))}
@@ -397,7 +492,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                   </datalist>
                 </div>
                 <div>
-                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Лектор (задаёт модератор)</p>
+                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Лектор</p>
                   <input
                     value={lecturerText[selected.id] ?? ''}
                     onChange={(e) => setLecturerText(prev => ({ ...prev, [selected.id]: e.target.value }))}
@@ -406,7 +501,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                   />
                 </div>
                 <div>
-                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Курс (задаёт модератор)</p>
+                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Курс</p>
                   <input
                     value={courseText[selected.id] ?? ''}
                     onChange={(e) => setCourseText(prev => ({ ...prev, [selected.id]: e.target.value }))}
@@ -415,7 +510,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                   />
                 </div>
                 <div>
-                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Номер лекции (от студента, можно править)</p>
+                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Номер лекции</p>
                   <input
                     value={lectureNumberText[selected.id] ?? ''}
                     onChange={(e) => setLectureNumberText(prev => ({ ...prev, [selected.id]: e.target.value }))}
@@ -424,7 +519,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                   />
                 </div>
                 <div>
-                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Год обучения (от студента, можно править)</p>
+                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Год обучения</p>
                   <input
                     value={studyYearText[selected.id] ?? ''}
                     onChange={(e) => setStudyYearText(prev => ({ ...prev, [selected.id]: e.target.value }))}
@@ -468,42 +563,180 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
         </section>
       </div>
 
-      {user?.role === 'admin' && (
-        <details className="mt-5 border rounded-xl p-4" style={surface}>
-          <summary className="cursor-pointer text-sm font-medium" style={{ color: headingColor }}>
-            Админ-инструменты (справочники и ручная публикация)
-          </summary>
-          <div className="mt-3 space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <button onClick={createFaculty} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>+ Факультет</button>
-              <button onClick={createDirection} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>+ Направление</button>
-              <button onClick={createStream} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>+ Поток</button>
-              <span className="text-xs self-center" style={{ color: mutedColor }}>
-                Факультетов: {faculties.length}, направлений: {directions.length}, потоков: {streams.length}
-              </span>
+      <section className="mt-5 border rounded-xl p-4" style={surface}>
+        <div className="mb-3">
+          <h3 className="text-base font-medium" style={{ color: headingColor }}>Проводник каталога</h3>
+          <p className="text-xs mt-1" style={{ color: mutedColor }}>
+            Выберите узел слева и работайте с ним справа: добавляйте справочники и публикуйте лекции без ручного ввода ID.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-4">
+          <div className="border rounded-lg p-3 max-h-[560px] overflow-y-auto" style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+            <button
+              onClick={() => { setActiveNodeType('root'); setActiveFacultyId(''); setActiveDirectionId(''); setActiveStreamId(''); }}
+              className="text-left px-2 py-1 rounded text-sm w-full mb-1"
+              style={{ background: activeNodeType === 'root' ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'root' ? 'var(--bg-primary)' : 'var(--text-primary)' }}
+            >
+              Каталог
+            </button>
+            {faculties.map(f => {
+              const facultyDirections = directionsByFaculty[f.id] || [];
+              const facultyOpen = !!expandedFaculties[f.id];
+              return (
+                <div key={f.id} className="mb-1">
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setExpandedFaculties(prev => ({ ...prev, [f.id]: !prev[f.id] }))} className="text-xs w-5">{facultyOpen ? '▾' : '▸'}</button>
+                    <button
+                      onClick={() => selectFacultyNode(f.id)}
+                      className="text-left px-2 py-1 rounded text-sm flex-1"
+                      style={{ background: activeNodeType === 'faculty' && activeFacultyId === f.id ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'faculty' && activeFacultyId === f.id ? 'var(--bg-primary)' : 'var(--text-primary)' }}
+                    >
+                      {f.name}
+                    </button>
+                  </div>
+                  {facultyOpen && (
+                    <div className="ml-6 mt-1">
+                      {facultyDirections.map(d => {
+                        const directionStreams = streamsByDirection[d.id] || [];
+                        const directionOpen = !!expandedDirections[d.id];
+                        return (
+                          <div key={d.id} className="mb-1">
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => setExpandedDirections(prev => ({ ...prev, [d.id]: !prev[d.id] }))} className="text-xs w-5">{directionOpen ? '▾' : '▸'}</button>
+                              <button
+                                onClick={() => selectDirectionNode(f.id, d.id)}
+                                className="text-left px-2 py-1 rounded text-sm flex-1"
+                                style={{ background: activeNodeType === 'direction' && activeDirectionId === d.id ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'direction' && activeDirectionId === d.id ? 'var(--bg-primary)' : 'var(--text-primary)' }}
+                              >
+                                {d.name}
+                              </button>
+                            </div>
+                            {directionOpen && (
+                              <div className="ml-6 mt-1">
+                                {directionStreams.map(s => (
+                                  <button
+                                    key={s.id}
+                                    onClick={() => selectStreamNode(f.id, d.id, s.id)}
+                                    className="text-left px-2 py-1 rounded text-sm block w-full mb-1"
+                                    style={{ background: activeNodeType === 'stream' && activeStreamId === s.id ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'stream' && activeStreamId === s.id ? 'var(--bg-primary)' : 'var(--text-primary)' }}
+                                  >
+                                    {s.name}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="border rounded-lg p-3" style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+            <div className="flex flex-wrap items-center gap-2 text-xs mb-3" style={{ color: mutedColor }}>
+              <span>Путь:</span>
+              <span>Каталог</span>
+              {activeFaculty && <><span>/</span><span>{activeFaculty.name}</span></>}
+              {activeDirection && <><span>/</span><span>{activeDirection.name}</span></>}
+              {activeStream && <><span>/</span><span>{activeStream.name}</span></>}
             </div>
 
-            <div>
-              <h3 className="text-sm font-medium mb-2" style={{ color: headingColor }}>Ручная публикация в базу</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <input value={manual.lecture_id} onChange={(e) => setManual(prev => ({ ...prev, lecture_id: e.target.value }))} placeholder="Lecture ID" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                <select value={manual.stream_id} onChange={(e) => setManual(prev => ({ ...prev, stream_id: e.target.value }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
-                  <option value="">Поток</option>
-                  {streams.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-                <input value={manual.discipline} onChange={(e) => setManual(prev => ({ ...prev, discipline: e.target.value }))} placeholder="Дисциплина" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                <input value={manual.lecturer_name} onChange={(e) => setManual(prev => ({ ...prev, lecturer_name: e.target.value }))} placeholder="Лектор" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                <input value={manual.course_text} onChange={(e) => setManual(prev => ({ ...prev, course_text: e.target.value }))} placeholder="Курс" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                <input value={manual.lecture_number_text} onChange={(e) => setManual(prev => ({ ...prev, lecture_number_text: e.target.value }))} placeholder="Номер лекции" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                <input value={manual.study_year_text} onChange={(e) => setManual(prev => ({ ...prev, study_year_text: e.target.value }))} placeholder="Год обучения" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+            {activeNodeType === 'root' && user?.role === 'admin' && (
+              <div>
+                <p className="text-sm mb-2" style={{ color: headingColor }}>Создать факультет</p>
+                <div className="flex gap-2">
+                  <input
+                    value={newFacultyName}
+                    onChange={(e) => setNewFacultyName(e.target.value)}
+                    placeholder="Название факультета"
+                    className="flex-1 px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                  <button onClick={createFaculty} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>
+                    Добавить
+                  </button>
+                </div>
               </div>
-              <button onClick={publishManual} className="mt-3 px-4 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>
-                Опубликовать
-              </button>
-            </div>
+            )}
+
+            {activeNodeType === 'faculty' && activeFaculty && user?.role === 'admin' && (
+              <div>
+                <p className="text-sm mb-2" style={{ color: headingColor }}>Добавить направление в «{activeFaculty.name}»</p>
+                <div className="flex gap-2">
+                  <input
+                    value={newDirectionName}
+                    onChange={(e) => setNewDirectionName(e.target.value)}
+                    placeholder="Название направления"
+                    className="flex-1 px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                  <button onClick={createDirection} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>
+                    Добавить
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeNodeType === 'direction' && activeDirection && user?.role === 'admin' && (
+              <div>
+                <p className="text-sm mb-2" style={{ color: headingColor }}>Добавить поток в «{activeDirection.name}»</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+                  <input
+                    value={newStreamName}
+                    onChange={(e) => setNewStreamName(e.target.value)}
+                    placeholder="Название потока"
+                    className="px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                  <input
+                    value={newStreamCourse}
+                    onChange={(e) => setNewStreamCourse(e.target.value)}
+                    placeholder="Курс (опц.)"
+                    className="px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                  <input
+                    value={newStreamYear}
+                    onChange={(e) => setNewStreamYear(e.target.value)}
+                    placeholder="Год набора (опц.)"
+                    className="px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+                <button onClick={createStream} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>
+                  Добавить поток
+                </button>
+              </div>
+            )}
+
+            {activeNodeType === 'stream' && activeStream && (
+              <div>
+                <p className="text-sm mb-2" style={{ color: headingColor }}>Ручная публикация в поток «{activeStream.name}»</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <input value={manual.lecture_id} onChange={(e) => setManual(prev => ({ ...prev, lecture_id: e.target.value }))} placeholder="Lecture ID" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                  <input value={manual.discipline} onChange={(e) => setManual(prev => ({ ...prev, discipline: e.target.value }))} placeholder="Дисциплина" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                  <input value={manual.lecturer_name} onChange={(e) => setManual(prev => ({ ...prev, lecturer_name: e.target.value }))} placeholder="Лектор" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                  <input value={manual.course_text} onChange={(e) => setManual(prev => ({ ...prev, course_text: e.target.value }))} placeholder="Курс" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                  <input value={manual.lecture_number_text} onChange={(e) => setManual(prev => ({ ...prev, lecture_number_text: e.target.value }))} placeholder="Номер лекции" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                  <input value={manual.study_year_text} onChange={(e) => setManual(prev => ({ ...prev, study_year_text: e.target.value }))} placeholder="Год обучения" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                </div>
+                <button onClick={publishManual} className="mt-3 px-4 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>
+                  Опубликовать
+                </button>
+              </div>
+            )}
+
+            {activeNodeType !== 'stream' && user?.role !== 'admin' && (
+              <p className="text-sm" style={{ color: mutedColor }}>
+                Староста может публиковать лекции в своем потоке. Выберите поток в дереве.
+              </p>
+            )}
           </div>
-        </details>
-      )}
+        </div>
+      </section>
     </div>
   );
 };
