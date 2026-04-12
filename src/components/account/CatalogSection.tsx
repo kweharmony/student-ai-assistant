@@ -11,6 +11,9 @@ const NOTE_MODES = [
   { id: 'mindmap', label: 'Майнд-карта' },
 ];
 
+const NO_COURSE = '__no_course__';
+const NO_DISCIPLINE = '__no_discipline__';
+
 interface LookupItem { id: string; name: string }
 interface DirectionItem extends LookupItem { faculty_id: string }
 interface StreamItem { id: string; direction_id: string; name: string; course: number | null }
@@ -37,6 +40,14 @@ interface LectureDetail { id: string; transcriptions: { raw_text: string; proces
 interface CatalogSectionProps { isLightTheme: boolean; onOpenInEditor: (text: string, lectureId: string) => void }
 
 const semesterLabel = (s: Semester) => (s === 'winter' ? 'Зимний семестр' : 'Весенний семестр');
+const normalizeSemester = (value: string | null | undefined): Semester | '' => {
+  const lower = (value || '').trim().toLowerCase();
+  if (lower === 'winter') return 'winter';
+  if (lower === 'spring') return 'spring';
+  return '';
+};
+const normalizeCourse = (value: string | null | undefined) => (value || '').trim() || NO_COURSE;
+const normalizeDiscipline = (value: string | null | undefined) => (value || '').trim() || NO_DISCIPLINE;
 
 const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInEditor }) => {
   const { token } = useAuth();
@@ -58,17 +69,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   const [streamId, setStreamId] = useState('');
   const [courseText, setCourseText] = useState('');
   const [semesterText, setSemesterText] = useState<Semester | ''>('');
-  const [yearText, setYearText] = useState('');
   const [discipline, setDiscipline] = useState('');
-  const [lecturerName, setLecturerName] = useState('');
-
-  const [expandedFaculties, setExpandedFaculties] = useState<Record<string, boolean>>({});
-  const [expandedDirections, setExpandedDirections] = useState<Record<string, boolean>>({});
-  const [expandedStreams, setExpandedStreams] = useState<Record<string, boolean>>({});
-  const [expandedCourses, setExpandedCourses] = useState<Record<string, boolean>>({});
-  const [expandedSemesters, setExpandedSemesters] = useState<Record<string, boolean>>({});
-  const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({});
-  const [expandedDisciplines, setExpandedDisciplines] = useState<Record<string, boolean>>({});
 
   const [selectedLecture, setSelectedLecture] = useState<CatalogItem | null>(null);
   const [notesByLecture, setNotesByLecture] = useState<Record<string, LectureNoteInfo[]>>({});
@@ -109,14 +110,12 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
       (!facultyId || i.faculty_id === facultyId) &&
       (!directionId || i.direction_id === directionId) &&
       (!streamId || i.stream_id === streamId) &&
-      (!courseText || (i.course_text || '') === courseText) &&
-      (!semesterText || (i.semester_text || '').toLowerCase() === semesterText) &&
-      (!yearText || (i.study_year_text || '') === yearText) &&
-      (!discipline || i.discipline === discipline) &&
-      (!lecturerName || (i.lecturer_name || '') === lecturerName)
+      (!courseText || normalizeCourse(i.course_text) === courseText) &&
+      (!semesterText || normalizeSemester(i.semester_text) === semesterText) &&
+      (!discipline || normalizeDiscipline(i.discipline) === discipline)
     );
     setItems(filtered);
-  }, [allItems, facultyId, directionId, streamId, courseText, semesterText, yearText, discipline, lecturerName]);
+  }, [allItems, facultyId, directionId, streamId, courseText, semesterText, discipline]);
 
   const directionsByFaculty = useMemo(() => {
     const map: Record<string, DirectionItem[]> = {};
@@ -134,27 +133,32 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     if (!directionId) return (directionsByFaculty[facultyId] || []).map(d => ({ type: 'direction' as const, key: d.id, label: d.name, meta: d }));
     if (!streamId) return (streamsByDirection[directionId] || []).map(s => ({ type: 'stream' as const, key: s.id, label: s.name, meta: s }));
     if (!courseText) {
-      const set = new Set(allItems.filter(i => i.stream_id === streamId).map(i => i.course_text || '').filter(Boolean));
-      return Array.from(set).sort().map(c => ({ type: 'course' as const, key: c, label: `Курс ${c}`, meta: c }));
+      const set = new Set(allItems.filter(i => i.stream_id === streamId).map(i => normalizeCourse(i.course_text)));
+      return Array.from(set).sort().map(c => ({ type: 'course' as const, key: c, label: c === NO_COURSE ? 'Курс не указан' : `Курс ${c}`, meta: c }));
     }
     if (!semesterText) return (['winter', 'spring'] as Semester[]).map(s => ({ type: 'semester' as const, key: s, label: semesterLabel(s), meta: s }));
-    if (!yearText) {
-      const set = new Set(allItems.filter(i => i.stream_id === streamId && (i.course_text || '') === courseText && (i.semester_text || '').toLowerCase() === semesterText).map(i => i.study_year_text || '').filter(Boolean));
-      return Array.from(set).sort((a, b) => Number(b) - Number(a)).map(y => ({ type: 'year' as const, key: y, label: y, meta: y }));
-    }
     if (!discipline) {
-      const set = new Set(allItems.filter(i => i.stream_id === streamId && (i.course_text || '') === courseText && (i.semester_text || '').toLowerCase() === semesterText && (i.study_year_text || '') === yearText).map(i => i.discipline).filter(Boolean));
-      return Array.from(set).sort().map(d => ({ type: 'discipline' as const, key: d, label: d, meta: d }));
-    }
-    if (!lecturerName) {
-      const set = new Set(allItems.filter(i => i.stream_id === streamId && (i.course_text || '') === courseText && (i.semester_text || '').toLowerCase() === semesterText && (i.study_year_text || '') === yearText && i.discipline === discipline).map(i => i.lecturer_name || '').filter(Boolean));
-      return Array.from(set).sort().map(l => ({ type: 'lecturer' as const, key: l, label: l, meta: l }));
+      const set = new Set(
+        allItems
+          .filter(i =>
+            i.stream_id === streamId &&
+            normalizeCourse(i.course_text) === courseText &&
+            normalizeSemester(i.semester_text) === semesterText
+          )
+          .map(i => normalizeDiscipline(i.discipline))
+      );
+      return Array.from(set).sort().map(d => ({ type: 'discipline' as const, key: d, label: d === NO_DISCIPLINE ? 'Дисциплина не указана' : d, meta: d }));
     }
     return [];
-  }, [facultyId, directionId, streamId, courseText, semesterText, yearText, discipline, lecturerName, faculties, directionsByFaculty, streamsByDirection, allItems]);
+  }, [facultyId, directionId, streamId, courseText, semesterText, discipline, faculties, directionsByFaculty, streamsByDirection, allItems]);
 
-  const setPath = (fId = '', dId = '', sId = '', cText = '', sem: Semester | '' = '', yText = '', disc = '', lect = '') => {
-    setFacultyId(fId); setDirectionId(dId); setStreamId(sId); setCourseText(cText); setSemesterText(sem); setYearText(yText); setDiscipline(disc); setLecturerName(lect);
+  const setPath = (fId = '', dId = '', sId = '', cText = '', sem: Semester | '' = '', disc = '') => {
+    setFacultyId(fId);
+    setDirectionId(dId);
+    setStreamId(sId);
+    setCourseText(cText);
+    setSemesterText(sem);
+    setDiscipline(disc);
     setSelectedLecture(null);
   };
 
@@ -207,13 +211,19 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     <div>
       <div className="text-center mb-8 px-4">
         <h1 className="text-3xl lg:text-4xl font-light mb-3 tracking-wide" style={{ color: headingColor }}>База лекций</h1>
-        <p className="text-sm opacity-70" style={{ color: mutedColor }}>Проводник + карточки лекций. Без перетранскрибации и AI-режимов генерации.</p>
+        <p className="text-sm opacity-70" style={{ color: mutedColor }}>Проводник: факультет / направление / поток / курс / семестр / дисциплина / лекции.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-4 mb-5">
         <div className="border rounded-xl p-3" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
           <div className="text-xs mb-2" style={{ color: mutedColor }}>
-            Путь: Каталог {facultyId ? ` / ${faculties.find(f => f.id === facultyId)?.name || ''}` : ''}{directionId ? ` / ${directions.find(d => d.id === directionId)?.name || ''}` : ''}{streamId ? ` / ${streams.find(s => s.id === streamId)?.name || ''}` : ''}{courseText ? ` / Курс ${courseText}` : ''}{semesterText ? ` / ${semesterLabel(semesterText)}` : ''}{yearText ? ` / ${yearText}` : ''}{discipline ? ` / ${discipline}` : ''}{lecturerName ? ` / ${lecturerName}` : ''}
+            Путь: Каталог
+            {facultyId ? ` / ${faculties.find(f => f.id === facultyId)?.name || ''}` : ''}
+            {directionId ? ` / ${directions.find(d => d.id === directionId)?.name || ''}` : ''}
+            {streamId ? ` / ${streams.find(s => s.id === streamId)?.name || ''}` : ''}
+            {courseText ? ` / ${courseText === NO_COURSE ? 'Курс не указан' : `Курс ${courseText}`}` : ''}
+            {semesterText ? ` / ${semesterLabel(semesterText)}` : ''}
+            {discipline ? ` / ${discipline === NO_DISCIPLINE ? 'Дисциплина не указана' : discipline}` : ''}
           </div>
           <button onClick={() => setPath()} className="mb-2 px-2 py-1 rounded border text-xs" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>В корень</button>
           <div className="space-y-1 max-h-[64vh] overflow-y-auto">
@@ -226,9 +236,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                   if (entry.type === 'stream') setPath(facultyId, directionId, entry.key);
                   if (entry.type === 'course') setPath(facultyId, directionId, streamId, entry.meta as string);
                   if (entry.type === 'semester') setPath(facultyId, directionId, streamId, courseText, entry.meta as Semester);
-                  if (entry.type === 'year') setPath(facultyId, directionId, streamId, courseText, semesterText, entry.meta as string);
-                  if (entry.type === 'discipline') setPath(facultyId, directionId, streamId, courseText, semesterText, yearText, entry.meta as string);
-                  if (entry.type === 'lecturer') setPath(facultyId, directionId, streamId, courseText, semesterText, yearText, discipline, entry.meta as string);
+                  if (entry.type === 'discipline') setPath(facultyId, directionId, streamId, courseText, semesterText, entry.meta as string);
                 }}
                 className="w-full text-left px-3 py-2 rounded-lg border text-sm"
                 style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}

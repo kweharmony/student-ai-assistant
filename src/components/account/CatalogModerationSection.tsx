@@ -70,9 +70,6 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [newFacultyName, setNewFacultyName] = useState('');
   const [newDirectionName, setNewDirectionName] = useState('');
   const [newStreamName, setNewStreamName] = useState('');
-  const [newStreamCourse, setNewStreamCourse] = useState('');
-  const [newDisciplineName, setNewDisciplineName] = useState('');
-  const [newLecturerName, setNewLecturerName] = useState('');
 
   const [streamDisciplineOptions, setStreamDisciplineOptions] = useState<string[]>([]);
   const [streamLecturerOptions, setStreamLecturerOptions] = useState<string[]>([]);
@@ -187,7 +184,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     }
     (async () => {
       const [dRes, lRes] = await Promise.all([
-        fetch(`${API_BASE}/api/catalog/disciplines?direction_id=${activeDirectionId}`, { headers }),
+        fetch(`${API_BASE}/api/catalog/disciplines?stream_id=${activeStreamId}`, { headers }),
         fetch(`${API_BASE}/api/catalog/lecturers?stream_id=${activeStreamId}`, { headers }),
       ]);
       setStreamDisciplineOptions(dRes.ok ? await dRes.json() : []);
@@ -315,50 +312,16 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const createStream = async () => {
     const name = newStreamName.trim();
     if (!activeDirectionId || !name) return;
-    const course = Number(newStreamCourse);
-    const body: Record<string, unknown> = { direction_id: activeDirectionId, name };
-    if (!Number.isNaN(course) && newStreamCourse.trim()) body.course = course;
     const res = await fetch(`${API_BASE}/api/catalog/streams`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) return;
-    const created: StreamItem = await res.json();
-    setNewStreamName('');
-    setNewStreamCourse('');
-    await loadLookups();
-    selectStreamNode(activeFacultyId, activeDirectionId, created.id);
-  };
-
-  const createDisciplineTemplate = async () => {
-    const name = newDisciplineName.trim();
-    if (!activeDirectionId || !name) return;
-    const res = await fetch(`${API_BASE}/api/catalog/discipline-templates`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ direction_id: activeDirectionId, name }),
     });
-    if (res.ok) {
-      setNewDisciplineName('');
-      const dRes = await fetch(`${API_BASE}/api/catalog/disciplines?direction_id=${activeDirectionId}`, { headers });
-      if (dRes.ok) setStreamDisciplineOptions(await dRes.json());
-    }
-  };
-
-  const createLecturerTemplate = async () => {
-    const name = newLecturerName.trim();
-    if (!activeStreamId || !name) return;
-    const res = await fetch(`${API_BASE}/api/catalog/lecturer-templates`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stream_id: activeStreamId, name }),
-    });
-    if (res.ok) {
-      setNewLecturerName('');
-      const lRes = await fetch(`${API_BASE}/api/catalog/lecturers?stream_id=${activeStreamId}`, { headers });
-      if (lRes.ok) setStreamLecturerOptions(await lRes.json());
-    }
+    if (!res.ok) return;
+    const created: StreamItem = await res.json();
+    setNewStreamName('');
+    await loadLookups();
+    selectStreamNode(activeFacultyId, activeDirectionId, created.id);
   };
 
   const publishManual = async () => {
@@ -537,25 +500,13 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
 
             {activeNodeType === 'direction' && activeDirection && user?.role === 'admin' && (
               <div className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <input value={newStreamName} onChange={(e) => setNewStreamName(e.target.value)} placeholder={`Новый поток для ${activeDirection.name}`} className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                  <input value={newStreamCourse} onChange={(e) => setNewStreamCourse(e.target.value)} placeholder="Курс (опц.)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                </div>
+                <input value={newStreamName} onChange={(e) => setNewStreamName(e.target.value)} placeholder={`Новый поток для ${activeDirection.name}`} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                 <button onClick={createStream} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Добавить поток</button>
-                <div className="flex gap-2">
-                  <input value={newDisciplineName} onChange={(e) => setNewDisciplineName(e.target.value)} placeholder="Добавить дисциплину в это направление" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                  <button onClick={createDisciplineTemplate} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>+ Дисциплина</button>
-                </div>
               </div>
             )}
 
             {activeNodeType === 'stream' && activeStream && (
               <div className="space-y-3">
-                <div className="flex gap-2">
-                  <input value={newLecturerName} onChange={(e) => setNewLecturerName(e.target.value)} placeholder="Добавить лектора в этот поток" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                  <button onClick={createLecturerTemplate} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>+ Лектор</button>
-                </div>
-
                 <input value={lectureSearch} onChange={(e) => setLectureSearch(e.target.value)} placeholder="Поиск лекции по названию / логину автора" className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                 <select value={manual.lecture_id} onChange={(e) => setManual(prev => ({ ...prev, lecture_id: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
                   <option value="">Выберите лекцию</option>

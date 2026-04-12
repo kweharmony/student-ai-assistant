@@ -291,7 +291,6 @@ async def create_stream(
     obj = Stream(
         direction_id=body.direction_id,
         name=body.name.strip(),
-        course=body.course,
     )
     db.add(obj)
     await db.commit()

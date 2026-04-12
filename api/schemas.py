@@ -380,7 +380,6 @@ class DirectionCreateIn(BaseModel):
 class StreamCreateIn(BaseModel):
     direction_id: UUID
     name: str = Field(..., min_length=1, max_length=150)
-    course: Optional[int] = Field(None, ge=1, le=6)
 
 
 class CatalogDisciplineTemplateOut(BaseModel):
