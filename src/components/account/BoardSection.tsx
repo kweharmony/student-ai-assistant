@@ -106,7 +106,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   // ── share panel ──────────────────────────────────────────────────────────────
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
-  const [activeBoard, setActiveBoard] = useState<BoardMeta | null>(null);
+  const [activeBoard, setActiveBoard] = useState<BoardDetail | null>(null);
   const [shareModeDraft, setShareModeDraft] = useState<'view' | 'edit'>('view');
   const boardIsOwner = !!activeBoard?.owner && activeBoard.owner.id === user?.id;
 
@@ -328,7 +328,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       body: JSON.stringify({ mode }),
     });
     if (res.ok) {
-      const updated: BoardMeta = await res.json();
+      const updated: BoardDetail = await res.json();
       setActiveBoard(updated);
       setShareModeDraft(updated.share_mode);
     }
@@ -341,7 +341,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       headers: authHeaders(),
     });
     if (res.ok) {
-      const updated: BoardMeta = await res.json();
+      const updated: BoardDetail = await res.json();
       setActiveBoard(updated);
       setShareModeDraft('view');
     }
