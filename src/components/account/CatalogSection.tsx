@@ -95,11 +95,21 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   const fetchCatalog = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/catalog/items?limit=500`, { headers });
-      if (res.ok) {
-        const data: CatalogItem[] = await res.json();
-        setAllItems(data);
+      const limit = 300;
+      let offset = 0;
+      let loaded: CatalogItem[] = [];
+      while (true) {
+        const res = await fetch(`${API_BASE}/api/catalog/items?limit=${limit}&offset=${offset}`, { headers });
+        if (!res.ok) {
+          loaded = [];
+          break;
+        }
+        const chunk: CatalogItem[] = await res.json();
+        loaded = loaded.concat(chunk);
+        if (chunk.length < limit) break;
+        offset += limit;
       }
+      setAllItems(loaded);
     } finally {
       setLoading(false);
     }
