@@ -465,10 +465,12 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
     const appState = api.getAppState();
     const zoom = appState.zoom.value;
-    const x = (-appState.scrollX + window.innerWidth / 2) / zoom - 220;
-    const y = (-appState.scrollY + window.innerHeight / 2) / zoom - 80;
     const boxWidth = 440;
     const boxHeight = 180;
+    const viewportWidth = appState.width || window.innerWidth;
+    const viewportHeight = appState.height || window.innerHeight;
+    const x = (-appState.scrollX + viewportWidth / 2) / zoom - boxWidth / 2;
+    const y = (-appState.scrollY + viewportHeight / 2) / zoom - boxHeight / 2;
 
     const newElements = convertToExcalidrawElements([
       {
@@ -495,7 +497,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     api.updateScene({
       elements: [...api.getSceneElements(), ...newElements],
     });
-    api.scrollToContent?.(newElements[0], { fitToViewport: true });
   };
 
   // ── exit ──────────────────────────────────────────────────────────────────────
