@@ -1174,7 +1174,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   return (
     <div style={{ fontFamily: 'Georgia, serif', color: 'var(--text-primary)' }}>
       <h1 style={{ fontSize: 32, fontWeight: 300, marginBottom: 8, textAlign: 'center' }}>Полотно</h1>
-      <p style={{ color: 'var(--text-secondary)', marginBottom: 32, fontSize: 15 }}>
+      <p style={{ color: 'var(--text-secondary)', marginBottom: 32, fontSize: 15, textAlign: 'center' }}>
         Интерактивная доска для визуализации лекций, рисунков и схем
       </p>
 
