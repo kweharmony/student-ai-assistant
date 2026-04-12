@@ -452,7 +452,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
     api.updateScene({
       elements: [...api.getSceneElements(), ...newElements],
-      captureUpdate: 'IMMEDIATELY',
     });
     api.scrollToContent?.(newElements[0], { fitToViewport: true });
     setLecturePickerOpen(false);
