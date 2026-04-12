@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
-  CaptureUpdateAction,
   Excalidraw,
   convertToExcalidrawElements,
   exportToBlob,
@@ -456,7 +455,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
     api.updateScene({
       elements: [...api.getSceneElements(), ...newElements],
-      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      captureUpdate: 'IMMEDIATELY',
     });
     api.scrollToContent?.(newElements[0], { fitToViewport: true });
     setLecturePickerOpen(false);
