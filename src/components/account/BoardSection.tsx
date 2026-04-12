@@ -440,6 +440,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         strokeColor: isLightTheme ? '#44292b' : '#fffff0',
         strokeWidth: 1,
         strokeStyle: 'dashed',
+        textAutoResize: 'none',
         label: {
           text: insertText,
           textAlign: 'left',
