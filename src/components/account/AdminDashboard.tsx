@@ -19,6 +19,9 @@ interface AdminUser {
   login: string;
   email: string;
   role: string;
+  is_group_head: boolean;
+  stream_id: string | null;
+  stream: { id: string; name: string } | null;
   full_name: string | null;
   is_active: boolean;
   is_deleted: boolean;
@@ -361,6 +364,38 @@ const AdminDashboard: React.FC = () => {
     return map[role] || 'rgba(156, 163, 175, 0.2)';
   };
 
+  const handleAssignGroupHead = async (userId: string, currentStreamId?: string | null) => {
+    const streamId = window.prompt('Введите ID потока для назначения старосты', currentStreamId || '');
+    if (!streamId) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${userId}/group-head`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_group_head: true, stream_id: streamId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Ошибка назначения старосты');
+      }
+      fetchUsers();
+    } catch (e: any) { setError(e.message); }
+  };
+
+  const handleRemoveGroupHead = async (userId: string, keepStreamId?: string | null) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${userId}/group-head`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_group_head: false, stream_id: keepStreamId || null }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Ошибка снятия прав старосты');
+      }
+      fetchUsers();
+    } catch (e: any) { setError(e.message); }
+  };
+
   // ==================== Tabs ====================
 
   const tabs: { id: AdminTab; label: string }[] = [
@@ -521,6 +556,11 @@ const AdminDashboard: React.FC = () => {
                         {[user.student_profile.group_name, user.student_profile.course ? `${user.student_profile.course} курс` : null, user.student_profile.faculty].filter(Boolean).join(' \u00b7 ')}
                       </div>
                     )}
+                    {user.is_group_head && (
+                      <div className="text-xs mt-1" style={{ color: '#22c55e' }}>
+                        Староста потока {user.stream?.name || user.stream_id || '—'}
+                      </div>
+                    )}
                     {user.role === 'teacher' && user.teacher_profile && (
                       <div className="text-xs opacity-50 mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                         {[user.teacher_profile.department, user.teacher_profile.position, user.teacher_profile.academic_degree].filter(Boolean).join(' \u00b7 ')}
@@ -540,6 +580,25 @@ const AdminDashboard: React.FC = () => {
                   {/* Actions */}
                   {user.role !== 'admin' && (
                     <div className="flex gap-2 shrink-0">
+                      {user.role === 'student' && (
+                        user.is_group_head ? (
+                          <button
+                            onClick={() => handleRemoveGroupHead(user.id, user.stream_id)}
+                            className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
+                            style={{ borderColor: 'rgba(234,179,8,0.35)', color: '#eab308' }}
+                          >
+                            Снять старосту
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleAssignGroupHead(user.id, user.stream_id)}
+                            className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
+                            style={{ borderColor: 'rgba(34,197,94,0.35)', color: '#22c55e' }}
+                          >
+                            Назначить старостой
+                          </button>
+                        )
+                      )}
                       {user.is_active ? (
                         <button
                           onClick={() => setBlockModal({ userId: user.id, login: user.login })}

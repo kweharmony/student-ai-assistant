@@ -26,6 +26,7 @@ const sidebarItems: SidebarItem[] = [
   { id: 'calendar', label: 'Календарь', icon: 'calendar_today' },
   { id: 'transcriber', label: 'Транскрибатор', icon: 'mic' },
   { id: 'lectures', label: 'Лекции', icon: 'library_books' },
+  { id: 'catalog', label: 'База лекций', icon: 'menu_book' },
   { id: 'text-processing', label: 'Обработка текста', icon: 'edit_note' },
   { id: 'board', label: 'Полотно', icon: 'dashboard' },
   { id: 'exit', label: 'Выход', icon: 'close' },
@@ -53,6 +54,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     // Вставляем перед "Выход"
     const exitIndex = items.findIndex(i => i.id === 'exit');
     items.splice(exitIndex, 0, { id: 'admin', label: 'Админ-панель', icon: 'admin_panel_settings' });
+  }
+  if (user?.role === 'admin' || user?.is_group_head) {
+    const exitIndex = items.findIndex(i => i.id === 'exit');
+    items.splice(exitIndex, 0, { id: 'catalog-moderation', label: 'Модерация базы', icon: 'rule_settings' });
   }
 
   const handleExit = () => {

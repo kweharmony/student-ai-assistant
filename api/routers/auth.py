@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import create_access_token, hash_password, verify_password
 from ..dependencies import get_current_user, get_db
-from ..models import StudentProfile, TeacherProfile, User, UserRole
+from ..models import Stream, StudentProfile, TeacherProfile, User, UserRole
 from ..schemas import LoginRequest, RegisterRequest, RegisterResponse, TokenResponse, UserOut
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
@@ -53,12 +53,19 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     # Генерируем уникальный логин
     generated_login = await _unique_login(db, body.email)
 
+    stream_id = body.stream_id
+    if stream_id is not None:
+        stream_exists = await db.execute(select(Stream.id).where(Stream.id == stream_id))
+        if stream_exists.scalar_one_or_none() is None:
+            raise HTTPException(status_code=400, detail="Поток не найден")
+
     user = User(
         login=generated_login,
         email=body.email,
         password_hash=hash_password(body.password),
         role=UserRole(body.role),
         full_name=body.full_name,
+        stream_id=stream_id,
     )
     db.add(user)
     await db.flush()  # get user.id

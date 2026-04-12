@@ -19,6 +19,7 @@ class RegisterRequest(BaseModel):
     group_name: Optional[str] = Field(None, max_length=20)
     course: Optional[int] = Field(None, ge=1, le=6)
     faculty: Optional[str] = Field(None, max_length=100)
+    stream_id: Optional[UUID] = None
     # teacher fields
     department: Optional[str] = Field(None, max_length=150)
     position: Optional[str] = Field(None, max_length=100)
@@ -59,6 +60,13 @@ class TeacherProfileOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserStreamOut(BaseModel):
+    id: UUID
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
 class UserOut(BaseModel):
     id: UUID
     login: str
@@ -67,6 +75,9 @@ class UserOut(BaseModel):
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
     avatar_emoji: Optional[str] = None
+    is_group_head: bool = False
+    stream_id: Optional[UUID] = None
+    stream: Optional[UserStreamOut] = None
     is_active: bool
     created_at: datetime
     last_login_at: Optional[datetime] = None
@@ -83,6 +94,7 @@ class UserUpdateRequest(BaseModel):
     group_name: Optional[str] = Field(None, max_length=20)
     course: Optional[int] = Field(None, ge=1, le=6)
     faculty: Optional[str] = Field(None, max_length=100)
+    stream_id: Optional[UUID] = None
     # teacher fields
     department: Optional[str] = Field(None, max_length=150)
     position: Optional[str] = Field(None, max_length=100)
@@ -240,6 +252,125 @@ class LectureMyOut(BaseModel):
     is_ai_filtered: bool = False
     audio_expires_at: Optional[datetime] = None
     notes: List[LectureNoteOut] = []
+
+
+class FacultyOut(BaseModel):
+    id: UUID
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class DirectionOut(BaseModel):
+    id: UUID
+    faculty_id: UUID
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class StreamOut(BaseModel):
+    id: UUID
+    direction_id: UUID
+    name: str
+    course: Optional[int] = None
+    study_year_start: Optional[int] = None
+
+    model_config = {"from_attributes": True}
+
+
+class CatalogItemOut(BaseModel):
+    id: UUID
+    lecture_id: UUID
+    lecture_title: str
+    lecture_subject: Optional[str] = None
+    discipline: str
+    lecturer_name: Optional[str] = None
+    course_text: Optional[str] = None
+    study_year_text: Optional[str] = None
+    stream_id: UUID
+    stream_name: str
+    direction_id: UUID
+    direction_name: str
+    faculty_id: UUID
+    faculty_name: str
+    published_by_login: str
+    created_at: datetime
+
+
+class PublicationRequestCreateIn(BaseModel):
+    lecture_id: UUID
+    stream_id: UUID
+    discipline: str = Field(..., min_length=1, max_length=150)
+    lecturer_name: Optional[str] = Field(None, max_length=150)
+    course_text: Optional[str] = Field(None, max_length=50)
+    study_year_text: Optional[str] = Field(None, max_length=50)
+    comment: Optional[str] = Field(None, max_length=500)
+
+
+class PublicationRequestModerateIn(BaseModel):
+    review_comment: Optional[str] = Field(None, max_length=500)
+
+
+class ManualCatalogPublishIn(BaseModel):
+    lecture_id: UUID
+    stream_id: UUID
+    discipline: str = Field(..., min_length=1, max_length=150)
+    lecturer_name: Optional[str] = Field(None, max_length=150)
+    course_text: Optional[str] = Field(None, max_length=50)
+    study_year_text: Optional[str] = Field(None, max_length=50)
+
+
+class PublicationRequestOut(BaseModel):
+    id: UUID
+    lecture_id: UUID
+    lecture_title: str
+    requested_by: UUID
+    requested_by_login: str
+    stream_id: UUID
+    stream_name: str
+    direction_id: UUID
+    direction_name: str
+    faculty_id: UUID
+    faculty_name: str
+    discipline: str
+    lecturer_name: Optional[str] = None
+    course_text: Optional[str] = None
+    study_year_text: Optional[str] = None
+    comment: Optional[str] = None
+    status: str
+    review_comment: Optional[str] = None
+    reviewed_by: Optional[UUID] = None
+    reviewed_by_login: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class MyLecturePublicationStatusOut(BaseModel):
+    lecture_id: UUID
+    latest_request_status: Optional[str] = None
+    latest_request_review_comment: Optional[str] = None
+
+
+class FacultyCreateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+
+
+class DirectionCreateIn(BaseModel):
+    faculty_id: UUID
+    name: str = Field(..., min_length=1, max_length=150)
+
+
+class StreamCreateIn(BaseModel):
+    direction_id: UUID
+    name: str = Field(..., min_length=1, max_length=150)
+    course: Optional[int] = Field(None, ge=1, le=6)
+    study_year_start: Optional[int] = Field(None, ge=2000, le=2100)
+
+
+class AdminSetGroupHeadIn(BaseModel):
+    is_group_head: bool
+    stream_id: Optional[UUID] = None
 
 
 class SaveTextIn(BaseModel):

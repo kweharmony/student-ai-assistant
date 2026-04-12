@@ -39,7 +39,7 @@ async def get_current_user(
 
     result = await db.execute(
         select(User)
-        .options(selectinload(User.student_profile), selectinload(User.teacher_profile))
+        .options(selectinload(User.student_profile), selectinload(User.teacher_profile), selectinload(User.stream))
         .where(User.id == UUID(user_id), User.is_deleted == False)
     )
     user = result.scalar_one_or_none()
@@ -87,7 +87,7 @@ async def get_current_user_optional(
 
     result = await db.execute(
         select(User)
-        .options(selectinload(User.student_profile), selectinload(User.teacher_profile))
+        .options(selectinload(User.student_profile), selectinload(User.teacher_profile), selectinload(User.stream))
         .where(User.id == UUID(user_id), User.is_deleted == False)
     )
     user = result.scalar_one_or_none()
@@ -100,3 +100,22 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Требуются права администратора")
     return user
+
+
+def can_moderate_stream(user: User, stream_id: UUID | None) -> bool:
+    if user.role == "admin":
+        return True
+    if user.is_group_head and user.stream_id is not None and stream_id is not None:
+        return user.stream_id == stream_id
+    return False
+
+
+async def require_catalog_moderator(user: User = Depends(get_current_user)) -> User:
+    if user.role == "admin":
+        return user
+    if user.is_group_head and user.stream_id is not None:
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Требуются права администратора или старосты с назначенным потоком",
+    )

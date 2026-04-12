@@ -19,6 +19,9 @@ export interface User {
   login: string;
   email: string;
   role: 'student' | 'teacher' | 'admin';
+  is_group_head: boolean;
+  stream_id: string | null;
+  stream: { id: string; name: string } | null;
   full_name: string | null;
   avatar_url: string | null;
   avatar_emoji: string | null;
@@ -33,6 +36,7 @@ export interface RegisterData {
   email: string;
   password: string;
   role: 'student' | 'teacher';
+  stream_id?: string;
   full_name?: string;
   group_name?: string;
   course?: number;

@@ -14,8 +14,8 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ..dependencies import get_current_user, get_db
-from ..models import AudioFile, Lecture, LectureNote, LectureStatus, Transcription, TranscriptionTask, User
+from ..dependencies import can_moderate_stream, get_current_user, get_db
+from ..models import AudioFile, Lecture, LectureCatalogItem, LectureNote, LectureStatus, Transcription, TranscriptionTask, User
 import asyncio
 from uuid import UUID as PyUUID
 
@@ -52,6 +52,7 @@ async def _get_lecture_or_404(
         stmt = stmt.options(
             selectinload(Lecture.audio_files),
             selectinload(Lecture.transcriptions),
+            selectinload(Lecture.catalog_item),
         )
     result = await db.execute(stmt)
     lecture = result.scalar_one_or_none()
@@ -63,6 +64,24 @@ async def _get_lecture_or_404(
 def _check_owner(lecture: Lecture, user: User):
     if lecture.uploaded_by != user.id:
         raise HTTPException(status_code=403, detail="Нет доступа к этой лекции")
+
+
+def _check_owner_or_catalog_moderator(lecture: Lecture, user: User):
+    if lecture.uploaded_by == user.id:
+        return
+    if lecture.catalog_item is not None and can_moderate_stream(user, lecture.catalog_item.stream_id):
+        return
+    raise HTTPException(status_code=403, detail="Нет прав на изменение этой лекции")
+
+
+def _can_read_lecture(lecture: Lecture, user: User) -> bool:
+    if lecture.uploaded_by == user.id:
+        return True
+    if lecture.is_public:
+        return True
+    if lecture.catalog_item is not None:
+        return True
+    return False
 
 
 # ---------- CRUD ----------
@@ -194,7 +213,7 @@ async def get_lecture(
     lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
 
     # Access check: owner or public
-    if lecture.uploaded_by != user.id and not lecture.is_public:
+    if not _can_read_lecture(lecture, user):
         raise HTTPException(status_code=403, detail="Нет доступа к этой лекции")
 
     # Filter out soft-deleted children
@@ -213,8 +232,8 @@ async def update_lecture(
 ):
     """Обновить лекцию (только автор)."""
 
-    lecture = await _get_lecture_or_404(lecture_id, db)
-    _check_owner(lecture, user)
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    _check_owner_or_catalog_moderator(lecture, user)
 
     if body.title is not None:
         lecture.title = body.title
@@ -238,8 +257,8 @@ async def delete_lecture(
 ):
     """Мягкое удаление лекции (только автор)."""
 
-    lecture = await _get_lecture_or_404(lecture_id, db)
-    _check_owner(lecture, user)
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    _check_owner_or_catalog_moderator(lecture, user)
 
     lecture.is_deleted = True
     lecture.deleted_by = user.id
@@ -358,7 +377,7 @@ async def get_transcription_task_status(
 
     lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
 
-    if lecture.uploaded_by != user.id and not lecture.is_public:
+    if not _can_read_lecture(lecture, user):
         raise HTTPException(status_code=403, detail="Нет доступа к этой лекции")
 
     active_audio = [a for a in lecture.audio_files if not a.is_deleted]
@@ -483,8 +502,8 @@ async def get_lecture_notes(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    lecture = await _get_lecture_or_404(lecture_id, db)
-    if lecture.uploaded_by != user.id and not lecture.is_public:
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    if not _can_read_lecture(lecture, user):
         raise HTTPException(status_code=403, detail="Нет доступа")
 
     result = await db.execute(
@@ -502,8 +521,8 @@ async def get_lecture_note(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    lecture = await _get_lecture_or_404(lecture_id, db)
-    if lecture.uploaded_by != user.id and not lecture.is_public:
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    if not _can_read_lecture(lecture, user):
         raise HTTPException(status_code=403, detail="Нет доступа")
 
     result = await db.execute(
@@ -528,7 +547,11 @@ async def upsert_lecture_note(
     """Создать или обновить заметку (один режим — одна заметка на лекцию)."""
 
     lecture = await _get_lecture_or_404(lecture_id, db)
-    _check_owner(lecture, user)
+    if lecture.catalog_item is not None:
+        if not can_moderate_stream(user, lecture.catalog_item.stream_id):
+            raise HTTPException(status_code=403, detail="Материалы базы лекций может редактировать только админ или староста потока")
+    else:
+        _check_owner(lecture, user)
 
     result = await db.execute(
         select(LectureNote).where(
@@ -562,7 +585,11 @@ async def delete_lecture_note(
     user: User = Depends(get_current_user),
 ):
     lecture = await _get_lecture_or_404(lecture_id, db)
-    _check_owner(lecture, user)
+    if lecture.catalog_item is not None:
+        if not can_moderate_stream(user, lecture.catalog_item.stream_id):
+            raise HTTPException(status_code=403, detail="Материалы базы лекций может удалять только админ или староста потока")
+    else:
+        _check_owner(lecture, user)
 
     result = await db.execute(
         select(LectureNote).where(

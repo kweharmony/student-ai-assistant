@@ -26,6 +26,23 @@ interface LectureItem {
   notes: NoteInfo[];
 }
 
+interface MyLecturePublicationStatus {
+  lecture_id: string;
+  latest_request_status: 'pending' | 'approved' | 'rejected' | null;
+  latest_request_review_comment: string | null;
+}
+
+interface LookupItem {
+  id: string;
+  name: string;
+}
+
+interface StreamItem {
+  id: string;
+  direction_id: string;
+  name: string;
+}
+
 function audioExpiryInfo(expires_at: string | null): { daysLeft: number; expired: boolean } {
   if (!expires_at) return { daysLeft: 0, expired: true };
   const ms = new Date(expires_at).getTime() - Date.now();
@@ -322,6 +339,7 @@ const NoteModal: React.FC<{
 const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenInEditor, onReTranscribe }) => {
   const { token } = useAuth();
   const [lectures, setLectures] = useState<LectureItem[]>([]);
+  const [publicationStatuses, setPublicationStatuses] = useState<Record<string, MyLecturePublicationStatus>>({});
   const [loading, setLoading] = useState(true);
   const [lectureType, setLectureType] = useState<'my' | 'general'>('my'); // мои или общие лекции
 
@@ -343,6 +361,20 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const [topicInput, setTopicInput]                 = useState('');
   const [pendingTopicMode, setPendingTopicMode]     = useState<{ lectureId: string; mode: string } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [suggestModalLecture, setSuggestModalLecture] = useState<LectureItem | null>(null);
+  const [faculties, setFaculties] = useState<LookupItem[]>([]);
+  const [directions, setDirections] = useState<LookupItem[]>([]);
+  const [streams, setStreams] = useState<StreamItem[]>([]);
+  const [suggestData, setSuggestData] = useState({
+    faculty_id: '',
+    direction_id: '',
+    stream_id: '',
+    discipline: '',
+    lecturer_name: '',
+    course_text: '',
+    study_year_text: '',
+    comment: '',
+  });
 
   const authHeaders = useCallback((): Record<string, string> => {
     const h: Record<string, string> = {};
@@ -362,7 +394,41 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     }
   }, [authHeaders, lectureType]);
 
+  const fetchPublicationStatuses = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/my-lecture-statuses`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const list: MyLecturePublicationStatus[] = await res.json();
+      const map: Record<string, MyLecturePublicationStatus> = {};
+      list.forEach((row) => { map[row.lecture_id] = row; });
+      setPublicationStatuses(map);
+    } catch {
+      // ignore status fetch errors
+    }
+  }, [authHeaders]);
+
+  const fetchCatalogLookups = useCallback(async () => {
+    try {
+      const [fRes, dRes, sRes] = await Promise.all([
+        fetch(`${API_BASE}/api/catalog/faculties`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/api/catalog/directions`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/api/catalog/streams`, { headers: authHeaders() }),
+      ]);
+      if (fRes.ok) setFaculties(await fRes.json());
+      if (dRes.ok) setDirections(await dRes.json());
+      if (sRes.ok) setStreams(await sRes.json());
+    } catch {
+      // ignore lookup load errors
+    }
+  }, [authHeaders]);
+
   useEffect(() => { fetchLectures(); }, [fetchLectures]);
+  useEffect(() => {
+    if (lectureType === 'my') {
+      fetchPublicationStatuses();
+      fetchCatalogLookups();
+    }
+  }, [lectureType, fetchPublicationStatuses, fetchCatalogLookups]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -613,6 +679,17 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
             const existingModes   = new Set(lecture.notes.map(n => n.mode));
             const availableModes  = ML_MODES.filter(m => !existingModes.has(m.id));
             const showAddDropdown = addNoteDropdown === lecture.id;
+            const pub = publicationStatuses[lecture.id];
+            const pubColor =
+              pub?.latest_request_status === 'approved' ? '#22c55e'
+                : pub?.latest_request_status === 'rejected' ? '#ef4444'
+                : pub?.latest_request_status === 'pending' ? '#f59e0b'
+                : null;
+            const pubLabel =
+              pub?.latest_request_status === 'approved' ? 'Одобрено в базе'
+                : pub?.latest_request_status === 'rejected' ? 'Отклонено'
+                : pub?.latest_request_status === 'pending' ? 'На модерации'
+                : null;
 
             return (
               <div key={lecture.id} className="rounded-xl transition-all duration-200" style={{ background: cardBg, border: cardBorder }}>
@@ -762,6 +839,35 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                     Удалить
                   </button>
                 </div>
+
+                {lectureType === 'my' && (
+                  <div className="px-5 pb-4 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setSuggestModalLecture(lecture);
+                        setSuggestData(prev => ({
+                          ...prev,
+                          discipline: lecture.subject || prev.discipline,
+                        }));
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+                      style={{ background: btnBg, color: btnColor }}
+                    >
+                      <span className="material-symbols-outlined text-base">publish</span>
+                      Предложить в базу
+                    </button>
+                    {pubLabel && pubColor && (
+                      <span className="text-xs px-2 py-1 rounded-full" style={{ background: `${pubColor}22`, color: pubColor }}>
+                        {pubLabel}
+                      </span>
+                    )}
+                    {pub?.latest_request_status === 'rejected' && pub.latest_request_review_comment && (
+                      <span className="text-xs" style={{ color: '#ef4444' }}>
+                        Причина: {pub.latest_request_review_comment}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* ── Materials section (only if has text) ── */}
                 {lecture.has_text && (
@@ -966,6 +1072,82 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
         style={{ display: 'none' }}
         onChange={handleReUploadFile}
       />
+
+      {suggestModalLecture && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setSuggestModalLecture(null)}>
+          <div
+            className="rounded-2xl p-6 w-full max-w-lg"
+            style={{ background: isLightTheme ? 'rgba(255,255,240,.98)' : 'rgba(33,24,25,.97)', border: cardBorder }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-medium mb-1" style={{ color: headingColor }}>Предложение в базу лекций</h2>
+            <p className="text-xs mb-4" style={{ color: mutedColor }}>{suggestModalLecture.title}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+              <select value={suggestData.faculty_id} onChange={(e) => setSuggestData(prev => ({ ...prev, faculty_id: e.target.value, direction_id: '', stream_id: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
+                <option value="">Факультет</option>
+                {faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+              <select value={suggestData.direction_id} onChange={(e) => setSuggestData(prev => ({ ...prev, direction_id: e.target.value, stream_id: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
+                <option value="">Направление</option>
+                {directions.filter(d => !suggestData.faculty_id || (d as any).faculty_id === suggestData.faculty_id).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+              <select value={suggestData.stream_id} onChange={(e) => setSuggestData(prev => ({ ...prev, stream_id: e.target.value }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
+                <option value="">Поток</option>
+                {streams.filter(s => !suggestData.direction_id || s.direction_id === suggestData.direction_id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <input value={suggestData.discipline} onChange={(e) => setSuggestData(prev => ({ ...prev, discipline: e.target.value }))} placeholder="Дисциплина" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              <input value={suggestData.lecturer_name} onChange={(e) => setSuggestData(prev => ({ ...prev, lecturer_name: e.target.value }))} placeholder="Лектор" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              <input value={suggestData.course_text} onChange={(e) => setSuggestData(prev => ({ ...prev, course_text: e.target.value }))} placeholder="Курс" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              <input value={suggestData.study_year_text} onChange={(e) => setSuggestData(prev => ({ ...prev, study_year_text: e.target.value }))} placeholder="Год обучения" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+            </div>
+            <textarea value={suggestData.comment} onChange={(e) => setSuggestData(prev => ({ ...prev, comment: e.target.value }))} placeholder="Комментарий для модератора" className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ background: btnBg, color: headingColor, border: cardBorder }} rows={3} />
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  if (!suggestData.stream_id || !suggestData.discipline.trim()) return;
+                  const res = await fetch(`${API_BASE}/api/catalog/requests`, {
+                    method: 'POST',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      lecture_id: suggestModalLecture.id,
+                      stream_id: suggestData.stream_id,
+                      discipline: suggestData.discipline.trim(),
+                      lecturer_name: suggestData.lecturer_name.trim() || null,
+                      course_text: suggestData.course_text.trim() || null,
+                      study_year_text: suggestData.study_year_text.trim() || null,
+                      comment: suggestData.comment.trim() || null,
+                    }),
+                  });
+                  if (res.ok) {
+                    setSuggestModalLecture(null);
+                    setSuggestData({
+                      faculty_id: '',
+                      direction_id: '',
+                      stream_id: '',
+                      discipline: '',
+                      lecturer_name: '',
+                      course_text: '',
+                      study_year_text: '',
+                      comment: '',
+                    });
+                    fetchPublicationStatuses();
+                  } else {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.detail || 'Не удалось отправить заявку');
+                  }
+                }}
+                className="flex-1 py-2 rounded-lg text-sm font-medium"
+                style={{ background: headingColor, color: isLightTheme ? '#fff9f1' : '#0a0a0a' }}
+              >
+                Отправить заявку
+              </button>
+              <button onClick={() => setSuggestModalLecture(null)} className="flex-1 py-2 rounded-lg text-sm font-medium" style={{ background: btnBg, color: btnColor }}>
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

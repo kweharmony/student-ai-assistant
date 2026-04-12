@@ -52,6 +52,8 @@ class User(Base):
     full_name = Column(String(100), nullable=True)
     avatar_url = Column(String(500), nullable=True)
     avatar_emoji = Column(String(10), nullable=True)
+    is_group_head = Column(Boolean, default=False, nullable=False, index=True)
+    stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id"), nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     blocked_reason = Column(String(300), nullable=True)
@@ -66,6 +68,7 @@ class User(Base):
     student_profile = relationship("StudentProfile", back_populates="user", uselist=False)
     teacher_profile = relationship("TeacherProfile", back_populates="user", uselist=False)
     lectures = relationship("Lecture", back_populates="uploader", foreign_keys="Lecture.uploaded_by")
+    stream = relationship("Stream")
 
 
 # ========== 2. student_profiles ==========
@@ -119,6 +122,8 @@ class Lecture(Base):
     audio_files = relationship("AudioFile", back_populates="lecture")
     transcriptions = relationship("Transcription", back_populates="lecture")
     notes = relationship("LectureNote", back_populates="lecture", cascade="all, delete-orphan")
+    catalog_item = relationship("LectureCatalogItem", back_populates="lecture", uselist=False)
+    publication_requests = relationship("LecturePublicationRequest", back_populates="lecture")
 
 
 # ========== 5. audio_files ==========
@@ -264,3 +269,101 @@ class AdminAction(Base):
     created_at = Column(DateTime, default=_now, nullable=False)
 
     admin = relationship("User", foreign_keys=[admin_id])
+
+
+class Faculty(Base):
+    __tablename__ = "faculties"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    name = Column(String(150), nullable=False, unique=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    directions = relationship("Direction", back_populates="faculty", cascade="all, delete-orphan")
+
+
+class Direction(Base):
+    __tablename__ = "directions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    faculty_id = Column(UUID(as_uuid=True), ForeignKey("faculties.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    faculty = relationship("Faculty", back_populates="directions")
+    streams = relationship("Stream", back_populates="direction", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint("faculty_id", "name", name="uq_direction_faculty_name"),)
+
+
+class Stream(Base):
+    __tablename__ = "streams"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    direction_id = Column(UUID(as_uuid=True), ForeignKey("directions.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    course = Column(SmallInteger, nullable=True)
+    study_year_start = Column(SmallInteger, nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    direction = relationship("Direction", back_populates="streams")
+
+    __table_args__ = (
+        UniqueConstraint("direction_id", "name", "study_year_start", name="uq_stream_direction_name_year"),
+    )
+
+
+class PublicationRequestStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
+class LecturePublicationRequest(Base):
+    __tablename__ = "lecture_publication_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    lecture_id = Column(UUID(as_uuid=True), ForeignKey("lectures.id", ondelete="CASCADE"), nullable=False, index=True)
+    requested_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id"), nullable=False, index=True)
+    discipline = Column(String(150), nullable=False)
+    lecturer_name = Column(String(150), nullable=True)
+    course_text = Column(String(50), nullable=True)
+    study_year_text = Column(String(50), nullable=True)
+    comment = Column(String(500), nullable=True)
+    status = Column(
+        Enum(PublicationRequestStatus, name="publication_request_status", native_enum=False),
+        default=PublicationRequestStatus.pending,
+        nullable=False,
+        index=True,
+    )
+    review_comment = Column(String(500), nullable=True)
+    reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    lecture = relationship("Lecture", back_populates="publication_requests")
+    requester = relationship("User", foreign_keys=[requested_by])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
+    stream = relationship("Stream")
+
+
+class LectureCatalogItem(Base):
+    __tablename__ = "lecture_catalog_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    lecture_id = Column(UUID(as_uuid=True), ForeignKey("lectures.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id"), nullable=False, index=True)
+    discipline = Column(String(150), nullable=False, index=True)
+    lecturer_name = Column(String(150), nullable=True, index=True)
+    course_text = Column(String(50), nullable=True, index=True)
+    study_year_text = Column(String(50), nullable=True, index=True)
+    published_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    source_request_id = Column(UUID(as_uuid=True), ForeignKey("lecture_publication_requests.id"), nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    lecture = relationship("Lecture", back_populates="catalog_item")
+    stream = relationship("Stream")
+    publisher = relationship("User", foreign_keys=[published_by])
+    source_request = relationship("LecturePublicationRequest")

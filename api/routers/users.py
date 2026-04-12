@@ -8,11 +8,12 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import hash_password, verify_password
 from ..dependencies import get_current_user, get_db
-from ..models import User
+from ..models import Stream, User
 from ..schemas import ChangePasswordRequest, SetEmojiRequest, UserOut, UserUpdateRequest
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
@@ -34,6 +35,12 @@ async def update_my_profile(
     db: AsyncSession = Depends(get_db),
 ):
     """Обновить свой профиль."""
+    if body.stream_id is not None:
+        stream_result = await db.execute(select(Stream).where(Stream.id == body.stream_id))
+        stream = stream_result.scalar_one_or_none()
+        if stream is None:
+            raise HTTPException(status_code=400, detail="Поток не найден")
+        user.stream_id = stream.id
 
     if body.full_name is not None:
         user.full_name = body.full_name

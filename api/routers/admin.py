@@ -18,9 +18,10 @@ from sqlalchemy.orm import selectinload
 from ..dependencies import get_db, require_admin
 from ..models import (
     AdminAction, AudioFile, Lecture, LectureStatus, Transcription, TranscriptionTask,
-    TranscriptionTaskStatus, User, UserRole, StudentProfile, TeacherProfile, Board,
+    TranscriptionTaskStatus, User, UserRole, StudentProfile, TeacherProfile, Board, Stream,
 )
 from ..schemas import (
+    AdminSetGroupHeadIn,
     AdminActionOut,
     AdminLectureUpdateRequest,
     AdminUserOut,
@@ -69,7 +70,7 @@ async def list_users(
 
     query = (
         select(User)
-        .options(selectinload(User.student_profile), selectinload(User.teacher_profile))
+        .options(selectinload(User.student_profile), selectinload(User.teacher_profile), selectinload(User.stream))
         .where(User.is_deleted == False)
     )
 
@@ -280,6 +281,40 @@ async def delete_user_avatar(
     await db.commit()
 
     return {"detail": "Аватарка удалена"}
+
+
+@router.put("/users/{user_id}/group-head", status_code=status.HTTP_200_OK)
+async def set_group_head(
+    user_id: UUID,
+    body: AdminSetGroupHeadIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Назначить/снять подроль старосты и привязать поток."""
+    del admin
+    result = await db.execute(select(User).where(User.id == user_id, User.is_deleted == False))
+    target = result.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if target.role != UserRole.student:
+        raise HTTPException(status_code=400, detail="Старосту можно назначать только студенту")
+
+    if body.is_group_head:
+        if body.stream_id is None:
+            raise HTTPException(status_code=400, detail="Для старосты нужно указать поток")
+        stream_result = await db.execute(select(Stream.id).where(Stream.id == body.stream_id))
+        if stream_result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Поток не найден")
+        target.is_group_head = True
+        target.stream_id = body.stream_id
+    else:
+        target.is_group_head = False
+        if body.stream_id is not None:
+            target.stream_id = body.stream_id
+
+    await db.commit()
+    await db.refresh(target)
+    return {"detail": "Права старосты обновлены"}
 
 
 # ---------- Content deletion ----------

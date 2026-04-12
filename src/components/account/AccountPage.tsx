@@ -10,11 +10,23 @@ import TranscriptionModals from './TranscriptionModals';
 import AdminDashboard from './AdminDashboard';
 import LecturesSection from './LecturesSection';
 import BoardSection from './BoardSection';
+import CatalogSection from './CatalogSection';
+import CatalogModerationSection from './CatalogModerationSection';
 import { useAuth } from '../../contexts/AuthContext';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const ACCOUNT_ACTIVE_SECTION_KEY = 'mindesync_account_active_section';
-const ALLOWED_SECTIONS: ActiveSection[] = ['profile', 'calendar', 'transcriber', 'text-processing', 'lectures', 'admin', 'board'];
+const ALLOWED_SECTIONS: ActiveSection[] = [
+  'profile',
+  'calendar',
+  'transcriber',
+  'text-processing',
+  'lectures',
+  'catalog',
+  'catalog-moderation',
+  'admin',
+  'board',
+];
 
 const getInitialActiveSection = (): ActiveSection => {
   try {
@@ -132,7 +144,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     if (activeSection === 'admin' && user?.role !== 'admin') {
       setActiveSection('profile');
     }
-  }, [activeSection, user?.role]);
+    if (activeSection === 'catalog-moderation' && user?.role !== 'admin' && !user?.is_group_head) {
+      setActiveSection('profile');
+    }
+  }, [activeSection, user?.role, user?.is_group_head]);
 
   // Функция загрузки аудио + метаданных лекции на сервер
   const handleAudioTranscription = async (file: File, meta: LectureMeta) => {
@@ -437,6 +452,14 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             onOpenInEditor={handleOpenInEditor}
             onReTranscribe={handleReTranscribe}
           />
+        )}
+
+        {activeSection === 'catalog' && (
+          <CatalogSection isLightTheme={isLightTheme} />
+        )}
+
+        {activeSection === 'catalog-moderation' && (
+          <CatalogModerationSection isLightTheme={isLightTheme} />
         )}
 
         {activeSection === 'text-processing' && (
