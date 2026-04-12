@@ -15,17 +15,30 @@ jobs:
           cd ~/student-ai-assistant
           git pull
 
+      - name: Detect changed files in push range
+        run: |
+          cd ~/student-ai-assistant
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            git diff --name-only HEAD~1 HEAD > /tmp/changed_files.txt || true
+          else
+            git diff --name-only "$BEFORE" "$AFTER" > /tmp/changed_files.txt || true
+          fi
+          echo "Changed files:"
+          cat /tmp/changed_files.txt || true
+
       - name: Rebuild backend (if changed)
         run: |
           cd ~/student-ai-assistant
-          git diff HEAD~1 HEAD --name-only 2>/dev/null | grep -qE "^(api|ml|scripts|alembic|requirements)" && docker compose up -d --build backend || echo "Backend не изменился"
+          grep -qE "^(api|ml|scripts|alembic|requirements|Dockerfile\.backend)" /tmp/changed_files.txt && docker compose up -d --build backend || echo "Backend не изменился"
 
       - name: Rebuild pdf-service (if changed)
         run: |
           cd ~/student-ai-assistant
-          git diff HEAD~1 HEAD --name-only 2>/dev/null | grep -qE "^(Dockerfile\.pdf|pdf-service)" && docker compose up -d --build pdf-service || echo "PDF service не изменился"
+          grep -qE "^(Dockerfile\.pdf|pdf-service)" /tmp/changed_files.txt && docker compose up -d --build pdf-service || echo "PDF service не изменился"
 
       - name: Rebuild frontend (if changed)
         run: |
           cd ~/student-ai-assistant
-          git diff HEAD~1 HEAD --name-only 2>/dev/null | grep -qE "^(src|public|package)" && docker compose up -d --build frontend || echo "Frontend не изменился"
+          grep -qE "^(src|public|package|Dockerfile\.frontend)" /tmp/changed_files.txt && docker compose up -d --build frontend || echo "Frontend не изменился"
