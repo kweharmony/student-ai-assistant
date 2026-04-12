@@ -373,9 +373,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     faculty_id: '',
     direction_id: '',
     stream_id: '',
-    discipline: '',
-    lecturer_name: '',
-    course_text: '',
+    lecture_number_text: '',
     study_year_text: '',
     comment: '',
   });
@@ -849,10 +847,6 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                     <button
                       onClick={() => {
                         setSuggestModalLecture(lecture);
-                        setSuggestData(prev => ({
-                          ...prev,
-                          discipline: lecture.subject || prev.discipline,
-                        }));
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
                       style={{ background: btnBg, color: btnColor }}
@@ -1102,10 +1096,8 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                 <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Поток</option>
                 {streams.filter(s => !suggestData.direction_id || s.direction_id === suggestData.direction_id).map(s => <option key={s.id} value={s.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{s.name}</option>)}
               </select>
-              <input value={suggestData.discipline} onChange={(e) => setSuggestData(prev => ({ ...prev, discipline: e.target.value }))} placeholder="Дисциплина (опц.)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
-              <input value={suggestData.lecturer_name} onChange={(e) => setSuggestData(prev => ({ ...prev, lecturer_name: e.target.value }))} placeholder="Лектор" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
-              <input value={suggestData.course_text} onChange={(e) => setSuggestData(prev => ({ ...prev, course_text: e.target.value }))} placeholder="Курс (опц.)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
-              <input value={suggestData.study_year_text} onChange={(e) => setSuggestData(prev => ({ ...prev, study_year_text: e.target.value }))} placeholder="Год обучения (опц.)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              <input value={suggestData.lecture_number_text} onChange={(e) => setSuggestData(prev => ({ ...prev, lecture_number_text: e.target.value }))} placeholder="Номер лекции (напр. 4)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              <input value={suggestData.study_year_text} onChange={(e) => setSuggestData(prev => ({ ...prev, study_year_text: e.target.value }))} placeholder="Год обучения (напр. 1)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
             </div>
             <textarea value={suggestData.comment} onChange={(e) => setSuggestData(prev => ({ ...prev, comment: e.target.value }))} placeholder="Комментарий для модератора" className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ background: btnBg, color: headingColor, border: cardBorder }} rows={3} />
             <div className="flex gap-2">
@@ -1118,9 +1110,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                     body: JSON.stringify({
                       lecture_id: suggestModalLecture.id,
                       stream_id: suggestData.stream_id,
-                      discipline: suggestData.discipline.trim() || suggestModalLecture.subject || suggestModalLecture.title,
-                      lecturer_name: suggestData.lecturer_name.trim() || null,
-                      course_text: suggestData.course_text.trim() || null,
+                      lecture_number_text: suggestData.lecture_number_text.trim() || null,
                       study_year_text: suggestData.study_year_text.trim() || null,
                       comment: suggestData.comment.trim() || null,
                     }),
@@ -1131,9 +1121,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                       faculty_id: '',
                       direction_id: '',
                       stream_id: '',
-                      discipline: '',
-                      lecturer_name: '',
-                      course_text: '',
+                      lecture_number_text: '',
                       study_year_text: '',
                       comment: '',
                     });

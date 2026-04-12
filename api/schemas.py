@@ -287,6 +287,7 @@ class CatalogItemOut(BaseModel):
     discipline: str
     lecturer_name: Optional[str] = None
     course_text: Optional[str] = None
+    lecture_number_text: Optional[str] = None
     study_year_text: Optional[str] = None
     stream_id: UUID
     stream_name: str
@@ -301,14 +302,17 @@ class CatalogItemOut(BaseModel):
 class PublicationRequestCreateIn(BaseModel):
     lecture_id: UUID
     stream_id: UUID
-    discipline: str = Field(..., min_length=1, max_length=150)
-    lecturer_name: Optional[str] = Field(None, max_length=150)
-    course_text: Optional[str] = Field(None, max_length=50)
+    lecture_number_text: Optional[str] = Field(None, max_length=50)
     study_year_text: Optional[str] = Field(None, max_length=50)
     comment: Optional[str] = Field(None, max_length=500)
 
 
 class PublicationRequestModerateIn(BaseModel):
+    discipline: Optional[str] = Field(None, min_length=1, max_length=150)
+    lecturer_name: Optional[str] = Field(None, max_length=150)
+    course_text: Optional[str] = Field(None, max_length=50)
+    lecture_number_text: Optional[str] = Field(None, max_length=50)
+    study_year_text: Optional[str] = Field(None, max_length=50)
     review_comment: Optional[str] = Field(None, max_length=500)
 
 
@@ -318,6 +322,7 @@ class ManualCatalogPublishIn(BaseModel):
     discipline: str = Field(..., min_length=1, max_length=150)
     lecturer_name: Optional[str] = Field(None, max_length=150)
     course_text: Optional[str] = Field(None, max_length=50)
+    lecture_number_text: Optional[str] = Field(None, max_length=50)
     study_year_text: Optional[str] = Field(None, max_length=50)
 
 
@@ -336,6 +341,7 @@ class PublicationRequestOut(BaseModel):
     discipline: str
     lecturer_name: Optional[str] = None
     course_text: Optional[str] = None
+    lecture_number_text: Optional[str] = None
     study_year_text: Optional[str] = None
     comment: Optional[str] = None
     status: str

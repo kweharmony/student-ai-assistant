@@ -14,6 +14,7 @@ interface ReqItem {
   discipline: string;
   lecturer_name: string | null;
   course_text: string | null;
+  lecture_number_text: string | null;
   study_year_text: string | null;
   comment: string | null;
   status: 'pending' | 'approved' | 'rejected';
@@ -47,6 +48,12 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [statusFilter, setStatusFilter] = useState<string>('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [reviewText, setReviewText] = useState<Record<string, string>>({});
+  const [disciplineText, setDisciplineText] = useState<Record<string, string>>({});
+  const [lecturerText, setLecturerText] = useState<Record<string, string>>({});
+  const [courseText, setCourseText] = useState<Record<string, string>>({});
+  const [lectureNumberText, setLectureNumberText] = useState<Record<string, string>>({});
+  const [studyYearText, setStudyYearText] = useState<Record<string, string>>({});
+  const [disciplineOptions, setDisciplineOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [previewText, setPreviewText] = useState<string>('');
@@ -61,6 +68,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     discipline: '',
     lecturer_name: '',
     course_text: '',
+    lecture_number_text: '',
     study_year_text: '',
   });
 
@@ -96,10 +104,6 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     if (s.ok) setStreams(await s.json());
   }, [headers, user?.role]);
 
-  useEffect(() => { loadRequests(); }, [loadRequests]);
-  useEffect(() => { loadLookups(); }, [loadLookups]);
-  useEffect(() => { setPreviewText(''); }, [selectedId]);
-
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return requests;
@@ -117,8 +121,43 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     [filtered, selectedId]
   );
 
+  useEffect(() => { loadRequests(); }, [loadRequests]);
+  useEffect(() => { loadLookups(); }, [loadLookups]);
+  useEffect(() => { setPreviewText(''); }, [selectedId]);
+  useEffect(() => {
+    if (!selected) return;
+    setDisciplineText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.discipline ?? '' }));
+    setLecturerText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.lecturer_name ?? '' }));
+    setCourseText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.course_text ?? '' }));
+    setLectureNumberText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.lecture_number_text ?? '' }));
+    setStudyYearText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.study_year_text ?? '' }));
+  }, [selected]);
+  useEffect(() => {
+    if (!selected?.direction_name) {
+      setDisciplineOptions([]);
+      return;
+    }
+    (async () => {
+      const dir = directions.find(d => d.name === selected.direction_name);
+      if (!dir) { setDisciplineOptions([]); return; }
+      const res = await fetch(`${API_BASE}/api/catalog/disciplines?direction_id=${dir.id}`, { headers });
+      if (!res.ok) { setDisciplineOptions([]); return; }
+      const data: string[] = await res.json();
+      setDisciplineOptions(data);
+    })();
+  }, [selected?.id, selected?.direction_name, directions, headers]);
+
   const moderate = async (id: string, action: 'approve' | 'reject') => {
     const review_comment = (reviewText[id] || '').trim();
+    const discipline = (disciplineText[id] || '').trim();
+    const lecturer_name = (lecturerText[id] || '').trim();
+    const course_text = (courseText[id] || '').trim();
+    const lecture_number_text = (lectureNumberText[id] || '').trim();
+    const study_year_text = (studyYearText[id] || '').trim();
+    if (action === 'approve' && !discipline) {
+      alert('Для одобрения укажите дисциплину.');
+      return;
+    }
     if (action === 'reject' && !review_comment) {
       alert('Для отклонения нужно указать причину.');
       return;
@@ -128,7 +167,14 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       const res = await fetch(`${API_BASE}/api/catalog/requests/${id}/${action}`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ review_comment: review_comment || null }),
+        body: JSON.stringify({
+          review_comment: review_comment || null,
+          discipline: discipline || null,
+          lecturer_name: lecturer_name || null,
+          course_text: course_text || null,
+          lecture_number_text: lecture_number_text || null,
+          study_year_text: study_year_text || null,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -203,7 +249,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       }),
     });
     if (res.ok) {
-      setManual({ lecture_id: '', stream_id: '', discipline: '', lecturer_name: '', course_text: '', study_year_text: '' });
+      setManual({ lecture_id: '', stream_id: '', discipline: '', lecturer_name: '', course_text: '', lecture_number_text: '', study_year_text: '' });
       loadRequests();
     }
   };
@@ -292,13 +338,16 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
                 <div className="text-xs p-2 rounded-lg" style={{ background: 'var(--bg-primary)', color: mutedColor }}>
-                  Дисциплина: <span style={{ color: headingColor }}>{selected.discipline}</span>
+                  Дисциплина: <span style={{ color: headingColor }}>{selected.discipline || '—'}</span>
                 </div>
                 <div className="text-xs p-2 rounded-lg" style={{ background: 'var(--bg-primary)', color: mutedColor }}>
                   Лектор: <span style={{ color: headingColor }}>{selected.lecturer_name || '—'}</span>
                 </div>
                 <div className="text-xs p-2 rounded-lg" style={{ background: 'var(--bg-primary)', color: mutedColor }}>
                   Курс: <span style={{ color: headingColor }}>{selected.course_text || '—'}</span>
+                </div>
+                <div className="text-xs p-2 rounded-lg" style={{ background: 'var(--bg-primary)', color: mutedColor }}>
+                  Номер лекции: <span style={{ color: headingColor }}>{selected.lecture_number_text || '—'}</span>
                 </div>
                 <div className="text-xs p-2 rounded-lg" style={{ background: 'var(--bg-primary)', color: mutedColor }}>
                   Год обучения: <span style={{ color: headingColor }}>{selected.study_year_text || '—'}</span>
@@ -330,6 +379,58 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                 </div>
                 <div className="text-sm p-3 rounded-lg border min-h-[86px] max-h-[220px] overflow-y-auto" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
                   {previewLoading ? 'Загрузка...' : (previewText || 'Нажмите "Показать" для просмотра фрагмента.')}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+                <div>
+                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Дисциплина (задаёт модератор)</p>
+                  <input
+                    list={`discipline-options-${selected.id}`}
+                    value={disciplineText[selected.id] ?? ''}
+                    onChange={(e) => setDisciplineText(prev => ({ ...prev, [selected.id]: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                  <datalist id={`discipline-options-${selected.id}`}>
+                    {disciplineOptions.map((opt) => <option key={opt} value={opt} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Лектор (задаёт модератор)</p>
+                  <input
+                    value={lecturerText[selected.id] ?? ''}
+                    onChange={(e) => setLecturerText(prev => ({ ...prev, [selected.id]: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Курс (задаёт модератор)</p>
+                  <input
+                    value={courseText[selected.id] ?? ''}
+                    onChange={(e) => setCourseText(prev => ({ ...prev, [selected.id]: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Номер лекции (от студента, можно править)</p>
+                  <input
+                    value={lectureNumberText[selected.id] ?? ''}
+                    onChange={(e) => setLectureNumberText(prev => ({ ...prev, [selected.id]: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Год обучения (от студента, можно править)</p>
+                  <input
+                    value={studyYearText[selected.id] ?? ''}
+                    onChange={(e) => setStudyYearText(prev => ({ ...prev, [selected.id]: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  />
                 </div>
               </div>
 
@@ -393,6 +494,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                 <input value={manual.discipline} onChange={(e) => setManual(prev => ({ ...prev, discipline: e.target.value }))} placeholder="Дисциплина" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                 <input value={manual.lecturer_name} onChange={(e) => setManual(prev => ({ ...prev, lecturer_name: e.target.value }))} placeholder="Лектор" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                 <input value={manual.course_text} onChange={(e) => setManual(prev => ({ ...prev, course_text: e.target.value }))} placeholder="Курс" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                <input value={manual.lecture_number_text} onChange={(e) => setManual(prev => ({ ...prev, lecture_number_text: e.target.value }))} placeholder="Номер лекции" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                 <input value={manual.study_year_text} onChange={(e) => setManual(prev => ({ ...prev, study_year_text: e.target.value }))} placeholder="Год обучения" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
               </div>
               <button onClick={publishManual} className="mt-3 px-4 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>

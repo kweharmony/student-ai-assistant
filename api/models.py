@@ -328,6 +328,7 @@ class LecturePublicationRequest(Base):
     discipline = Column(String(150), nullable=False)
     lecturer_name = Column(String(150), nullable=True)
     course_text = Column(String(50), nullable=True)
+    lecture_number_text = Column(String(50), nullable=True)
     study_year_text = Column(String(50), nullable=True)
     comment = Column(String(500), nullable=True)
     status = Column(
@@ -357,6 +358,7 @@ class LectureCatalogItem(Base):
     discipline = Column(String(150), nullable=False, index=True)
     lecturer_name = Column(String(150), nullable=True, index=True)
     course_text = Column(String(50), nullable=True, index=True)
+    lecture_number_text = Column(String(50), nullable=True, index=True)
     study_year_text = Column(String(50), nullable=True, index=True)
     published_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     source_request_id = Column(UUID(as_uuid=True), ForeignKey("lecture_publication_requests.id"), nullable=True)

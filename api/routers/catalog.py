@@ -47,6 +47,28 @@ def _is_catalog_editor(user: User, stream_id: Optional[UUID]) -> bool:
     return can_moderate_stream(user, stream_id)
 
 
+@router.get("/disciplines")
+async def list_disciplines(
+    direction_id: Optional[UUID] = Query(None),
+    stream_id: Optional[UUID] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    del user
+    stmt = (
+        select(LectureCatalogItem.discipline)
+        .join(Stream, Stream.id == LectureCatalogItem.stream_id)
+        .where(LectureCatalogItem.discipline.isnot(None), LectureCatalogItem.discipline != "")
+    )
+    if stream_id is not None:
+        stmt = stmt.where(Stream.id == stream_id)
+    elif direction_id is not None:
+        stmt = stmt.where(Stream.direction_id == direction_id)
+    stmt = stmt.distinct().order_by(LectureCatalogItem.discipline.asc())
+    result = await db.execute(stmt)
+    return [row[0] for row in result.all()]
+
+
 @router.get("/faculties", response_model=List[FacultyOut])
 async def list_faculties(
     db: AsyncSession = Depends(get_db),
@@ -219,6 +241,7 @@ async def list_catalog_items(
             discipline=item.discipline,
             lecturer_name=item.lecturer_name,
             course_text=item.course_text,
+            lecture_number_text=item.lecture_number_text,
             study_year_text=item.study_year_text,
             stream_id=stream.id,
             stream_name=stream.name,
@@ -288,9 +311,10 @@ async def create_publication_request(
         lecture_id=body.lecture_id,
         requested_by=user.id,
         stream_id=body.stream_id,
-        discipline=body.discipline.strip(),
-        lecturer_name=(body.lecturer_name or "").strip() or None,
-        course_text=(body.course_text or "").strip() or None,
+        discipline=lecture.subject or lecture.title,
+        lecturer_name=None,
+        course_text=None,
+        lecture_number_text=(body.lecture_number_text or "").strip() or None,
         study_year_text=(body.study_year_text or "").strip() or None,
         comment=(body.comment or "").strip() or None,
         status=PublicationRequestStatus.pending,
@@ -314,6 +338,7 @@ async def create_publication_request(
         discipline=req.discipline,
         lecturer_name=req.lecturer_name,
         course_text=req.course_text,
+        lecture_number_text=req.lecture_number_text,
         study_year_text=req.study_year_text,
         comment=req.comment,
         status=req.status.value,
@@ -364,6 +389,7 @@ async def _ensure_catalog_item(
     discipline: str,
     lecturer_name: Optional[str],
     course_text: Optional[str],
+    lecture_number_text: Optional[str],
     study_year_text: Optional[str],
     publisher: User,
     source_request_id: Optional[UUID] = None,
@@ -389,6 +415,7 @@ async def _ensure_catalog_item(
         item.discipline = discipline
         item.lecturer_name = lecturer_name
         item.course_text = course_text
+        item.lecture_number_text = lecture_number_text
         item.study_year_text = study_year_text
         item.published_by = publisher.id
         item.source_request_id = source_request_id
@@ -399,6 +426,7 @@ async def _ensure_catalog_item(
             discipline=discipline,
             lecturer_name=lecturer_name,
             course_text=course_text,
+            lecture_number_text=lecture_number_text,
             study_year_text=study_year_text,
             published_by=publisher.id,
             source_request_id=source_request_id,
@@ -421,6 +449,7 @@ async def publish_catalog_item_manual(
         discipline=body.discipline.strip(),
         lecturer_name=(body.lecturer_name or "").strip() or None,
         course_text=(body.course_text or "").strip() or None,
+        lecture_number_text=(body.lecture_number_text or "").strip() or None,
         study_year_text=(body.study_year_text or "").strip() or None,
         publisher=moderator,
         source_request_id=None,
@@ -453,6 +482,7 @@ async def publish_catalog_item_manual(
         discipline=item.discipline,
         lecturer_name=item.lecturer_name,
         course_text=item.course_text,
+        lecture_number_text=item.lecture_number_text,
         study_year_text=item.study_year_text,
         stream_id=stream.id,
         stream_name=stream.name,
@@ -483,17 +513,32 @@ async def approve_publication_request(
     if not _is_catalog_editor(moderator, req.stream_id):
         raise HTTPException(status_code=403, detail="Нет прав для этого потока")
 
+    discipline = (body.discipline or "").strip() or req.discipline
+    lecturer_name = (body.lecturer_name or "").strip() or req.lecturer_name
+    course_text = (body.course_text or "").strip() or req.course_text
+    lecture_number_text = (body.lecture_number_text or "").strip() or req.lecture_number_text
+    study_year_text = (body.study_year_text or "").strip() or req.study_year_text
+
+    if not discipline:
+        raise HTTPException(status_code=400, detail="Нужно указать дисциплину")
+
     await _ensure_catalog_item(
         db=db,
         lecture_id=req.lecture_id,
         stream_id=req.stream_id,
-        discipline=req.discipline,
-        lecturer_name=req.lecturer_name,
-        course_text=req.course_text,
-        study_year_text=req.study_year_text,
+        discipline=discipline,
+        lecturer_name=lecturer_name,
+        course_text=course_text,
+        lecture_number_text=lecture_number_text,
+        study_year_text=study_year_text,
         publisher=moderator,
         source_request_id=req.id,
     )
+    req.discipline = discipline
+    req.lecturer_name = lecturer_name
+    req.course_text = course_text
+    req.lecture_number_text = lecture_number_text
+    req.study_year_text = study_year_text
     req.status = PublicationRequestStatus.approved
     req.reviewed_by = moderator.id
     req.reviewed_at = datetime.utcnow()
@@ -564,6 +609,7 @@ async def _request_out(db: AsyncSession, req: LecturePublicationRequest) -> Publ
         discipline=req.discipline,
         lecturer_name=req.lecturer_name,
         course_text=req.course_text,
+        lecture_number_text=req.lecture_number_text,
         study_year_text=req.study_year_text,
         comment=req.comment,
         status=req.status.value,
