@@ -113,6 +113,8 @@ async def update_board(
     board = await _get_accessible_board(board_id, current_user.id, db)
     if not _can_edit_board(board, current_user):
         raise HTTPException(status_code=403, detail="Нет доступа на редактирование")
+    if body.is_public is not None and board.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только автор может менять режим публикации")
     if body.title is not None:
         board.title = body.title
     if body.data is not None:

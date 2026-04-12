@@ -77,7 +77,7 @@ const BG_PALETTE = [
 ];
 
 const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode, onToggleTheme }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   // ── modal state ──────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<Mode>('modal');
@@ -108,6 +108,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [activeBoard, setActiveBoard] = useState<BoardMeta | null>(null);
   const [shareModeDraft, setShareModeDraft] = useState<'view' | 'edit'>('view');
+  const boardIsOwner = !!activeBoard?.owner && activeBoard.owner.id === user?.id;
 
   // ── exit prompt ──────────────────────────────────────────────────────────────
   const [exitPrompt, setExitPrompt] = useState(false);
@@ -320,7 +321,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   // ── share ─────────────────────────────────────────────────────────────────────
   const enableShare = async (mode: 'view' | 'edit') => {
-    if (!activeBoardId || !boardCanEdit) return;
+    if (!activeBoardId || !boardCanEdit || !boardIsOwner) return;
     const res = await fetch(`${API_BASE}/api/boards/${activeBoardId}/share`, {
       method: 'POST',
       headers: authHeaders(),
@@ -334,7 +335,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   };
 
   const disableShare = async () => {
-    if (!activeBoardId || !boardCanEdit) return;
+    if (!activeBoardId || !boardCanEdit || !boardIsOwner) return;
     const res = await fetch(`${API_BASE}/api/boards/${activeBoardId}/share`, {
       method: 'DELETE',
       headers: authHeaders(),
@@ -675,7 +676,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               </div>
             )}
 
-            {activeBoardId && boardCanEdit && (
+            {activeBoardId && boardCanEdit && boardIsOwner && (
               <div style={{ position: 'relative' }}>
                 <MobileIconButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} active={activeBoard?.is_public} />
                     {shareMenuOpen && (
@@ -928,7 +929,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 )}
 
                 {/* Share */}
-                {activeBoardId && boardCanEdit && (
+                {activeBoardId && boardCanEdit && boardIsOwner && (
                   <div style={{ position: 'relative' }}>
                     <PanelButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} isLightTheme={isLightTheme} active={activeBoard?.is_public} />
                     {shareMenuOpen && (
