@@ -4,7 +4,6 @@ import {
   convertToExcalidrawElements,
   exportToBlob,
   exportToSvg,
-  restoreElements,
   serializeAsJSON,
 } from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
@@ -429,29 +428,27 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const boxWidth = 560;
     const boxHeight = 260;
 
-    const newElements = restoreElements(
-      convertToExcalidrawElements([
-        {
-          type: 'rectangle',
-          x,
-          y,
-          width: boxWidth,
-          height: boxHeight,
-          backgroundColor: 'transparent',
-          fillStyle: 'solid',
+    const newElements = convertToExcalidrawElements([
+      {
+        type: 'rectangle',
+        x,
+        y,
+        width: boxWidth,
+        height: boxHeight,
+        backgroundColor: 'transparent',
+        fillStyle: 'solid',
+        strokeColor: isLightTheme ? '#44292b' : '#fffff0',
+        strokeWidth: 1,
+        strokeStyle: 'dashed',
+        label: {
+          text: insertText,
+          textAlign: 'left',
+          verticalAlign: 'top',
+          fontSize: 16,
           strokeColor: isLightTheme ? '#44292b' : '#fffff0',
-          strokeWidth: 1,
-          strokeStyle: 'dashed',
-          label: {
-            text: insertText,
-            textAlign: 'left',
-            verticalAlign: 'top',
-            fontSize: 16,
-            strokeColor: isLightTheme ? '#44292b' : '#fffff0',
-          },
         },
-      ])
-    );
+      },
+    ]);
 
     api.updateScene({
       elements: [...api.getSceneElements(), ...newElements],
