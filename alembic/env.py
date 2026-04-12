@@ -31,7 +31,7 @@ from api.database import Base
 from api.models import (  # noqa: F401
     User, StudentProfile, TeacherProfile,
     Lecture, AudioFile, Transcription, AdminAction,
-    TranscriptionTask,
+    TranscriptionTask, Board, BoardVisit,
 )
 
 target_metadata = Base.metadata

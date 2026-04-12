@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Excalidraw, exportToBlob, exportToSvg, serializeAsJSON } from '@excalidraw/excalidraw';
+import {
+  CaptureUpdateAction,
+  Excalidraw,
+  convertToExcalidrawElements,
+  exportToBlob,
+  exportToSvg,
+  restoreElements,
+  serializeAsJSON,
+} from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
 import { useAuth } from '../../contexts/AuthContext';
 import excalidrawStyles from '../excalidrawStyles';
@@ -25,12 +33,28 @@ interface BoardMeta {
   title: string;
   is_public: boolean;
   share_token: string | null;
+  share_mode: 'view' | 'edit';
   created_at: string;
   updated_at: string;
 }
 
 interface BoardDetail extends BoardMeta {
   data: string | null;
+  owner: BoardOwner | null;
+  can_edit: boolean;
+}
+
+interface BoardOwner {
+  id: string;
+  login: string;
+  full_name: string | null;
+  role: string;
+}
+
+interface RecentBoardItem extends BoardMeta {
+  owner: BoardOwner | null;
+  last_opened_at: string | null;
+  last_access_mode: 'view' | 'edit';
 }
 
 interface BoardSectionProps {
@@ -42,7 +66,7 @@ interface BoardSectionProps {
 type Mode = 'modal' | 'canvas';
 
 const BG_MAIN = [
-  { color: '#e8e8e8', label: 'Серый'         },
+  { color: '#000000', label: 'Черный'        },
   { color: '#35524a', label: 'Меловая доска' },
   { color: '#ffffff', label: 'Белый'         },
 ];
@@ -60,7 +84,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // ── modal state ──────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<Mode>('modal');
   const [boards, setBoards] = useState<BoardMeta[]>([]);
+  const [recentBoards, setRecentBoards] = useState<RecentBoardItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [recentLoading, setRecentLoading] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [shareInput, setShareInput] = useState('');
   const [shareError, setShareError] = useState('');
@@ -71,6 +97,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [boardTitle, setBoardTitle] = useState('');
   const [editingTitle, setEditingTitle] = useState(false);
   const [initialData, setInitialData] = useState<any>(null);
+  const [boardCanEdit, setBoardCanEdit] = useState(false);
   const excalidrawAPI = useRef<ExcalidrawImperativeAPI | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -82,6 +109,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // ── share panel ──────────────────────────────────────────────────────────────
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [activeBoard, setActiveBoard] = useState<BoardMeta | null>(null);
+  const [shareModeDraft, setShareModeDraft] = useState<'view' | 'edit'>('view');
 
   // ── exit prompt ──────────────────────────────────────────────────────────────
   const [exitPrompt, setExitPrompt] = useState(false);
@@ -126,9 +154,20 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     }
   }, [authHeaders]);
 
+  const fetchRecentBoards = useCallback(async () => {
+    setRecentLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/boards/recent`, { headers: authHeaders() });
+      if (res.ok) setRecentBoards(await res.json());
+    } finally {
+      setRecentLoading(false);
+    }
+  }, [authHeaders]);
+
   useEffect(() => {
     fetchBoards();
-  }, [fetchBoards]);
+    fetchRecentBoards();
+  }, [fetchBoards, fetchRecentBoards]);
 
   // ── open board ───────────────────────────────────────────────────────────────
   const openBoard = async (id: string) => {
@@ -143,6 +182,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setActiveBoardId(id);
     setBoardTitle(detail.title);
     setActiveBoard(detail);
+    setBoardCanEdit(detail.can_edit);
+    setShareModeDraft(detail.share_mode);
     setCanvasBg(parsed?.appState?.viewBackgroundColor || 'transparent');
     setMode('canvas');
     onCanvasMode?.(true);
@@ -154,7 +195,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const match = shareInput.match(/\/board\/([A-Za-z0-9_-]+)/);
     const token_ = match ? match[1] : shareInput.trim();
     if (!token_) { setShareError('Введите ссылку или токен'); return; }
-    const res = await fetch(`${API_BASE}/api/boards/public/${token_}`);
+    const res = await fetch(`${API_BASE}/api/boards/public/${token_}`, { headers: authHeaders() });
     if (!res.ok) { setShareError('Полотно не найдено или ссылка недействительна'); return; }
     const detail: BoardDetail = await res.json();
     let parsed: any = { elements: [], appState: {} };
@@ -162,11 +203,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       try { parsed = JSON.parse(detail.data); } catch {}
     }
     setInitialData(parsed);
-    setActiveBoardId(null); // read-only, no id for saving
-    setBoardTitle(detail.title + ' (только просмотр)');
-    setActiveBoard(null);
+    setActiveBoardId(detail.id);
+    setBoardTitle(detail.can_edit ? detail.title : `${detail.title} (только просмотр)`);
+    setActiveBoard(detail);
+    setBoardCanEdit(detail.can_edit);
+    setShareModeDraft(detail.share_mode);
     setMode('canvas');
     onCanvasMode?.(true);
+    fetchRecentBoards();
   };
 
   // ── create new board ─────────────────────────────────────────────────────────
@@ -186,7 +230,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   // ── auto-save on change ──────────────────────────────────────────────────────
   const handleChange = useCallback(() => {
-    if (!activeBoardId || !excalidrawAPI.current) return;
+    if (!activeBoardId || !boardCanEdit || !excalidrawAPI.current) return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
       const api = excalidrawAPI.current;
@@ -203,11 +247,11 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         body: JSON.stringify({ data }),
       });
     }, 2000);
-  }, [activeBoardId, authHeaders]);
+  }, [activeBoardId, authHeaders, boardCanEdit]);
 
   // ── save to profile (manual) ─────────────────────────────────────────────────
   const saveToProfile = async () => {
-    if (!activeBoardId || !excalidrawAPI.current) return;
+    if (!activeBoardId || !boardCanEdit || !excalidrawAPI.current) return;
     setSaving(true);
     const api = excalidrawAPI.current;
     const data = serializeAsJSON(
@@ -277,20 +321,22 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   };
 
   // ── share ─────────────────────────────────────────────────────────────────────
-  const enableShare = async () => {
-    if (!activeBoardId) return;
+  const enableShare = async (mode: 'view' | 'edit') => {
+    if (!activeBoardId || !boardCanEdit) return;
     const res = await fetch(`${API_BASE}/api/boards/${activeBoardId}/share`, {
       method: 'POST',
       headers: authHeaders(),
+      body: JSON.stringify({ mode }),
     });
     if (res.ok) {
       const updated: BoardMeta = await res.json();
       setActiveBoard(updated);
+      setShareModeDraft(updated.share_mode);
     }
   };
 
   const disableShare = async () => {
-    if (!activeBoardId) return;
+    if (!activeBoardId || !boardCanEdit) return;
     const res = await fetch(`${API_BASE}/api/boards/${activeBoardId}/share`, {
       method: 'DELETE',
       headers: authHeaders(),
@@ -298,6 +344,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     if (res.ok) {
       const updated: BoardMeta = await res.json();
       setActiveBoard(updated);
+      setShareModeDraft('view');
     }
   };
 
@@ -316,7 +363,17 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setBgMenuOpen(false);
   };
 
+  // Keep board background independent from UI theme.
+  useEffect(() => {
+    if (mode !== 'canvas') return;
+    if (!canvasBg) return;
+    const api = excalidrawAPI.current;
+    if (!api) return;
+    api.updateScene({ appState: { viewBackgroundColor: canvasBg } });
+  }, [isLightTheme, canvasBg, mode]);
+
   const clearCanvas = () => {
+    if (!boardCanEdit) return;
     if (window.confirm('Очистить холст? Все элементы будут удалены.')) {
       excalidrawAPI.current?.resetScene();
     }
@@ -325,7 +382,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // ── save title ────────────────────────────────────────────────────────────────
   const saveTitle = async () => {
     setEditingTitle(false);
-    if (!activeBoardId) return;
+    if (!activeBoardId || !boardCanEdit) return;
     await fetch(`${API_BASE}/api/boards/${activeBoardId}`, {
       method: 'PUT',
       headers: authHeaders(),
@@ -335,6 +392,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   // ── lecture insert ───────────────────────────────────────────────────────────
   const openLecturePicker = async () => {
+    if (!boardCanEdit) return;
     setLecturePickerOpen(true);
     setSelectedLecture(null);
     setInsertText('');
@@ -363,54 +421,44 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   const insertLectureText = () => {
     const api = excalidrawAPI.current;
-    if (!api || !insertText.trim()) return;
+    if (!api || !boardCanEdit || !insertText.trim()) return;
 
     const appState = api.getAppState();
     const zoom = appState.zoom.value;
     const x = (-appState.scrollX + window.innerWidth / 2) / zoom - 300;
     const y = (-appState.scrollY + window.innerHeight / 2) / zoom - 100;
+    const boxWidth = 560;
+    const boxHeight = 260;
 
-    const lines = insertText.split('\n');
-    const lineHeight = 1.25;
-    const fontSize = 16;
-    const height = lines.length * fontSize * lineHeight + 10;
+    const newElements = restoreElements(
+      convertToExcalidrawElements([
+        {
+          type: 'rectangle',
+          x,
+          y,
+          width: boxWidth,
+          height: boxHeight,
+          backgroundColor: 'transparent',
+          fillStyle: 'solid',
+          strokeColor: isLightTheme ? '#44292b' : '#fffff0',
+          strokeWidth: 1,
+          strokeStyle: 'dashed',
+          label: {
+            text: insertText,
+            textAlign: 'left',
+            verticalAlign: 'top',
+            fontSize: 16,
+            strokeColor: isLightTheme ? '#44292b' : '#fffff0',
+          },
+        },
+      ])
+    );
 
-    const newElement: any = {
-      type: 'text',
-      id: crypto.randomUUID(),
-      x, y,
-      width: 600,
-      height,
-      angle: 0,
-      strokeColor: isLightTheme ? '#44292b' : '#fffff0',
-      backgroundColor: 'transparent',
-      fillStyle: 'solid',
-      strokeWidth: 2,
-      strokeStyle: 'solid',
-      roughness: 1,
-      opacity: 100,
-      groupIds: [],
-      frameId: null,
-      roundness: null,
-      seed: Math.floor(Math.random() * 100000),
-      version: 1,
-      versionNonce: Math.floor(Math.random() * 100000),
-      isDeleted: false,
-      boundElements: null,
-      updated: Date.now(),
-      link: null,
-      locked: false,
-      text: insertText,
-      originalText: insertText,
-      fontSize,
-      fontFamily: 1,
-      textAlign: 'left',
-      verticalAlign: 'top',
-      containerId: null,
-      lineHeight,
-    };
-
-    api.updateScene({ elements: [...api.getSceneElements(), newElement] });
+    api.updateScene({
+      elements: [...api.getSceneElements(), ...newElements],
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+    api.scrollToContent?.(newElements[0], { fitToViewport: true });
     setLecturePickerOpen(false);
     setSelectedLecture(null);
     setInsertText('');
@@ -420,15 +468,17 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const handleExitRequest = () => setExitPrompt(true);
 
   const confirmExit = async (saveFirst: boolean) => {
-    if (saveFirst) await saveToProfile();
+    if (saveFirst && boardCanEdit) await saveToProfile();
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     setExitPrompt(false);
     setMode('modal');
     setActiveBoardId(null);
     setInitialData(null);
     setActiveBoard(null);
+    setBoardCanEdit(false);
     onCanvasMode?.(false);
     fetchBoards();
+    fetchRecentBoards();
   };
 
   // ── styles ─────────────────────────────────────────────────────────────────────
@@ -473,6 +523,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             excalidrawAPI={(api) => { excalidrawAPI.current = api; }}
             initialData={initialData}
             onChange={handleChange}
+            viewModeEnabled={!boardCanEdit}
             theme={isLightTheme ? 'light' : 'dark'}
             langCode="ru-RU"
             UIOptions={{
@@ -535,7 +586,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               </div>
             )}
 
-            {activeBoardId && (
+            {activeBoardId && boardCanEdit && (
               <div style={{ position: 'relative' }}>
                 <MobileIconButton icon="save" label="Сохранить" onClick={() => { setSaveMenuOpen(o => !o); setShareMenuOpen(false); }} />
                 {saveMenuOpen && (
@@ -564,49 +615,71 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               </div>
             )}
 
-            {activeBoardId && (
+            {activeBoardId && boardCanEdit && (
               <div style={{ position: 'relative' }}>
                 <MobileIconButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} active={activeBoard?.is_public} />
-                {shareMenuOpen && (
-                  <div style={{
-                    position: 'fixed',
-                    left: 12,
-                    right: 12,
-                    bottom: 88,
-                    transform: 'none',
-                    background: isLightTheme ? '#fffdf5' : '#140f11',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 12, padding: 12, minWidth: 0,
-                    boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
-                    zIndex: 400, whiteSpace: 'normal',
-                  }}>
-                    {activeBoard?.is_public ? (
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82' }}>check_circle</span>
-                          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Публичная ссылка активна</span>
+                    {shareMenuOpen && (
+                      <div style={{
+                        position: 'fixed',
+                        left: 12,
+                        right: 12,
+                        bottom: 88,
+                        transform: 'none',
+                        background: isLightTheme ? '#fffdf5' : '#140f11',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 12, padding: 12, minWidth: 0,
+                        boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
+                        zIndex: 400, whiteSpace: 'normal',
+                      }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.08em', opacity: 0.6 }}>РЕЖИМ ДОСТУПА</div>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                          <button
+                            style={{ ...btnSecondary, flex: 1, padding: '7px 10px', fontSize: 12, borderColor: shareModeDraft === 'view' ? '#82AA82' : 'var(--border-color)', background: shareModeDraft === 'view' ? 'rgba(130,170,130,0.12)' : 'var(--hover-bg)' }}
+                            onClick={() => setShareModeDraft('view')}
+                          >
+                            Только просмотр
+                          </button>
+                          <button
+                            style={{ ...btnSecondary, flex: 1, padding: '7px 10px', fontSize: 12, borderColor: shareModeDraft === 'edit' ? '#82AA82' : 'var(--border-color)', background: shareModeDraft === 'edit' ? 'rgba(130,170,130,0.12)' : 'var(--hover-bg)' }}
+                            onClick={() => setShareModeDraft('edit')}
+                          >
+                            Редактирование
+                          </button>
                         </div>
-                        <div style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 10, color: 'var(--text-primary)', opacity: 0.6, background: 'var(--hover-bg)', borderRadius: 8, padding: '6px 10px', fontFamily: 'monospace' }}>
-                          {`${window.location.origin}/board/${activeBoard.share_token}`}
-                        </div>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
-                          <button style={{ ...btnSecondary, fontSize: 12, padding: '7px 12px' }} onClick={disableShare}>Отключить</button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>Создайте публичную ссылку для просмотра</div>
-                        <button style={{ ...btnPrimary, width: '100%', fontSize: 13, padding: '8px 0' }} onClick={enableShare}>Включить ссылку</button>
-                      </>
+
+                        {activeBoard?.is_public ? (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82' }}>check_circle</span>
+                              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                                Публичная ссылка активна: {activeBoard.share_mode === 'edit' ? 'редактирование' : 'только просмотр'}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 10, color: 'var(--text-primary)', opacity: 0.6, background: 'var(--hover-bg)', borderRadius: 8, padding: '6px 10px', fontFamily: 'monospace' }}>
+                              {`${window.location.origin}/board/${activeBoard.share_token}`}
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
+                              <button style={{ ...btnSecondary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={() => enableShare(shareModeDraft)}>Сохранить режим</button>
+                              <button style={{ ...btnSecondary, fontSize: 12, padding: '7px 12px' }} onClick={disableShare}>Отключить</button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>Создайте публичную ссылку для доступа</div>
+                            <button style={{ ...btnPrimary, width: '100%', fontSize: 13, padding: '8px 0' }} onClick={() => enableShare(shareModeDraft)}>
+                              Включить ссылку
+                            </button>
+                          </>
+                        )}
+                      </div>
                     )}
-                  </div>
-                )}
               </div>
             )}
 
-            {activeBoardId && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
+            {activeBoardId && boardCanEdit && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
 
+            {boardCanEdit && (
             <div style={{ position: 'relative' }}>
               <MobileIconButton icon="format_color_fill" label="Фон" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} />
               {bgMenuOpen && (
@@ -666,6 +739,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 </div>
               )}
             </div>
+            )}
 
             {onToggleTheme && (
               <MobileIconButton icon={isLightTheme ? 'dark_mode' : 'light_mode'} label={isLightTheme ? 'Тёмная' : 'Светлая'} onClick={onToggleTheme} />
@@ -742,7 +816,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                       <span style={{ fontSize: 14, color: 'var(--text-primary)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                         {boardTitle}
                       </span>
-                      {activeBoardId && (
+                      {activeBoardId && boardCanEdit && (
                         <button onClick={() => setEditingTitle(true)} title="Переименовать"
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-secondary)', display: 'flex' }}>
                           <span className="material-symbols-outlined" style={{ fontSize: 14 }}>edit</span>
@@ -768,7 +842,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 </div>
 
                 {/* Save */}
-                {activeBoardId && (
+                {activeBoardId && boardCanEdit && (
                   <div style={{ position: 'relative' }}>
                     <PanelButton icon="save" label="Сохранить" onClick={() => { setSaveMenuOpen(o => !o); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
                     {saveMenuOpen && (
@@ -794,7 +868,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 )}
 
                 {/* Share */}
-                {activeBoardId && (
+                {activeBoardId && boardCanEdit && (
                   <div style={{ position: 'relative' }}>
                     <PanelButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} isLightTheme={isLightTheme} active={activeBoard?.is_public} />
                     {shareMenuOpen && (
@@ -806,24 +880,43 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                         boxShadow: '0 12px 32px rgba(0,0,0,0.2)',
                         zIndex: 400, whiteSpace: 'nowrap',
                       }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.08em', opacity: 0.6 }}>РЕЖИМ ДОСТУПА</div>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                          <button
+                            style={{ ...btnSecondary, flex: 1, padding: '7px 10px', fontSize: 12, borderColor: shareModeDraft === 'view' ? '#82AA82' : 'var(--border-color)', background: shareModeDraft === 'view' ? 'rgba(130,170,130,0.12)' : 'var(--hover-bg)' }}
+                            onClick={() => setShareModeDraft('view')}
+                          >
+                            Только просмотр
+                          </button>
+                          <button
+                            style={{ ...btnSecondary, flex: 1, padding: '7px 10px', fontSize: 12, borderColor: shareModeDraft === 'edit' ? '#82AA82' : 'var(--border-color)', background: shareModeDraft === 'edit' ? 'rgba(130,170,130,0.12)' : 'var(--hover-bg)' }}
+                            onClick={() => setShareModeDraft('edit')}
+                          >
+                            Редактирование
+                          </button>
+                        </div>
+
                         {activeBoard?.is_public ? (
                           <>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                               <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82' }}>check_circle</span>
-                              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Публичная ссылка активна</span>
+                              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                                Публичная ссылка активна: {activeBoard.share_mode === 'edit' ? 'редактирование' : 'только просмотр'}
+                              </span>
                             </div>
                             <div style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 10, color: 'var(--text-primary)', opacity: 0.6, background: 'var(--hover-bg)', borderRadius: 8, padding: '6px 10px', fontFamily: 'monospace' }}>
                               {`${window.location.origin}/board/${activeBoard.share_token}`}
                             </div>
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
+                              <button style={{ ...btnSecondary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={() => enableShare(shareModeDraft)}>Сохранить режим</button>
                               <button style={{ ...btnSecondary, fontSize: 12, padding: '7px 12px' }} onClick={disableShare}>Отключить</button>
                             </div>
                           </>
                         ) : (
                           <>
-                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>Создайте публичную ссылку для просмотра</div>
-                            <button style={{ ...btnPrimary, width: '100%', fontSize: 13, padding: '8px 0' }} onClick={enableShare}>Включить ссылку</button>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>Создайте публичную ссылку для доступа</div>
+                            <button style={{ ...btnPrimary, width: '100%', fontSize: 13, padding: '8px 0' }} onClick={() => enableShare(shareModeDraft)}>Включить ссылку</button>
                           </>
                         )}
                       </div>
@@ -832,9 +925,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 )}
 
                 {/* Lecture */}
-                {activeBoardId && <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />}
+                {activeBoardId && boardCanEdit && <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />}
 
                 {/* Background */}
+                {boardCanEdit && (
                 <div style={{ position: 'relative' }}>
                   <PanelButton icon="format_color_fill" label="Фон холста" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
                   {bgMenuOpen && (
@@ -890,6 +984,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                     </div>
                   )}
                 </div>
+                )}
 
                 <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 4px' }} />
 
@@ -919,18 +1014,18 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 Выйти с полотна?
               </div>
               <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.6 }}>
-                {activeBoardId
+                {boardCanEdit
                   ? 'Несохранённые изменения будут потеряны.'
                   : 'Вы просматривали полотно в режиме только для чтения.'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {activeBoardId && (
+                {activeBoardId && boardCanEdit && (
                   <button style={{ ...btnPrimary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(true)}>
                     Сохранить и выйти
                   </button>
                 )}
                 <button style={{ ...btnSecondary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(false)}>
-                  {activeBoardId ? 'Выйти без сохранения' : 'Выйти'}
+                  {boardCanEdit ? 'Выйти без сохранения' : 'Выйти'}
                 </button>
                 <button style={{ ...btnSecondary, width: '100%', textAlign: 'center', opacity: 0.7 }} onClick={() => setExitPrompt(false)}>
                   Отмена
@@ -1083,7 +1178,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // ────────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: 'Georgia, serif', color: 'var(--text-primary)' }}>
-      <h1 style={{ fontSize: 32, fontWeight: 300, marginBottom: 8 }}>Полотно</h1>
+      <h1 style={{ fontSize: 32, fontWeight: 300, marginBottom: 8, textAlign: 'center' }}>Полотно</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: 32, fontSize: 15 }}>
         Интерактивная доска для визуализации лекций, рисунков и схем
       </p>
@@ -1187,6 +1282,38 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
           </div>
         )}
       </div>
+
+      <div style={{ marginTop: 40 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 300, marginBottom: 16 }}>Недавние доски</h2>
+        {recentLoading ? (
+          <div style={{ color: 'var(--text-secondary)', fontSize: 14 }}>Загрузка...</div>
+        ) : recentBoards.length === 0 ? (
+          <div style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
+            Здесь появятся чужие доски, которые вы открывали по ссылке.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, maxWidth: 860 }}>
+            {recentBoards.map(board => (
+              <BoardCard
+                key={board.id}
+                board={board}
+                onOpen={() => openBoard(board.id)}
+                onDelete={async () => {
+                  await fetch(`${API_BASE}/api/boards/recent/${board.id}`, {
+                    method: 'DELETE', headers: authHeaders(),
+                  });
+                  fetchRecentBoards();
+                }}
+                isLightTheme={isLightTheme}
+                owner={board.owner}
+                lastOpenedAt={board.last_opened_at}
+                accessMode={board.last_access_mode}
+                isRecent
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -1277,12 +1404,19 @@ interface BoardCardProps {
   onOpen: () => void;
   onDelete: () => void;
   isLightTheme: boolean;
+  owner?: BoardOwner | null;
+  lastOpenedAt?: string | null;
+  accessMode?: 'view' | 'edit';
+  isRecent?: boolean;
 }
 
-const BoardCard: React.FC<BoardCardProps> = ({ board, onOpen, onDelete, isLightTheme }) => {
+const BoardCard: React.FC<BoardCardProps> = ({ board, onOpen, onDelete, isLightTheme, owner, lastOpenedAt, accessMode, isRecent }) => {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const formatDate = (s: string) =>
+    new Date(s).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  const formatOpenedAt = (s: string) =>
     new Date(s).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   return (
@@ -1321,7 +1455,17 @@ const BoardCard: React.FC<BoardCardProps> = ({ board, onOpen, onDelete, isLightT
         <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
           {formatDate(board.updated_at)}
           {board.is_public && (
-            <span style={{ marginLeft: 6, opacity: 0.6 }}>• публичное</span>
+            <span style={{ marginLeft: 6, opacity: 0.6 }}>• {board.share_mode === 'edit' ? 'публичное редактирование' : 'публичное'}</span>
+          )}
+          {isRecent && owner && (
+            <div style={{ marginTop: 4, opacity: 0.85 }}>
+              {owner.full_name || owner.login}
+            </div>
+          )}
+          {lastOpenedAt && (
+            <div style={{ marginTop: 4, opacity: 0.75 }}>
+              Открыто: {formatOpenedAt(lastOpenedAt)}{accessMode ? ` • ${accessMode === 'edit' ? 'редактирование' : 'просмотр'}` : ''}
+            </div>
           )}
         </div>
       </div>

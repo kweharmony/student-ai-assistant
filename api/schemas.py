@@ -302,11 +302,25 @@ class BoardUpdate(BaseModel):
     is_public: Optional[bool] = None
 
 
+class BoardShareRequest(BaseModel):
+    mode: str = Field("view", pattern="^(view|edit)$")
+
+
+class BoardOwnerOut(BaseModel):
+    id: UUID
+    login: str
+    full_name: Optional[str] = None
+    role: str
+
+    model_config = {"from_attributes": True}
+
+
 class BoardOut(BaseModel):
     id: UUID
     title: str
     is_public: bool
     share_token: Optional[str] = None
+    share_mode: str = "view"
     created_at: datetime
     updated_at: datetime
 
@@ -315,3 +329,11 @@ class BoardOut(BaseModel):
 
 class BoardDetailOut(BoardOut):
     data: Optional[str] = None
+    owner: Optional[BoardOwnerOut] = None
+    can_edit: bool = False
+
+
+class BoardRecentOut(BoardOut):
+    owner: Optional[BoardOwnerOut] = None
+    last_opened_at: Optional[datetime] = None
+    last_access_mode: str = "view"

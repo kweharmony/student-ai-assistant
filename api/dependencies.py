@@ -17,6 +17,7 @@ from .auth import decode_access_token
 from .models import User
 
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -66,6 +67,32 @@ async def get_current_user(
                 },
             )
 
+    return user
+
+
+async def get_current_user_optional(
+    creds: HTTPAuthorizationCredentials | None = Depends(optional_security),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    if creds is None:
+        return None
+
+    payload = decode_access_token(creds.credentials)
+    if payload is None:
+        return None
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
+
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.student_profile), selectinload(User.teacher_profile))
+        .where(User.id == UUID(user_id), User.is_deleted == False)
+    )
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        return None
     return user
 
 

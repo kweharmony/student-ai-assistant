@@ -99,7 +99,7 @@ const PublicBoardPage: React.FC = () => {
           padding: '0 4px 8px',
           borderBottom: '1px solid var(--border-color)',
           fontSize: 13,
-          color: 'var(--text-primary)',
+          color: isLightTheme ? '#2b1c1d' : '#fffff0',
           maxWidth: 160,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -113,7 +113,7 @@ const PublicBoardPage: React.FC = () => {
           display: 'flex', alignItems: 'center', gap: 6,
           padding: '4px 6px',
           fontSize: 11,
-          color: 'var(--text-secondary)',
+          color: isLightTheme ? '#5c4446' : '#c8c8b0',
         }}>
           <span className="material-symbols-outlined" style={{ fontSize: 14 }}>visibility</span>
           Только просмотр
@@ -125,7 +125,7 @@ const PublicBoardPage: React.FC = () => {
         <Link to="/auth" style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '8px 10px', borderRadius: 8,
-          color: 'var(--text-primary)',
+          color: isLightTheme ? '#2b1c1d' : '#fffff0',
           fontSize: 13, textDecoration: 'none',
           transition: 'background .15s',
         }}

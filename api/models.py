@@ -226,11 +226,27 @@ class Board(Base):
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     share_token = Column(String(64), nullable=True, unique=True)
     is_public = Column(Boolean, default=False, nullable=False)
+    share_mode = Column(String(10), default="view", nullable=False)
     data = Column(Text, nullable=True)  # Excalidraw JSON state
     created_at = Column(DateTime, default=_now, nullable=False)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
 
     owner = relationship("User")
+
+
+class BoardVisit(Base):
+    __tablename__ = "board_visits"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    board_id = Column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    last_access_mode = Column(String(10), default="view", nullable=False)
+    last_opened_at = Column(DateTime, default=_now, nullable=False)
+
+    board = relationship("Board")
+    user = relationship("User")
+
+    __table_args__ = (UniqueConstraint("board_id", "user_id", name="uq_board_visit_board_user"),)
 
 
 # ========== 10. admin_actions ==========
