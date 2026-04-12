@@ -455,7 +455,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         )}
 
         {activeSection === 'catalog' && (
-          <CatalogSection isLightTheme={isLightTheme} />
+          <CatalogSection isLightTheme={isLightTheme} onOpenInEditor={handleOpenInEditor} />
         )}
 
         {activeSection === 'catalog-moderation' && (
