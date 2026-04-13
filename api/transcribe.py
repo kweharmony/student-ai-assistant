@@ -10,7 +10,7 @@ import os
 import logging
 import uuid as uuid_mod
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -120,6 +120,7 @@ async def upload_audio(
             file_name=audio.filename,
             file_size=len(content),
             mime_type=mime_map.get(file_extension),
+            audio_expires_at=datetime.utcnow() + timedelta(days=7),
         )
         db.add(audio_record)
         await db.flush()

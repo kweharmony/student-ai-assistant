@@ -56,7 +56,7 @@ function audioExpiryInfo(expires_at: string | null): { daysLeft: number; expired
 
 interface LecturesSectionProps {
   isLightTheme: boolean;
-  onOpenInEditor: (text: string, lectureId: string) => void;
+  onOpenInEditor: (text: string, lectureId: string, lectureTitle?: string) => void;
   onReTranscribe: (lectureId: string) => void;
 }
 
@@ -565,7 +565,10 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
         headers: mlHeaders,
         body: JSON.stringify({ mode, content }),
       });
-      if (!saveRes.ok) throw new Error('Не удалось сохранить заметку');
+      if (!saveRes.ok) {
+        const err = await saveRes.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось сохранить заметку');
+      }
       const savedNote: NoteInfo = await saveRes.json();
 
       setLectures(prev => prev.map(l =>
@@ -1042,7 +1045,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
           onClose={() => setTextModalLecture(null)}
           onOpenInEditor={(text) => {
             setTextModalLecture(null);
-            onOpenInEditor(text, textModalLecture.id);
+            onOpenInEditor(text, textModalLecture.id, textModalLecture.title);
           }}
           authHeaders={authHeaders}
         />
@@ -1057,7 +1060,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
           onClose={() => setNoteModal(null)}
           onDeleted={(noteId) => handleNoteDeleted(noteModal.lecture.id, noteId)}
           onRegenerate={(mode) => handleGenerateNote(noteModal.lecture.id, mode)}
-          onOpenInEditor={(text) => { setNoteModal(null); onOpenInEditor(text, noteModal.lecture.id); }}
+          onOpenInEditor={(text) => { setNoteModal(null); onOpenInEditor(text, noteModal.lecture.id, noteModal.lecture.title); }}
           authHeaders={authHeaders}
         />
       )}

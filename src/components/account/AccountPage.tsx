@@ -83,6 +83,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
   // Lecture context for saving text back to DB
   const [currentLectureId, setCurrentLectureId] = useState<string | null>(null);
+  const [currentLectureTitle, setCurrentLectureTitle] = useState<string | null>(null);
 
   // Закрытие мобильного меню при изменении размера экрана
   useEffect(() => {
@@ -309,8 +310,9 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   };
 
   // Открыть текст лекции прямо в редакторе (из раздела "Мои лекции")
-  const handleOpenInEditor = (text: string, lectureId: string) => {
+  const handleOpenInEditor = (text: string, lectureId: string, lectureTitle?: string) => {
     setCurrentLectureId(lectureId);
+    setCurrentLectureTitle(lectureTitle || null);
     if (editorInstance) {
       editorInstance.commands.setContent(text);
     }
@@ -478,6 +480,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             editorMode={editorMode}
             setEditorMode={setEditorMode}
             lectureId={currentLectureId || undefined}
+            lectureTitle={currentLectureTitle || undefined}
             onSaveLecture={handleSaveLectureText}
           />
         )}

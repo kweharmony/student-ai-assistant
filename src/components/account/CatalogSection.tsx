@@ -37,7 +37,7 @@ interface CatalogItem {
 }
 interface LectureNoteInfo { id: string; mode: string; created_at: string }
 interface LectureDetail { id: string; transcriptions: { raw_text: string; processed_text: string | null }[] }
-interface CatalogSectionProps { isLightTheme: boolean; onOpenInEditor: (text: string, lectureId: string) => void }
+interface CatalogSectionProps { isLightTheme: boolean; onOpenInEditor: (text: string, lectureId: string, lectureTitle?: string) => void }
 
 const semesterLabel = (s: Semester) => (s === 'winter' ? 'Зимний семестр' : 'Весенний семестр');
 const normalizeSemester = (value: string | null | undefined): Semester | '' => {
@@ -298,7 +298,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
 
           <div className="flex flex-wrap gap-2 mb-3">
             <button
-              onClick={() => onOpenInEditor(lectureTextByLecture[selectedLecture.lecture_id] || '', selectedLecture.lecture_id)}
+              onClick={() => onOpenInEditor(lectureTextByLecture[selectedLecture.lecture_id] || '', selectedLecture.lecture_id, selectedLecture.lecture_title)}
               className="px-3 py-2 rounded-lg text-sm"
               style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
             >
@@ -352,7 +352,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
               {noteTextContent || 'Пусто'}
             </div>
             <div className="mt-3 flex gap-2">
-              <button onClick={() => onOpenInEditor(noteTextContent, noteTextModal.lectureId)} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>
+              <button onClick={() => onOpenInEditor(noteTextContent, noteTextModal.lectureId, selectedLecture?.lecture_title)} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>
                 Открыть в редакторе
               </button>
               <button onClick={() => setNoteTextModal(null)} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>

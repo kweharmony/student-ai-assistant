@@ -26,6 +26,7 @@ interface TextProcessingSectionProps {
   editorMode: 'original' | 'processed';
   setEditorMode: (mode: 'original' | 'processed') => void;
   lectureId?: string;
+  lectureTitle?: string;
   onSaveLecture?: (text: string) => Promise<void>;
 }
 
@@ -85,6 +86,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   editorMode,
   setEditorMode,
   lectureId,
+  lectureTitle,
   onSaveLecture,
 }) => {
   const { token } = useAuth();
@@ -95,6 +97,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   const [lecturesLoading, setLecturesLoading] = useState(false);
   const [lectureSelectError, setLectureSelectError] = useState('');
   const [lectureLoadingId, setLectureLoadingId] = useState<string | null>(null);
+  const [localLectureTitle, setLocalLectureTitle] = useState<string | null>(null);
 
   const openLectureModal = async () => {
     setShowLectureModal(true);
@@ -142,6 +145,8 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
       setEditorContent(html);
       setShowTextEditor(true);
       setShowLectureModal(false);
+      const selected = userLectures.find((l: any) => l.id === lectureId);
+      setLocalLectureTitle(selected?.title || null);
     } catch {
       setLectureSelectError('Не удалось загрузить текст лекции');
     } finally {
@@ -163,6 +168,20 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
 
   // Хук для экспорта
   const { exportToTxt, exportToMarkdown, exportToDocx, exportToPdf } = useExport(editorInstance);
+
+  const sanitizeFilename = (value: string): string => {
+    const withoutForbidden = value.replace(/[<>:"/\\|?*]/g, ' ');
+    const withoutControl = Array.from(withoutForbidden)
+      .map((ch) => (ch.charCodeAt(0) < 32 ? ' ' : ch))
+      .join('');
+    return withoutControl.replace(/\s+/g, ' ').trim();
+  };
+
+  const buildExportFilename = (): string => {
+    const base = sanitizeFilename(lectureTitle || localLectureTitle || '');
+    if (base) return base;
+    return `document_${new Date().toISOString().split('T')[0]}`;
+  };
 
   // Хук для ML обработки
   const {
@@ -731,7 +750,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
               </button>
               <button
                 onClick={async () => {
-                  const filename = `document_${new Date().toISOString().split('T')[0]}`;
+                  const filename = buildExportFilename();
 
                   try {
                     switch (saveFormat) {
