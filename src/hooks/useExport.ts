@@ -85,6 +85,12 @@ export const useExport = (editor: Editor | null): UseExportReturn => {
         .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
         .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1\n')
         .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&gt;/gi, '>')
+        .replace(/&lt;/gi, '<')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
         .replace(/\n\s*\n\s*\n/g, '\n\n')
         .trim();
     };
