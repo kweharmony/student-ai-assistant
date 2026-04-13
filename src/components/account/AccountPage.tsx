@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { marked } from 'marked';
 import { useNavigate } from 'react-router-dom';
 import { AccountPageProps, ActiveSection } from './types';
 import Sidebar from './Sidebar';
@@ -310,14 +311,32 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   };
 
   // Открыть текст лекции прямо в редакторе (из раздела "Мои лекции")
+  const markdownToHtml = (value: string): string => {
+    marked.setOptions({ breaks: true, gfm: true });
+    return marked(value) as string;
+  };
+
+  const containsLatex = (value: string): boolean => {
+    return /\$\$[\s\S]+?\$\$|\$[^$\n]+\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/.test(value);
+  };
+
   const handleOpenInEditor = (text: string, lectureId: string, lectureTitle?: string) => {
     setCurrentLectureId(lectureId);
     setCurrentLectureTitle(lectureTitle || null);
+    const openAsProcessed = containsLatex(text);
+    const html = openAsProcessed ? markdownToHtml(text) : text;
     if (editorInstance) {
-      editorInstance.commands.setContent(text);
+      editorInstance.commands.setContent(html);
     }
-    setOriginalText(text);
-    setEditorMode('original');
+    setEditorContent(html);
+    if (openAsProcessed) {
+      setProcessedText(html);
+      setOriginalText('');
+      setEditorMode('processed');
+    } else {
+      setOriginalText(html);
+      setEditorMode('original');
+    }
     setActiveSection('text-processing');
     setShowTextEditor(true);
   };
