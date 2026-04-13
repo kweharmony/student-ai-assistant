@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import 'katex/dist/katex.min.css';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
 
@@ -134,6 +135,7 @@ const TextModal: React.FC<{
 }> = ({ lecture, isLightTheme, onClose, onOpenInEditor, authHeaders }) => {
   const [text, setText] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const textContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -150,6 +152,22 @@ const TextModal: React.FC<{
       }
     })();
   }, [lecture.id, authHeaders]);
+
+  useEffect(() => {
+    if (loading || !textContainerRef.current) return;
+    import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
+      if (!textContainerRef.current) return;
+      renderMathInElement(textContainerRef.current, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true },
+        ],
+        throwOnError: false,
+      });
+    });
+  }, [loading, text]);
 
   const headingColor = isLightTheme ? '#2a1918' : '#fff7ec';
   const mutedColor   = isLightTheme ? '#7a5a5c' : '#c6b7a7';
@@ -201,6 +219,7 @@ const TextModal: React.FC<{
             </div>
           ) : (
             <div
+              ref={textContainerRef}
               className="prose-modal text-sm leading-relaxed"
               style={{ color: isLightTheme ? '#4b2d2f' : '#f3e7d8', fontFamily: 'Georgia, serif' }}
               dangerouslySetInnerHTML={{ __html: mdParse(text ?? '') }}
@@ -226,6 +245,7 @@ const NoteModal: React.FC<{
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const contentContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -241,6 +261,22 @@ const NoteModal: React.FC<{
       }
     })();
   }, [noteInfo.id, lecture.id, authHeaders]);
+
+  useEffect(() => {
+    if (loading || !contentContainerRef.current) return;
+    import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
+      if (!contentContainerRef.current) return;
+      renderMathInElement(contentContainerRef.current, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true },
+        ],
+        throwOnError: false,
+      });
+    });
+  }, [loading, content]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -327,6 +363,7 @@ const NoteModal: React.FC<{
             </div>
           ) : (
             <div
+              ref={contentContainerRef}
               className="prose-modal text-sm leading-relaxed"
               style={{ color: isLightTheme ? '#4b2d2f' : '#f3e7d8', fontFamily: 'Georgia, serif' }}
               dangerouslySetInnerHTML={{ __html: mdParse(content ?? '') }}
