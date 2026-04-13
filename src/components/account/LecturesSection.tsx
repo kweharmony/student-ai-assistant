@@ -567,7 +567,11 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
       });
       if (!saveRes.ok) {
         const err = await saveRes.json().catch(() => ({}));
-        throw new Error(err.detail || 'Не удалось сохранить заметку');
+        throw new Error(
+          err.detail ||
+          err.message ||
+          (saveRes.status ? `Не удалось сохранить заметку (HTTP ${saveRes.status})` : 'Не удалось сохранить заметку')
+        );
       }
       const savedNote: NoteInfo = await saveRes.json();
 

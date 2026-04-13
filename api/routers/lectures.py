@@ -156,6 +156,7 @@ async def list_my_lectures(
     lectures = result.scalars().all()
 
     out: List[LectureMyOut] = []
+    has_audio_expiry_backfill = False
     for lec in lectures:
         active_transcriptions = [t for t in lec.transcriptions if not t.is_deleted]
         active_audio = [a for a in lec.audio_files if not a.is_deleted]
@@ -164,6 +165,9 @@ async def list_my_lectures(
         audio_expires_at = None
         if active_audio:
             latest_audio = sorted(active_audio, key=lambda a: a.created_at, reverse=True)[0]
+            if latest_audio.audio_expires_at is None:
+                latest_audio.audio_expires_at = latest_audio.created_at + timedelta(days=7)
+                has_audio_expiry_backfill = True
             audio_expires_at = latest_audio.audio_expires_at
             task_result = await db.execute(
                 select(TranscriptionTask)
@@ -199,6 +203,8 @@ async def list_my_lectures(
                 for n in lec.notes
             ],
         ))
+    if has_audio_expiry_backfill:
+        await db.commit()
     return out
 
 
@@ -546,12 +552,8 @@ async def upsert_lecture_note(
 ):
     """Создать или обновить заметку (один режим — одна заметка на лекцию)."""
 
-    lecture = await _get_lecture_or_404(lecture_id, db)
-    if lecture.catalog_item is not None:
-        if not can_moderate_stream(user, lecture.catalog_item.stream_id):
-            raise HTTPException(status_code=403, detail="Материалы базы лекций может редактировать только админ или староста потока")
-    else:
-        _check_owner(lecture, user)
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    _check_owner_or_catalog_moderator(lecture, user)
 
     result = await db.execute(
         select(LectureNote).where(
@@ -584,12 +586,8 @@ async def delete_lecture_note(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    lecture = await _get_lecture_or_404(lecture_id, db)
-    if lecture.catalog_item is not None:
-        if not can_moderate_stream(user, lecture.catalog_item.stream_id):
-            raise HTTPException(status_code=403, detail="Материалы базы лекций может удалять только админ или староста потока")
-    else:
-        _check_owner(lecture, user)
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    _check_owner_or_catalog_moderator(lecture, user)
 
     result = await db.execute(
         select(LectureNote).where(
