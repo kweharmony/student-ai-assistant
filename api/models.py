@@ -352,6 +352,12 @@ class PublicationRequestStatus(str, enum.Enum):
     rejected = "rejected"
 
 
+class MaterialGenerationRequestStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
 class LecturePublicationRequest(Base):
     __tablename__ = "lecture_publication_requests"
 
@@ -405,3 +411,29 @@ class LectureCatalogItem(Base):
     stream = relationship("Stream")
     publisher = relationship("User", foreign_keys=[published_by])
     source_request = relationship("LecturePublicationRequest")
+
+
+class LectureMaterialGenerationRequest(Base):
+    __tablename__ = "lecture_material_generation_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    lecture_id = Column(UUID(as_uuid=True), ForeignKey("lectures.id", ondelete="CASCADE"), nullable=False, index=True)
+    stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id"), nullable=False, index=True)
+    mode = Column(String(50), nullable=False, index=True)
+    requested_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    status = Column(
+        Enum(MaterialGenerationRequestStatus, name="material_generation_request_status", native_enum=False),
+        default=MaterialGenerationRequestStatus.pending,
+        nullable=False,
+        index=True,
+    )
+    review_comment = Column(String(500), nullable=True)
+    reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    lecture = relationship("Lecture")
+    stream = relationship("Stream")
+    requester = relationship("User", foreign_keys=[requested_by])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])

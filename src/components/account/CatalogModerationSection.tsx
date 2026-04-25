@@ -25,9 +25,36 @@ interface ReqItem {
   requested_by_login: string;
 }
 
+interface MaterialReqItem {
+  id: string;
+  lecture_id: string;
+  lecture_title: string;
+  stream_id: string;
+  direction_id: string;
+  faculty_id: string;
+  stream_name: string;
+  direction_name: string;
+  faculty_name: string;
+  mode: string;
+  status: 'pending' | 'approved' | 'rejected';
+  review_comment: string | null;
+  requested_by_login: string;
+  created_at: string;
+}
+
 interface LookupItem { id: string; name: string }
 interface DirectionItem extends LookupItem { faculty_id: string }
 interface StreamItem extends LookupItem { direction_id: string; course: number | null; study_year_start: number | null }
+type DeletableNodeType = 'faculty' | 'direction' | 'stream';
+
+interface DeleteDialogState {
+  open: boolean;
+  nodeType: DeletableNodeType;
+  nodeId: string;
+  nodeName: string;
+  message: string;
+  counts: Record<string, number>;
+}
 
 interface CatalogModerationSectionProps {
   isLightTheme: boolean;
@@ -35,6 +62,13 @@ interface CatalogModerationSectionProps {
 
 const statusLabel: Record<string, string> = { pending: 'На модерации', approved: 'Одобрено', rejected: 'Отклонено' };
 const statusColor: Record<string, string> = { pending: '#f59e0b', approved: '#22c55e', rejected: '#ef4444' };
+const materialModeLabels: Record<string, string> = {
+  summary: 'Краткий конспект',
+  detailed_notes: 'Расширенный конспект',
+  qa: 'Q&A',
+  flashcards: 'Флешкарточки',
+  mindmap: 'Майнд-карта',
+};
 type NodeType = 'root' | 'faculty' | 'direction' | 'stream';
 const normalizeSemesterForApi = (value: string | null | undefined): 'winter' | 'spring' | null => {
   const lower = (value || '').trim().toLowerCase();
@@ -69,6 +103,13 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [processing, setProcessing] = useState(false);
   const [previewText, setPreviewText] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [materialRequests, setMaterialRequests] = useState<MaterialReqItem[]>([]);
+  const [materialSelectedId, setMaterialSelectedId] = useState<string | null>(null);
+  const [materialStatusFilter, setMaterialStatusFilter] = useState<string>('pending');
+  const [materialSearchQuery, setMaterialSearchQuery] = useState('');
+  const [materialReviewText, setMaterialReviewText] = useState<Record<string, string>>({});
+  const [materialLoading, setMaterialLoading] = useState(false);
+  const [materialProcessing, setMaterialProcessing] = useState(false);
 
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
   const [directions, setDirections] = useState<DirectionItem[]>([]);
@@ -83,6 +124,8 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [newFacultyName, setNewFacultyName] = useState('');
   const [newDirectionName, setNewDirectionName] = useState('');
   const [newStreamName, setNewStreamName] = useState('');
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
+  const [deleteProcessing, setDeleteProcessing] = useState(false);
 
   const headingColor = isLightTheme ? '#2a1918' : '#fff7ec';
   const mutedColor = isLightTheme ? '#7a5a5c' : '#c6b7a7';
@@ -113,6 +156,21 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     if (d.ok) setDirections(await d.json());
     if (s.ok) setStreams(await s.json());
   }, [headers]);
+
+  const loadMaterialRequests = useCallback(async () => {
+    setMaterialLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (materialStatusFilter) params.set('status', materialStatusFilter);
+      const res = await fetch(`${API_BASE}/api/catalog/material-requests?${params}`, { headers });
+      if (!res.ok) return;
+      const data: MaterialReqItem[] = await res.json();
+      setMaterialRequests(data);
+      setMaterialSelectedId(prev => (prev && data.some(d => d.id === prev) ? prev : (data[0]?.id ?? null)));
+    } finally {
+      setMaterialLoading(false);
+    }
+  }, [headers, materialStatusFilter]);
 
   const directionsByFaculty = useMemo(() => {
     const map: Record<string, DirectionItem[]> = {};
@@ -154,9 +212,24 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const selectedStreamId = selected ? (streamIdText[selected.id] ?? selected.stream_id ?? '') : '';
   const selectedDirectionOptions = directions.filter(d => !selectedFacultyId || d.faculty_id === selectedFacultyId);
   const selectedStreamOptions = streams.filter(s => !selectedDirectionId || s.direction_id === selectedDirectionId);
+  const materialFiltered = useMemo(() => {
+    const q = materialSearchQuery.trim().toLowerCase();
+    if (!q) return materialRequests;
+    return materialRequests.filter(r =>
+      r.lecture_title.toLowerCase().includes(q) ||
+      r.requested_by_login.toLowerCase().includes(q) ||
+      (materialModeLabels[r.mode] || r.mode).toLowerCase().includes(q) ||
+      r.stream_name.toLowerCase().includes(q)
+    );
+  }, [materialRequests, materialSearchQuery]);
+  const materialSelected = useMemo(
+    () => materialFiltered.find(r => r.id === materialSelectedId) ?? materialFiltered[0] ?? null,
+    [materialFiltered, materialSelectedId]
+  );
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
   useEffect(() => { loadLookups(); }, [loadLookups]);
+  useEffect(() => { loadMaterialRequests(); }, [loadMaterialRequests]);
   useEffect(() => { setPreviewText(''); }, [selectedId]);
   useEffect(() => {
     if (!selected) return;
@@ -254,6 +327,29 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     }
   };
 
+  const moderateMaterialRequest = async (id: string, action: 'approve' | 'reject') => {
+    const review_comment = (materialReviewText[id] || '').trim();
+    if (action === 'reject' && !review_comment) return alert('Для отклонения нужно указать причину.');
+    setMaterialProcessing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/material-requests/${id}/${action}`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ review_comment: review_comment || null }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Ошибка обработки заявки на материал');
+      }
+      await loadMaterialRequests();
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setMaterialProcessing(false);
+    }
+  };
+
   const openPreview = async (lectureId: string) => {
     setPreviewLoading(true);
     try {
@@ -310,6 +406,89 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     await loadLookups();
     selectStreamNode(activeFacultyId, activeDirectionId, created.id);
   };
+
+  const pluralByNodeType: Record<DeletableNodeType, string> = {
+    faculty: 'faculties',
+    direction: 'directions',
+    stream: 'streams',
+  };
+
+  const parseDeleteError = (payload: any) => {
+    if (!payload) return null;
+    if (payload.detail && typeof payload.detail === 'object') return payload.detail;
+    if (typeof payload.detail === 'string') return { message: payload.detail };
+    if (typeof payload === 'object') return payload;
+    return null;
+  };
+
+  const deleteNode = async (nodeType: DeletableNodeType, nodeId: string, nodeName: string, force = false) => {
+    if (!nodeId) return;
+    const params = force ? '?force=true' : '';
+    const res = await fetch(`${API_BASE}/api/catalog/${pluralByNodeType[nodeType]}/${nodeId}${params}`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (res.ok) {
+      if (nodeType === 'faculty') {
+        setActiveNodeType('root');
+        setActiveFacultyId('');
+        setActiveDirectionId('');
+        setActiveStreamId('');
+      } else if (nodeType === 'direction') {
+        setActiveNodeType('faculty');
+        setActiveDirectionId('');
+        setActiveStreamId('');
+      } else {
+        setActiveNodeType('direction');
+        setActiveStreamId('');
+      }
+      setDeleteDialog(null);
+      await Promise.all([loadLookups(), loadRequests()]);
+      window.dispatchEvent(new Event('catalog:refresh'));
+      return;
+    }
+
+    const payload = await res.json().catch(() => ({}));
+    const detail = parseDeleteError(payload);
+    if (res.status === 409 && detail?.code === 'catalog_node_not_empty') {
+      setDeleteDialog({
+        open: true,
+        nodeType,
+        nodeId,
+        nodeName,
+        message: detail.message || `В разделе ${nodeName} есть вложенные элементы. Удалить всё?`,
+        counts: detail.counts || {},
+      });
+      return;
+    }
+    alert(detail?.message || 'Не удалось удалить раздел каталога.');
+  };
+
+  const confirmDeleteFromDialog = async () => {
+    if (!deleteDialog) return;
+    setDeleteProcessing(true);
+    try {
+      await deleteNode(deleteDialog.nodeType, deleteDialog.nodeId, deleteDialog.nodeName, true);
+    } finally {
+      setDeleteProcessing(false);
+    }
+  };
+
+  const deleteCountEntries = useMemo(() => {
+    if (!deleteDialog?.counts) return [];
+    const labels: Record<string, string> = {
+      directions: 'Направлений',
+      streams: 'Потоков',
+      catalog_items: 'Файлов (лекций)',
+      publication_requests: 'Заявок',
+      material_generation_requests: 'Заявок на материалы',
+      users: 'Пользователей',
+    };
+    return Object.entries(deleteDialog.counts)
+      .filter(([, value]) => Number(value) > 0)
+      .map(([key, value]) => ({ label: labels[key] || key, value: Number(value) }));
+  }, [deleteDialog]);
 
   return (
     <div>
@@ -456,6 +635,78 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       </div>
 
       <section className="mt-5 border rounded-xl p-4" style={surface}>
+        <h3 className="text-base font-medium mb-3" style={{ color: headingColor }}>Заявки на генерацию материалов</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] gap-4">
+          <section className="border rounded-xl p-3" style={{ ...surface, background: 'var(--bg-primary)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <select value={materialStatusFilter} onChange={(e) => setMaterialStatusFilter(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                <option value="pending">На модерации</option>
+                <option value="approved">Одобрено</option>
+                <option value="rejected">Отклонено</option>
+                <option value="">Все</option>
+              </select>
+              <button onClick={loadMaterialRequests} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>Обновить</button>
+            </div>
+            <input value={materialSearchQuery} onChange={(e) => setMaterialSearchQuery(e.target.value)} placeholder="Поиск по заявкам..." className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+            <div className="max-h-[55vh] overflow-y-auto space-y-2 pr-1">
+              {materialLoading ? <p className="text-sm px-2 py-3" style={{ color: mutedColor }}>Загрузка...</p> : materialFiltered.length === 0 ? <p className="text-sm px-2 py-3" style={{ color: mutedColor }}>Заявок нет</p> : materialFiltered.map((req) => (
+                <button key={req.id} onClick={() => setMaterialSelectedId(req.id)} className="w-full text-left border rounded-lg p-3 transition-all" style={{ borderColor: materialSelected?.id === req.id ? 'var(--text-primary)' : 'var(--border-color)', background: materialSelected?.id === req.id ? 'rgba(68,41,43,0.08)' : 'var(--bg-primary)' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium truncate" style={{ color: headingColor }}>{req.lecture_title}</p>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: `${statusColor[req.status]}22`, color: statusColor[req.status] }}>{statusLabel[req.status]}</span>
+                  </div>
+                  <p className="text-xs mt-1 truncate" style={{ color: mutedColor }}>{materialModeLabels[req.mode] || req.mode}</p>
+                  <p className="text-xs mt-0.5 truncate" style={{ color: mutedColor }}>От: {req.requested_by_login} · {req.stream_name}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="border rounded-xl p-4" style={{ ...surface, background: 'var(--bg-primary)' }}>
+            {!materialSelected ? <p className="text-sm" style={{ color: mutedColor }}>Выберите заявку слева.</p> : (
+              <>
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: headingColor }}>{materialSelected.lecture_title}</p>
+                    <p className="text-xs mt-1" style={{ color: mutedColor }}>
+                      {materialSelected.faculty_name} · {materialSelected.direction_name} · {materialSelected.stream_name}
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: mutedColor }}>
+                      Режим: <span style={{ color: headingColor }}>{materialModeLabels[materialSelected.mode] || materialSelected.mode}</span>
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: mutedColor }}>
+                      Автор заявки: {materialSelected.requested_by_login}
+                    </p>
+                  </div>
+                  <span className="text-xs px-2 py-1 rounded-full" style={{ background: `${statusColor[materialSelected.status]}22`, color: statusColor[materialSelected.status] }}>{statusLabel[materialSelected.status]}</span>
+                </div>
+
+                <textarea
+                  value={materialReviewText[materialSelected.id] ?? ''}
+                  onChange={(e) => setMaterialReviewText(prev => ({ ...prev, [materialSelected.id]: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border text-sm mb-3"
+                  style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  rows={3}
+                  placeholder="Комментарий модератора (обязателен при отклонении)"
+                />
+
+                {materialSelected.review_comment && (
+                  <p className="text-xs mb-3" style={{ color: mutedColor }}>
+                    Последний комментарий: {materialSelected.review_comment}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <button disabled={materialProcessing || materialSelected.status !== 'pending'} onClick={() => moderateMaterialRequest(materialSelected.id, 'approve')} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#22c55e', color: '#fff' }}>Одобрить и сгенерировать</button>
+                  <button disabled={materialProcessing || materialSelected.status !== 'pending'} onClick={() => moderateMaterialRequest(materialSelected.id, 'reject')} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#ef4444', color: '#fff' }}>Отклонить</button>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      </section>
+
+      <section className="mt-5 border rounded-xl p-4" style={surface}>
         <h3 className="text-base font-medium mb-2" style={{ color: headingColor }}>Структура каталога</h3>
         <div className="grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-4">
           <div className="border rounded-lg p-3 max-h-[560px] overflow-y-auto" style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
@@ -505,27 +756,97 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
             )}
 
             {activeNodeType === 'faculty' && activeFaculty && user?.role === 'admin' && (
-              <div className="flex gap-2">
-                <input value={newDirectionName} onChange={(e) => setNewDirectionName(e.target.value)} placeholder={`Новое направление для ${activeFaculty.name}`} className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                <button onClick={createDirection} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Добавить</button>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input value={newDirectionName} onChange={(e) => setNewDirectionName(e.target.value)} placeholder={`Новое направление для ${activeFaculty.name}`} className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                  <button onClick={createDirection} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Добавить</button>
+                </div>
+                <button
+                  onClick={() => deleteNode('faculty', activeFaculty.id, activeFaculty.name)}
+                  className="px-3 py-2 rounded-lg text-sm"
+                  style={{ background: 'rgba(239,68,68,.14)', color: '#ef4444' }}
+                >
+                  Удалить факультет
+                </button>
               </div>
             )}
 
             {activeNodeType === 'direction' && activeDirection && user?.role === 'admin' && (
               <div className="space-y-3">
                 <input value={newStreamName} onChange={(e) => setNewStreamName(e.target.value)} placeholder={`Новый поток для ${activeDirection.name}`} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                <button onClick={createStream} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Добавить поток</button>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={createStream} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Добавить поток</button>
+                  <button
+                    onClick={() => deleteNode('direction', activeDirection.id, activeDirection.name)}
+                    className="px-3 py-2 rounded-lg text-sm"
+                    style={{ background: 'rgba(239,68,68,.14)', color: '#ef4444' }}
+                  >
+                    Удалить направление
+                  </button>
+                </div>
               </div>
             )}
 
             {activeNodeType === 'stream' && activeStream && (
-              <div className="p-3 rounded-lg border text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
-                Публикация лекций в базу выполняется в разделе «Лекции» через кнопки «Предложить в базу» и «Добавить в базу».
+              <div className="space-y-3">
+                <div className="p-3 rounded-lg border text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+                  Публикация лекций в базу выполняется в разделе «Лекции» через кнопки «Предложить в базу» и «Добавить в базу».
+                </div>
+                {user?.role === 'admin' && (
+                  <button
+                    onClick={() => deleteNode('stream', activeStream.id, activeStream.name)}
+                    className="px-3 py-2 rounded-lg text-sm"
+                    style={{ background: 'rgba(239,68,68,.14)', color: '#ef4444' }}
+                  >
+                    Удалить поток
+                  </button>
+                )}
               </div>
             )}
           </div>
         </div>
       </section>
+
+      {deleteDialog?.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }}>
+          <div className="w-full max-w-xl rounded-2xl border p-5" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+            <h3 className="text-lg font-medium mb-2" style={{ color: headingColor }}>Подтвердите удаление</h3>
+            <p className="text-sm mb-3" style={{ color: mutedColor }}>{deleteDialog.message}</p>
+
+            {deleteCountEntries.length > 0 && (
+              <div className="rounded-lg border p-3 mb-4" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+                <p className="text-xs mb-2" style={{ color: mutedColor }}>Будут удалены:</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {deleteCountEntries.map((entry) => (
+                    <div key={entry.label} className="text-sm" style={{ color: headingColor }}>
+                      {entry.label}: {entry.value}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button
+                onClick={() => setDeleteDialog(null)}
+                className="px-4 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--hover-bg)', color: 'var(--text-primary)' }}
+                disabled={deleteProcessing}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={confirmDeleteFromDialog}
+                className="px-4 py-2 rounded-lg text-sm"
+                style={{ background: '#ef4444', color: '#fff' }}
+                disabled={deleteProcessing}
+              >
+                {deleteProcessing ? 'Удаление...' : 'Удалить всё'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

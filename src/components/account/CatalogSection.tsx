@@ -6,11 +6,11 @@ type Semester = 'winter' | 'spring';
 type SemesterKey = Semester | typeof NO_SEMESTER;
 
 const NOTE_MODES = [
-  { id: 'summary', label: 'Краткий конспект' },
-  { id: 'detailed_notes', label: 'Расширенный конспект' },
-  { id: 'qa', label: 'Q&A' },
-  { id: 'flashcards', label: 'Флешкарточки' },
-  { id: 'mindmap', label: 'Майнд-карта' },
+  { id: 'summary', label: 'Краткий конспект', icon: 'edit_note' },
+  { id: 'detailed_notes', label: 'Расширенный конспект', icon: 'auto_stories' },
+  { id: 'qa', label: 'Q&A', icon: 'help_outline' },
+  { id: 'flashcards', label: 'Флешкарточки', icon: 'style' },
+  { id: 'mindmap', label: 'Майнд-карта', icon: 'account_tree' },
 ];
 
 const NO_COURSE = '__no_course__';
@@ -41,6 +41,14 @@ interface CatalogItem {
 }
 
 interface LectureNoteInfo { id: string; mode: string; created_at: string }
+interface MaterialRequestInfo {
+  id: string;
+  lecture_id: string;
+  mode: string;
+  status: 'pending' | 'approved' | 'rejected';
+  review_comment: string | null;
+  created_at: string;
+}
 interface LectureDetail { id: string; transcriptions: { raw_text: string; processed_text: string | null }[] }
 interface CatalogSectionProps { isLightTheme: boolean; onOpenInEditor: (text: string, lectureId: string, lectureTitle?: string) => void }
 
@@ -126,11 +134,13 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
 
   const [selectedLecture, setSelectedLecture] = useState<CatalogItem | null>(null);
   const [notesByLecture, setNotesByLecture] = useState<Record<string, LectureNoteInfo[]>>({});
+  const [materialRequestsByLecture, setMaterialRequestsByLecture] = useState<Record<string, MaterialRequestInfo[]>>({});
   const [lectureTextByLecture, setLectureTextByLecture] = useState<Record<string, string>>({});
   const [noteTextModal, setNoteTextModal] = useState<{ lectureId: string; noteId: string; title: string } | null>(null);
   const [noteTextContent, setNoteTextContent] = useState('');
-  const [addNoteModeByLecture, setAddNoteModeByLecture] = useState<Record<string, string>>({});
-  const [addNoteContentByLecture, setAddNoteContentByLecture] = useState<Record<string, string>>({});
+  const [requestModal, setRequestModal] = useState<{ lecture: CatalogItem; modeId: string; modeLabel: string } | null>(null);
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [requestModalError, setRequestModalError] = useState('');
 
   const fetchLookups = useCallback(async () => {
     const [f, d, s] = await Promise.all([
@@ -504,27 +514,57 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
         setLectureTextByLecture((prev) => ({ ...prev, [item.lecture_id]: text }));
       }
     }
+    if (!materialRequestsByLecture[item.lecture_id]) {
+      const reqRes = await fetch(`${API_BASE}/api/catalog/material-requests/my?lecture_id=${item.lecture_id}`, { headers });
+      if (reqRes.ok) {
+        const reqs = await reqRes.json();
+        setMaterialRequestsByLecture((prev) => ({ ...prev, [item.lecture_id]: reqs }));
+      }
+    }
   };
 
-  const saveNote = async (lectureId: string) => {
-    const mode = addNoteModeByLecture[lectureId];
-    const content = (addNoteContentByLecture[lectureId] || '').trim();
-    if (!mode || !content) return;
+  const parseApiErrorMessage = (payload: any) => {
+    if (typeof payload?.detail === 'string') return payload.detail;
+    if (typeof payload?.detail?.message === 'string') return payload.detail.message;
+    if (typeof payload?.message === 'string') return payload.message;
+    return 'Не удалось выполнить действие';
+  };
 
-    const res = await fetch(`${API_BASE}/api/lectures/${lectureId}/notes`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode, content }),
-    });
-    if (!res.ok) return;
+  const openMaterialRequestModal = (lecture: CatalogItem, modeId: string, modeLabel: string) => {
+    setRequestModalError('');
+    setRequestModal({ lecture, modeId, modeLabel });
+  };
 
-    const nRes = await fetch(`${API_BASE}/api/lectures/${lectureId}/notes`, { headers });
-    if (nRes.ok) {
-      const notes = await nRes.json();
-      setNotesByLecture((prev) => ({ ...prev, [lectureId]: notes }));
+  const submitMaterialRequest = async () => {
+    if (!requestModal) return;
+    setRequestSubmitting(true);
+    setRequestModalError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/material-requests`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lecture_id: requestModal.lecture.lecture_id,
+          stream_id: requestModal.lecture.stream_id,
+          mode: requestModal.modeId,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setRequestModalError(parseApiErrorMessage(err));
+        return;
+      }
+
+      const reqRes = await fetch(`${API_BASE}/api/catalog/material-requests/my?lecture_id=${requestModal.lecture.lecture_id}`, { headers });
+      if (reqRes.ok) {
+        const reqs = await reqRes.json();
+        setMaterialRequestsByLecture((prev) => ({ ...prev, [requestModal.lecture.lecture_id]: reqs }));
+      }
+      setRequestModal(null);
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } finally {
+      setRequestSubmitting(false);
     }
-
-    setAddNoteContentByLecture((prev) => ({ ...prev, [lectureId]: '' }));
   };
 
   const openNoteText = async (lectureId: string, noteId: string, title: string) => {
@@ -579,6 +619,24 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
       </button>
     </div>
   );
+
+  const selectedLectureModeState = useMemo(() => {
+    if (!selectedLecture) return null;
+    const lectureId = selectedLecture.lecture_id;
+    const noteMap = new Map<string, LectureNoteInfo>();
+    (notesByLecture[lectureId] || []).forEach((note) => {
+      noteMap.set(note.mode, note);
+    });
+
+    const requestMap = new Map<string, MaterialRequestInfo>();
+    (materialRequestsByLecture[lectureId] || []).forEach((req) => {
+      if (!requestMap.has(req.mode)) {
+        requestMap.set(req.mode, req);
+      }
+    });
+
+    return { noteMap, requestMap };
+  }, [selectedLecture, notesByLecture, materialRequestsByLecture]);
 
   return (
     <div>
@@ -963,47 +1021,110 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
 
           <div className="mb-3">
             <p className="text-xs mb-2" style={{ color: mutedColor }}>Готовые режимы</p>
-            <div className="flex flex-wrap gap-2">
-              {(notesByLecture[selectedLecture.lecture_id] || []).map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => openNoteText(selectedLecture.lecture_id, n.id, n.mode)}
-                  className="px-3 py-1.5 rounded-lg text-xs border"
-                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
-                >
-                  {NOTE_MODES.find((m) => m.id === n.mode)?.label || n.mode}
-                </button>
-              ))}
-              {(notesByLecture[selectedLecture.lecture_id] || []).length === 0 && (
-                <span className="text-xs" style={{ color: mutedColor }}>Пока нет добавленных режимов</span>
-              )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {NOTE_MODES.map((mode) => {
+                const note = selectedLectureModeState?.noteMap.get(mode.id);
+                const latestReq = selectedLectureModeState?.requestMap.get(mode.id);
+                const isGenerated = Boolean(note);
+                const isPending = !isGenerated && latestReq?.status === 'pending';
+                const isRejected = !isGenerated && latestReq?.status === 'rejected';
+
+                const bg = isGenerated
+                  ? (isLightTheme ? 'rgba(34,197,94,.10)' : 'rgba(34,197,94,.12)')
+                  : isPending
+                    ? (isLightTheme ? 'rgba(245,158,11,.12)' : 'rgba(245,158,11,.16)')
+                    : isRejected
+                      ? (isLightTheme ? 'rgba(239,68,68,.10)' : 'rgba(239,68,68,.14)')
+                      : 'var(--bg-primary)';
+                const borderColor = isGenerated
+                  ? 'rgba(34,197,94,.35)'
+                  : isPending
+                    ? 'rgba(245,158,11,.4)'
+                    : isRejected
+                      ? 'rgba(239,68,68,.35)'
+                      : 'var(--border-color)';
+                const titleColor = isGenerated
+                  ? '#22c55e'
+                  : isPending
+                    ? '#f59e0b'
+                    : isRejected
+                      ? '#ef4444'
+                      : 'var(--text-primary)';
+
+                return (
+                  <button
+                    key={mode.id}
+                    onClick={() => {
+                      if (isGenerated && note) {
+                        openNoteText(selectedLecture.lecture_id, note.id, mode.label);
+                        return;
+                      }
+                      if (isPending) return;
+                      openMaterialRequestModal(selectedLecture, mode.id, mode.label);
+                    }}
+                    className="text-left p-3 rounded-lg border transition-all"
+                    style={{ background: bg, borderColor, color: 'var(--text-primary)' }}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="material-symbols-outlined" style={{ fontSize: 18, color: titleColor }}>{mode.icon}</span>
+                      <span className="text-sm font-medium" style={{ color: titleColor }}>{mode.label}</span>
+                    </div>
+                    <p className="text-xs" style={{ color: mutedColor }}>
+                      {isGenerated
+                        ? 'Материал готов. Нажмите, чтобы открыть.'
+                        : isPending
+                          ? 'Заявка отправлена модератору.'
+                          : isRejected
+                            ? `Отклонено${latestReq?.review_comment ? `: ${latestReq.review_comment}` : ''}`
+                            : 'Материала пока нет. Нажмите, чтобы отправить заявку.'}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
           </div>
+        </div>
+      )}
 
-          <div className="grid grid-cols-1 md:grid-cols-[240px,1fr,auto] gap-2">
-            <select
-              value={addNoteModeByLecture[selectedLecture.lecture_id] || ''}
-              onChange={(e) => setAddNoteModeByLecture((prev) => ({ ...prev, [selectedLecture.lecture_id]: e.target.value }))}
-              className="px-3 py-2 rounded-lg border text-sm"
-              style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-            >
-              <option value="">Выберите режим</option>
-              {NOTE_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-            <input
-              value={addNoteContentByLecture[selectedLecture.lecture_id] || ''}
-              onChange={(e) => setAddNoteContentByLecture((prev) => ({ ...prev, [selectedLecture.lecture_id]: e.target.value }))}
-              placeholder="Вставьте готовый текст режима"
-              className="px-3 py-2 rounded-lg border text-sm"
-              style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-            />
-            <button
-              onClick={() => saveNote(selectedLecture.lecture_id)}
-              className="px-3 py-2 rounded-lg text-sm"
-              style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
-            >
-              Добавить
-            </button>
+      {requestModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          onClick={() => setRequestModal(null)}
+        >
+          <div
+            className="rounded-2xl p-5 w-full max-w-lg"
+            style={{ background: isLightTheme ? 'rgba(255,255,240,.98)' : 'rgba(33,24,25,.97)', border: cardBorder }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 className="text-base font-medium mb-2" style={{ color: headingColor }}>Заявка на генерацию материала</h4>
+            <p className="text-sm mb-2" style={{ color: 'var(--text-primary)' }}>
+              Отправить модератору заявку на создание материала:
+            </p>
+            <p className="text-sm mb-4" style={{ color: mutedColor }}>
+              «{requestModal.modeLabel}» для лекции «{requestModal.lecture.lecture_title}»
+            </p>
+            {requestModalError && (
+              <p className="text-sm mb-3" style={{ color: '#ef4444' }}>{requestModalError}</p>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setRequestModal(null)}
+                className="px-3 py-2 rounded-lg text-sm border"
+                style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                disabled={requestSubmitting}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={submitMaterialRequest}
+                className="px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
+                disabled={requestSubmitting}
+              >
+                {requestSubmitting ? 'Отправка...' : 'Отправить заявку'}
+              </button>
+            </div>
           </div>
         </div>
       )}

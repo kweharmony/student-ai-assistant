@@ -370,6 +370,37 @@ class MyLecturePublicationStatusOut(BaseModel):
     latest_request_review_comment: Optional[str] = None
 
 
+class MaterialGenerationRequestCreateIn(BaseModel):
+    lecture_id: UUID
+    stream_id: UUID
+    mode: str = Field(..., min_length=1, max_length=50)
+
+
+class MaterialGenerationRequestModerateIn(BaseModel):
+    review_comment: Optional[str] = Field(None, max_length=500)
+
+
+class MaterialGenerationRequestOut(BaseModel):
+    id: UUID
+    lecture_id: UUID
+    lecture_title: str
+    stream_id: UUID
+    stream_name: str
+    direction_id: UUID
+    direction_name: str
+    faculty_id: UUID
+    faculty_name: str
+    mode: str
+    requested_by: UUID
+    requested_by_login: str
+    status: str
+    review_comment: Optional[str] = None
+    reviewed_by: Optional[UUID] = None
+    reviewed_by_login: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime
+
+
 class FacultyCreateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
 
