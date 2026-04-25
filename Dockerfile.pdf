@@ -1,10 +1,6 @@
 # ============================================================
 # MindeSync PDF Service — multi-stage build
 #
-
-personal
-
-
 # Stage 1 (deps):    npm ci в чистом окружении
 # Stage 2 (runtime): копируем node_modules, устанавливаем Chromium
 # ============================================================
