@@ -315,6 +315,8 @@ class PublicationRequestCreateIn(BaseModel):
 
 
 class PublicationRequestModerateIn(BaseModel):
+    lecture_title: Optional[str] = Field(None, min_length=1, max_length=300)
+    stream_id: Optional[UUID] = None
     discipline: Optional[str] = Field(None, min_length=1, max_length=150)
     lecturer_name: Optional[str] = Field(None, max_length=150)
     course_text: Optional[str] = Field(None, max_length=50)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import 'katex/dist/katex.min.css';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -47,6 +47,8 @@ interface StreamItem {
   direction_id: string;
   name: string;
 }
+
+type CatalogPublishMode = 'request' | 'direct';
 
 function audioExpiryInfo(expires_at: string | null): { daysLeft: number; expired: boolean } {
   if (!expires_at) return { daysLeft: 0, expired: true };
@@ -378,11 +380,10 @@ const NoteModal: React.FC<{
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenInEditor, onReTranscribe }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [lectures, setLectures] = useState<LectureItem[]>([]);
   const [publicationStatuses, setPublicationStatuses] = useState<Record<string, MyLecturePublicationStatus>>({});
   const [loading, setLoading] = useState(true);
-  const [lectureType, setLectureType] = useState<'my' | 'general'>('my'); // мои или общие лекции
 
   // Modal state
   const [textModalLecture, setTextModalLecture]     = useState<LectureItem | null>(null);
@@ -403,6 +404,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const [pendingTopicMode, setPendingTopicMode]     = useState<{ lectureId: string; mode: string } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [suggestModalLecture, setSuggestModalLecture] = useState<LectureItem | null>(null);
+  const [catalogPublishMode, setCatalogPublishMode] = useState<CatalogPublishMode>('request');
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
   const [directions, setDirections] = useState<DirectionItem[]>([]);
   const [streams, setStreams] = useState<StreamItem[]>([]);
@@ -410,10 +412,70 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     faculty_id: '',
     direction_id: '',
     stream_id: '',
+    discipline: '',
+    lecturer_name: '',
+    course_text: '',
+    semester_text: 'winter',
     lecture_number_text: '',
     study_year_text: '',
     comment: '',
   });
+
+  const canDirectPublish = user?.role === 'admin' || user?.is_group_head;
+  const allowedStreams = useMemo(() => {
+    if (user?.role === 'admin') return streams;
+    if (user?.is_group_head && user?.stream_id) return streams.filter((s) => s.id === user.stream_id);
+    return streams;
+  }, [streams, user]);
+
+  const resetSuggestData = useCallback(() => {
+    setSuggestData({
+      faculty_id: '',
+      direction_id: '',
+      stream_id: '',
+      discipline: '',
+      lecturer_name: '',
+      course_text: '',
+      semester_text: 'winter',
+      lecture_number_text: '',
+      study_year_text: '',
+      comment: '',
+    });
+  }, []);
+
+  const openCatalogModal = useCallback((lecture: LectureItem, mode: CatalogPublishMode) => {
+    const defaultDiscipline = (lecture.subject || lecture.title || '').trim();
+    let streamId = '';
+    let directionId = '';
+    let facultyId = '';
+
+    if (user?.is_group_head && user.stream_id) {
+      const ownStream = streams.find((s) => s.id === user.stream_id);
+      if (ownStream) {
+        streamId = ownStream.id;
+        directionId = ownStream.direction_id;
+        const ownDirection = directions.find((d) => d.id === ownStream.direction_id);
+        if (ownDirection) {
+          facultyId = ownDirection.faculty_id;
+        }
+      }
+    }
+
+    setCatalogPublishMode(mode);
+    setSuggestModalLecture(lecture);
+    setSuggestData({
+      faculty_id: facultyId,
+      direction_id: directionId,
+      stream_id: streamId,
+      discipline: defaultDiscipline,
+      lecturer_name: '',
+      course_text: '',
+      semester_text: 'winter',
+      lecture_number_text: '',
+      study_year_text: '',
+      comment: '',
+    });
+  }, [directions, streams, user]);
 
   const authHeaders = useCallback((): Record<string, string> => {
     const h: Record<string, string> = {};
@@ -424,14 +486,13 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const fetchLectures = useCallback(async () => {
     setLoading(true);
     try {
-      const endpoint = lectureType === 'my' ? `${API_BASE}/api/lectures/my` : `${API_BASE}/api/lectures`;
-      const res = await fetch(endpoint, { headers: authHeaders() });
+      const res = await fetch(`${API_BASE}/api/lectures/my`, { headers: authHeaders() });
       if (!res.ok) return;
       setLectures(await res.json());
     } finally {
       setLoading(false);
     }
-  }, [authHeaders, lectureType]);
+  }, [authHeaders]);
 
   const fetchPublicationStatuses = useCallback(async () => {
     try {
@@ -463,11 +524,9 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
 
   useEffect(() => { fetchLectures(); }, [fetchLectures]);
   useEffect(() => {
-    if (lectureType === 'my') {
-      fetchPublicationStatuses();
-      fetchCatalogLookups();
-    }
-  }, [lectureType, fetchPublicationStatuses, fetchCatalogLookups]);
+    fetchPublicationStatuses();
+    fetchCatalogLookups();
+  }, [fetchPublicationStatuses, fetchCatalogLookups]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -631,6 +690,84 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     ));
   };
 
+  const allowedDirectionIds = useMemo(() => new Set(allowedStreams.map((s) => s.direction_id)), [allowedStreams]);
+  const allowedDirections = useMemo(() => directions.filter((d) => allowedDirectionIds.has(d.id)), [directions, allowedDirectionIds]);
+  const allowedFacultyIds = useMemo(() => new Set(allowedDirections.map((d) => d.faculty_id)), [allowedDirections]);
+  const allowedFaculties = useMemo(() => faculties.filter((f) => allowedFacultyIds.has(f.id)), [faculties, allowedFacultyIds]);
+
+  const modalFacultyOptions = user?.role === 'admin' ? faculties : allowedFaculties;
+  const modalDirectionOptions = (user?.role === 'admin' ? directions : allowedDirections)
+    .filter((d) => !suggestData.faculty_id || d.faculty_id === suggestData.faculty_id);
+  const modalStreamOptions = allowedStreams
+    .filter((s) => !suggestData.direction_id || s.direction_id === suggestData.direction_id);
+
+  const submitCatalogAction = useCallback(async () => {
+    if (!suggestModalLecture) return;
+    if (!suggestData.stream_id) {
+      alert('Выберите поток.');
+      return;
+    }
+
+    if (catalogPublishMode === 'request') {
+      const res = await fetch(`${API_BASE}/api/catalog/requests`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lecture_id: suggestModalLecture.id,
+          stream_id: suggestData.stream_id,
+          lecture_number_text: suggestData.lecture_number_text.trim() || null,
+          study_year_text: suggestData.study_year_text.trim() || null,
+          comment: suggestData.comment.trim() || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Не удалось отправить заявку');
+        return;
+      }
+    } else {
+      const discipline = suggestData.discipline.trim();
+      if (!discipline) {
+        alert('Для публикации нужно указать дисциплину.');
+        return;
+      }
+      const res = await fetch(`${API_BASE}/api/catalog/publish`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lecture_id: suggestModalLecture.id,
+          stream_id: suggestData.stream_id,
+          discipline,
+          lecturer_name: suggestData.lecturer_name.trim() || null,
+          course_text: suggestData.course_text.trim() || null,
+          semester_text: suggestData.semester_text || null,
+          lecture_number_text: suggestData.lecture_number_text.trim() || null,
+          study_year_text: suggestData.study_year_text.trim() || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Не удалось добавить лекцию в базу');
+        return;
+      }
+
+      window.dispatchEvent(new Event('catalog:refresh'));
+    }
+
+    setSuggestModalLecture(null);
+    resetSuggestData();
+    fetchPublicationStatuses();
+  }, [
+    authHeaders,
+    catalogPublishMode,
+    fetchPublicationStatuses,
+    resetSuggestData,
+    suggestData,
+    suggestModalLecture,
+  ]);
+
   // ── Theme helpers ──────────────────────────────────────────────────────────
 
   const headingColor = isLightTheme ? '#2a1918' : '#fff7ec';
@@ -651,34 +788,6 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
         <h1 className="text-3xl lg:text-4xl font-light mb-3 tracking-wide" style={{ color: headingColor }}>
           Лекции
         </h1>
-        
-        {/* Lecture Type Selector */}
-        <div className="flex gap-2 justify-center mb-4">
-          <button
-            onClick={() => setLectureType('my')}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
-            style={{
-              background: lectureType === 'my' ? 'rgba(68,41,43,.15)' : 'transparent',
-              color: lectureType === 'my' ? headingColor : mutedColor,
-              border: `1px solid ${lectureType === 'my' ? 'rgba(68,41,43,.3)' : 'rgba(68,41,43,.1)'}`,
-            }}
-          >
-            Мои лекции
-          </button>
-          <button
-            onClick={() => setLectureType('general')}
-            disabled
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-all opacity-50 cursor-not-allowed"
-            style={{
-              background: lectureType === 'general' ? 'rgba(68,41,43,.15)' : 'transparent',
-              color: lectureType === 'general' ? headingColor : mutedColor,
-              border: `1px solid ${lectureType === 'general' ? 'rgba(68,41,43,.3)' : 'rgba(68,41,43,.1)'}`,
-            }}
-            title="Общие лекции временно недоступны"
-          >
-            Общие лекции
-          </button>
-        </div>
       </div>
 
       <div className="flex justify-end mb-4">
@@ -702,17 +811,10 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
       ) : lectures.length === 0 ? (
         <div className="text-center py-16" style={{ color: mutedColor }}>
           <span className="material-symbols-outlined text-5xl mb-4 block">library_books</span>
-          {lectureType === 'my' ? (
-            <>
-              <p>У вас ещё нет загруженных лекций.</p>
-              <p className="text-sm mt-1">Перейдите в раздел «Транскрибатор», чтобы загрузить первую.</p>
-            </>
-          ) : (
-            <>
-              <p>Общих лекций нет.</p>
-              <p className="text-sm mt-1">В будущем здесь появятся лекции других пользователей.</p>
-            </>
-          )}
+          <>
+            <p>У вас ещё нет загруженных лекций.</p>
+            <p className="text-sm mt-1">Перейдите в раздел «Транскрибатор», чтобы загрузить первую.</p>
+          </>
         </div>
       ) : (
         <div className="space-y-4">
@@ -886,30 +988,36 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                   </button>
                 </div>
 
-                {lectureType === 'my' && (
-                  <div className="px-5 pb-4 flex flex-wrap items-center gap-2">
+                <div className="px-5 pb-4 flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => openCatalogModal(lecture, 'request')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+                    style={{ background: btnBg, color: btnColor }}
+                  >
+                    <span className="material-symbols-outlined text-base">publish</span>
+                    Предложить в базу
+                  </button>
+                  {canDirectPublish && (
                     <button
-                      onClick={() => {
-                        setSuggestModalLecture(lecture);
-                      }}
+                      onClick={() => openCatalogModal(lecture, 'direct')}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
-                      style={{ background: btnBg, color: btnColor }}
+                      style={{ background: 'rgba(34,197,94,.14)', color: '#16a34a' }}
                     >
-                      <span className="material-symbols-outlined text-base">publish</span>
-                      Предложить в базу
+                      <span className="material-symbols-outlined text-base">add_circle</span>
+                      Добавить в базу
                     </button>
-                    {pubLabel && pubColor && (
-                      <span className="text-xs px-2 py-1 rounded-full" style={{ background: `${pubColor}22`, color: pubColor }}>
-                        {pubLabel}
-                      </span>
-                    )}
-                    {pub?.latest_request_status === 'rejected' && pub.latest_request_review_comment && (
-                      <span className="text-xs" style={{ color: '#ef4444' }}>
-                        Причина: {pub.latest_request_review_comment}
-                      </span>
-                    )}
-                  </div>
-                )}
+                  )}
+                  {pubLabel && pubColor && (
+                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: `${pubColor}22`, color: pubColor }}>
+                      {pubLabel}
+                    </span>
+                  )}
+                  {pub?.latest_request_status === 'rejected' && pub.latest_request_review_comment && (
+                    <span className="text-xs" style={{ color: '#ef4444' }}>
+                      Причина: {pub.latest_request_review_comment}
+                    </span>
+                  )}
+                </div>
 
                 {/* ── Materials section (only if has text) ── */}
                 {lecture.has_text && (
@@ -1116,13 +1224,22 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
       />
 
       {suggestModalLecture && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setSuggestModalLecture(null)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={() => {
+            setSuggestModalLecture(null);
+            resetSuggestData();
+          }}
+        >
           <div
             className="rounded-2xl p-6 w-full max-w-lg"
             style={{ background: isLightTheme ? 'rgba(255,255,240,.98)' : 'rgba(33,24,25,.97)', border: cardBorder }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-medium mb-1" style={{ color: headingColor }}>Предложение в базу лекций</h2>
+            <h2 className="text-lg font-medium mb-1" style={{ color: headingColor }}>
+              {catalogPublishMode === 'direct' ? 'Добавление лекции в базу' : 'Предложение в базу лекций'}
+            </h2>
             <p className="text-xs mb-4" style={{ color: mutedColor }}>{suggestModalLecture.title}</p>
             <p className="text-xs mb-2" style={{ color: mutedColor }}>
               Путь: {faculties.find(f => f.id === suggestData.faculty_id)?.name || 'Факультет'} / {directions.find(d => d.id === suggestData.direction_id)?.name || 'Направление'} / {streams.find(s => s.id === suggestData.stream_id)?.name || 'Поток'}
@@ -1130,57 +1247,58 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
               <select value={suggestData.faculty_id} onChange={(e) => setSuggestData(prev => ({ ...prev, faculty_id: e.target.value, direction_id: '', stream_id: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
                 <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Факультет</option>
-                {faculties.map(f => <option key={f.id} value={f.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{f.name}</option>)}
+                {modalFacultyOptions.map(f => <option key={f.id} value={f.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{f.name}</option>)}
               </select>
               <select value={suggestData.direction_id} onChange={(e) => setSuggestData(prev => ({ ...prev, direction_id: e.target.value, stream_id: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
                 <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Направление</option>
-                {directions.filter(d => !suggestData.faculty_id || d.faculty_id === suggestData.faculty_id).map(d => <option key={d.id} value={d.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{d.name}</option>)}
+                {modalDirectionOptions.map(d => <option key={d.id} value={d.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{d.name}</option>)}
               </select>
               <select value={suggestData.stream_id} onChange={(e) => setSuggestData(prev => ({ ...prev, stream_id: e.target.value }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
                 <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Поток</option>
-                {streams.filter(s => !suggestData.direction_id || s.direction_id === suggestData.direction_id).map(s => <option key={s.id} value={s.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{s.name}</option>)}
+                {modalStreamOptions.map(s => <option key={s.id} value={s.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{s.name}</option>)}
               </select>
+
+              {catalogPublishMode === 'direct' && (
+                <input value={suggestData.discipline} onChange={(e) => setSuggestData(prev => ({ ...prev, discipline: e.target.value }))} placeholder="Дисциплина" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              )}
+
+              {catalogPublishMode === 'direct' && (
+                <input value={suggestData.lecturer_name} onChange={(e) => setSuggestData(prev => ({ ...prev, lecturer_name: e.target.value }))} placeholder="Лектор" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              )}
+
+              {catalogPublishMode === 'direct' && (
+                <input value={suggestData.course_text} onChange={(e) => setSuggestData(prev => ({ ...prev, course_text: e.target.value }))} placeholder="Курс" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
+              )}
+
+              {catalogPublishMode === 'direct' && (
+                <select value={suggestData.semester_text} onChange={(e) => setSuggestData(prev => ({ ...prev, semester_text: e.target.value }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
+                  <option value="winter" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Зимний семестр</option>
+                  <option value="spring" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Весенний семестр</option>
+                </select>
+              )}
+
               <input value={suggestData.lecture_number_text} onChange={(e) => setSuggestData(prev => ({ ...prev, lecture_number_text: e.target.value }))} placeholder="Номер лекции (напр. 4)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
               <input value={suggestData.study_year_text} onChange={(e) => setSuggestData(prev => ({ ...prev, study_year_text: e.target.value }))} placeholder="Год записи (напр. 2025)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
             </div>
-            <textarea value={suggestData.comment} onChange={(e) => setSuggestData(prev => ({ ...prev, comment: e.target.value }))} placeholder="Комментарий для модератора" className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ background: btnBg, color: headingColor, border: cardBorder }} rows={3} />
+            {catalogPublishMode === 'request' && (
+              <textarea value={suggestData.comment} onChange={(e) => setSuggestData(prev => ({ ...prev, comment: e.target.value }))} placeholder="Комментарий для модератора" className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ background: btnBg, color: headingColor, border: cardBorder }} rows={3} />
+            )}
             <div className="flex gap-2">
               <button
-                onClick={async () => {
-                  if (!suggestData.stream_id) return;
-                  const res = await fetch(`${API_BASE}/api/catalog/requests`, {
-                    method: 'POST',
-                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      lecture_id: suggestModalLecture.id,
-                      stream_id: suggestData.stream_id,
-                      lecture_number_text: suggestData.lecture_number_text.trim() || null,
-                      study_year_text: suggestData.study_year_text.trim() || null,
-                      comment: suggestData.comment.trim() || null,
-                    }),
-                  });
-                  if (res.ok) {
-                    setSuggestModalLecture(null);
-                    setSuggestData({
-                      faculty_id: '',
-                      direction_id: '',
-                      stream_id: '',
-                      lecture_number_text: '',
-                      study_year_text: '',
-                      comment: '',
-                    });
-                    fetchPublicationStatuses();
-                  } else {
-                    const err = await res.json().catch(() => ({}));
-                    alert(err.detail || 'Не удалось отправить заявку');
-                  }
-                }}
+                onClick={submitCatalogAction}
                 className="flex-1 py-2 rounded-lg text-sm font-medium"
                 style={{ background: headingColor, color: isLightTheme ? '#fff9f1' : '#0a0a0a' }}
               >
-                Отправить заявку
+                {catalogPublishMode === 'direct' ? 'Добавить в базу' : 'Отправить заявку'}
               </button>
-              <button onClick={() => setSuggestModalLecture(null)} className="flex-1 py-2 rounded-lg text-sm font-medium" style={{ background: btnBg, color: btnColor }}>
+              <button
+                onClick={() => {
+                  setSuggestModalLecture(null);
+                  resetSuggestData();
+                }}
+                className="flex-1 py-2 rounded-lg text-sm font-medium"
+                style={{ background: btnBg, color: btnColor }}
+              >
                 Отмена
               </button>
             </div>

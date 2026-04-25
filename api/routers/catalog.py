@@ -680,8 +680,16 @@ async def approve_publication_request(
     req = req_result.scalar_one_or_none()
     if req is None:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
-    if not _is_catalog_editor(moderator, req.stream_id):
+    target_stream_id = body.stream_id or req.stream_id
+    stream_result = await db.execute(select(Stream).where(Stream.id == target_stream_id))
+    target_stream = stream_result.scalar_one_or_none()
+    if target_stream is None:
+        raise HTTPException(status_code=400, detail="Поток не найден")
+    if not _is_catalog_editor(moderator, target_stream_id):
         raise HTTPException(status_code=403, detail="Нет прав для этого потока")
+
+    if body.lecture_title and body.lecture_title.strip():
+        req.lecture.title = body.lecture_title.strip()
 
     discipline = (body.discipline or "").strip() or req.discipline
     lecturer_name = (body.lecturer_name or "").strip() or req.lecturer_name
@@ -696,7 +704,7 @@ async def approve_publication_request(
     await _ensure_catalog_item(
         db=db,
         lecture_id=req.lecture_id,
-        stream_id=req.stream_id,
+        stream_id=target_stream_id,
         discipline=discipline,
         lecturer_name=lecturer_name,
         course_text=course_text,
@@ -710,6 +718,7 @@ async def approve_publication_request(
     req.lecturer_name = lecturer_name
     req.course_text = course_text
     req.semester_text = semester_text
+    req.stream_id = target_stream_id
     req.lecture_number_text = lecture_number_text
     req.study_year_text = study_year_text
     req.status = PublicationRequestStatus.approved
@@ -729,14 +738,34 @@ async def reject_publication_request(
     db: AsyncSession = Depends(get_db),
     moderator: User = Depends(require_catalog_moderator),
 ):
-    req_result = await db.execute(select(LecturePublicationRequest).where(LecturePublicationRequest.id == request_id))
+    req_result = await db.execute(
+        select(LecturePublicationRequest)
+        .options(selectinload(LecturePublicationRequest.lecture))
+        .where(LecturePublicationRequest.id == request_id)
+    )
     req = req_result.scalar_one_or_none()
     if req is None:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
-    if not _is_catalog_editor(moderator, req.stream_id):
+    target_stream_id = body.stream_id or req.stream_id
+    stream_result = await db.execute(select(Stream).where(Stream.id == target_stream_id))
+    target_stream = stream_result.scalar_one_or_none()
+    if target_stream is None:
+        raise HTTPException(status_code=400, detail="Поток не найден")
+    if not _is_catalog_editor(moderator, target_stream_id):
         raise HTTPException(status_code=403, detail="Нет прав для этого потока")
     if not body.review_comment or not body.review_comment.strip():
         raise HTTPException(status_code=400, detail="Нужно указать причину отклонения")
+
+    if body.lecture_title and body.lecture_title.strip():
+        req.lecture.title = body.lecture_title.strip()
+
+    req.discipline = (body.discipline or "").strip() or req.discipline
+    req.lecturer_name = (body.lecturer_name or "").strip() or req.lecturer_name
+    req.course_text = (body.course_text or "").strip() or req.course_text
+    req.semester_text = (body.semester_text or "").strip() or req.semester_text
+    req.stream_id = target_stream_id
+    req.lecture_number_text = (body.lecture_number_text or "").strip() or req.lecture_number_text
+    req.study_year_text = (body.study_year_text or "").strip() or req.study_year_text
 
     req.status = PublicationRequestStatus.rejected
     req.reviewed_by = moderator.id

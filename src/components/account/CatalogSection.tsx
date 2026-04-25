@@ -3,6 +3,8 @@ import { useAuth } from '../../contexts/AuthContext';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 type Semester = 'winter' | 'spring';
+type SemesterKey = Semester | typeof NO_SEMESTER;
+
 const NOTE_MODES = [
   { id: 'summary', label: 'Краткий конспект' },
   { id: 'detailed_notes', label: 'Расширенный конспект' },
@@ -13,10 +15,12 @@ const NOTE_MODES = [
 
 const NO_COURSE = '__no_course__';
 const NO_DISCIPLINE = '__no_discipline__';
+const NO_SEMESTER = '__no_semester__';
 
 interface LookupItem { id: string; name: string }
 interface DirectionItem extends LookupItem { faculty_id: string }
 interface StreamItem { id: string; direction_id: string; name: string; course: number | null }
+
 interface CatalogItem {
   id: string;
   lecture_id: string;
@@ -35,43 +39,90 @@ interface CatalogItem {
   faculty_name: string;
   published_by_login: string;
 }
+
 interface LectureNoteInfo { id: string; mode: string; created_at: string }
 interface LectureDetail { id: string; transcriptions: { raw_text: string; processed_text: string | null }[] }
 interface CatalogSectionProps { isLightTheme: boolean; onOpenInEditor: (text: string, lectureId: string, lectureTitle?: string) => void }
 
-const semesterLabel = (s: Semester) => (s === 'winter' ? 'Зимний семестр' : 'Весенний семестр');
-const normalizeSemester = (value: string | null | undefined): Semester | '' => {
-  const lower = (value || '').trim().toLowerCase();
-  if (lower === 'winter') return 'winter';
-  if (lower === 'spring') return 'spring';
-  if (lower === 'зимний' || lower === 'зимний семестр') return 'winter';
-  if (lower === 'весенний' || lower === 'весенний семестр') return 'spring';
-  return '';
-};
+interface ExplorerPath {
+  facultyId?: string;
+  directionId?: string;
+  streamId?: string;
+  courseKey?: string;
+  semesterKey?: SemesterKey;
+  disciplineKey?: string;
+}
+
+interface FolderEntry {
+  id: string;
+  label: string;
+  typeLabel: string;
+  nextPath: ExplorerPath;
+  icon: 'folder' | 'folder_open';
+}
+
 const normalizeCourse = (value: string | null | undefined) => (value || '').trim() || NO_COURSE;
 const normalizeDiscipline = (value: string | null | undefined) => (value || '').trim() || NO_DISCIPLINE;
+
+const normalizeSemesterKey = (value: string | null | undefined): SemesterKey => {
+  const lower = (value || '').trim().toLowerCase();
+  if (lower === 'winter' || lower === 'зимний' || lower === 'зимний семестр') return 'winter';
+  if (lower === 'spring' || lower === 'весенний' || lower === 'весенний семестр') return 'spring';
+  return NO_SEMESTER;
+};
+
+const semesterLabel = (key: SemesterKey) => {
+  if (key === 'winter') return 'Зимний семестр';
+  if (key === 'spring') return 'Весенний семестр';
+  return 'Семестр не указан';
+};
+
+const courseLabel = (key: string) => (key === NO_COURSE ? 'Курс не указан' : `Курс ${key}`);
+const disciplineLabel = (key: string) => (key === NO_DISCIPLINE ? 'Дисциплина не указана' : key);
+
+const pathKey = (path: ExplorerPath) => [
+  path.facultyId || '',
+  path.directionId || '',
+  path.streamId || '',
+  path.courseKey || '',
+  path.semesterKey || '',
+  path.disciplineKey || '',
+].join('|');
+
+const isSamePath = (a: ExplorerPath, b: ExplorerPath) => pathKey(a) === pathKey(b);
+
+const matchItemToPath = (item: CatalogItem, path: ExplorerPath) => {
+  if (path.facultyId && item.faculty_id !== path.facultyId) return false;
+  if (path.directionId && item.direction_id !== path.directionId) return false;
+  if (path.streamId && item.stream_id !== path.streamId) return false;
+  if (path.courseKey && normalizeCourse(item.course_text) !== path.courseKey) return false;
+  if (path.semesterKey && normalizeSemesterKey(item.semester_text) !== path.semesterKey) return false;
+  if (path.disciplineKey && normalizeDiscipline(item.discipline) !== path.disciplineKey) return false;
+  return true;
+};
 
 const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInEditor }) => {
   const { token } = useAuth();
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
+
   const headingColor = isLightTheme ? '#2a1918' : '#fff7ec';
   const mutedColor = isLightTheme ? '#7a5a5c' : '#c6b7a7';
   const cardBg = isLightTheme ? 'rgba(255,255,240,0.95)' : 'rgba(33,24,25,0.95)';
   const cardBorder = `1px solid ${isLightTheme ? 'rgba(68,41,43,0.16)' : 'rgba(255,247,236,0.16)'}`;
+  const panelBg = isLightTheme ? 'rgba(255,255,255,0.78)' : 'rgba(24,18,19,0.88)';
 
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
   const [directions, setDirections] = useState<DirectionItem[]>([]);
   const [streams, setStreams] = useState<StreamItem[]>([]);
   const [allItems, setAllItems] = useState<CatalogItem[]>([]);
-  const [items, setItems] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [facultyId, setFacultyId] = useState('');
-  const [directionId, setDirectionId] = useState('');
-  const [streamId, setStreamId] = useState('');
-  const [courseText, setCourseText] = useState('');
-  const [semesterText, setSemesterText] = useState<Semester | ''>('');
-  const [discipline, setDiscipline] = useState('');
+  const [currentPath, setCurrentPath] = useState<ExplorerPath>({});
+  const [backStack, setBackStack] = useState<ExplorerPath[]>([]);
+  const [forwardStack, setForwardStack] = useState<ExplorerPath[]>([]);
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [searchInFolder, setSearchInFolder] = useState('');
+  const [selectedEntryKey, setSelectedEntryKey] = useState('');
 
   const [selectedLecture, setSelectedLecture] = useState<CatalogItem | null>(null);
   const [notesByLecture, setNotesByLecture] = useState<Record<string, LectureNoteInfo[]>>({});
@@ -116,84 +167,341 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   }, [headers]);
 
   useEffect(() => { fetchLookups(); fetchCatalog(); }, [fetchLookups, fetchCatalog]);
+
   useEffect(() => {
-    const onCatalogRefresh = () => { fetchLookups(); fetchCatalog(); };
+    const onCatalogRefresh = () => {
+      fetchLookups();
+      fetchCatalog();
+    };
     window.addEventListener('catalog:refresh', onCatalogRefresh);
     return () => window.removeEventListener('catalog:refresh', onCatalogRefresh);
   }, [fetchLookups, fetchCatalog]);
 
-  useEffect(() => {
-    const filtered = allItems.filter(i =>
-      (!facultyId || i.faculty_id === facultyId) &&
-      (!directionId || i.direction_id === directionId) &&
-      (!streamId || i.stream_id === streamId) &&
-      (!courseText || normalizeCourse(i.course_text) === courseText) &&
-      (!semesterText || normalizeSemester(i.semester_text) === semesterText) &&
-      (!discipline || normalizeDiscipline(i.discipline) === discipline)
-    );
-    setItems(filtered);
-  }, [allItems, facultyId, directionId, streamId, courseText, semesterText, discipline]);
-
   const directionsByFaculty = useMemo(() => {
     const map: Record<string, DirectionItem[]> = {};
-    directions.forEach(d => { if (!map[d.faculty_id]) map[d.faculty_id] = []; map[d.faculty_id].push(d); });
+    directions.forEach((d) => {
+      if (!map[d.faculty_id]) map[d.faculty_id] = [];
+      map[d.faculty_id].push(d);
+    });
+    Object.keys(map).forEach((k) => map[k].sort((a, b) => a.name.localeCompare(b.name, 'ru')));
     return map;
   }, [directions]);
+
   const streamsByDirection = useMemo(() => {
     const map: Record<string, StreamItem[]> = {};
-    streams.forEach(s => { if (!map[s.direction_id]) map[s.direction_id] = []; map[s.direction_id].push(s); });
+    streams.forEach((s) => {
+      if (!map[s.direction_id]) map[s.direction_id] = [];
+      map[s.direction_id].push(s);
+    });
+    Object.keys(map).forEach((k) => map[k].sort((a, b) => a.name.localeCompare(b.name, 'ru')));
     return map;
   }, [streams]);
 
-  const folderEntries = useMemo(() => {
-    if (!facultyId) return faculties.map(f => ({ type: 'faculty' as const, key: f.id, label: f.name, meta: f }));
-    if (!directionId) return (directionsByFaculty[facultyId] || []).map(d => ({ type: 'direction' as const, key: d.id, label: d.name, meta: d }));
-    if (!streamId) return (streamsByDirection[directionId] || []).map(s => ({ type: 'stream' as const, key: s.id, label: s.name, meta: s }));
-    if (!courseText) {
-      const set = new Set(allItems.filter(i => i.stream_id === streamId).map(i => normalizeCourse(i.course_text)));
-      return Array.from(set).sort().map(c => ({ type: 'course' as const, key: c, label: c === NO_COURSE ? 'Курс не указан' : `Курс ${c}`, meta: c }));
-    }
-    if (!semesterText) return (['winter', 'spring'] as Semester[]).map(s => ({ type: 'semester' as const, key: s, label: semesterLabel(s), meta: s }));
-    if (!discipline) {
-      const set = new Set(
-        allItems
-          .filter(i =>
-            i.stream_id === streamId &&
-            normalizeCourse(i.course_text) === courseText &&
-            normalizeSemester(i.semester_text) === semesterText
-          )
-          .map(i => normalizeDiscipline(i.discipline))
-      );
-      return Array.from(set).sort().map(d => ({ type: 'discipline' as const, key: d, label: d === NO_DISCIPLINE ? 'Дисциплина не указана' : d, meta: d }));
-    }
-    return [];
-  }, [facultyId, directionId, streamId, courseText, semesterText, discipline, faculties, directionsByFaculty, streamsByDirection, allItems]);
+  const indexData = useMemo(() => {
+    const coursesByStreamSets: Record<string, Set<string>> = {};
+    const semestersByStreamCourseSets: Record<string, Set<SemesterKey>> = {};
+    const disciplinesBySCSets: Record<string, Set<string>> = {};
 
-  const setPath = (fId = '', dId = '', sId = '', cText = '', sem: Semester | '' = '', disc = '') => {
-    setFacultyId(fId);
-    setDirectionId(dId);
-    setStreamId(sId);
-    setCourseText(cText);
-    setSemesterText(sem);
-    setDiscipline(disc);
+    allItems.forEach((item) => {
+      const course = normalizeCourse(item.course_text);
+      const semester = normalizeSemesterKey(item.semester_text);
+      const discipline = normalizeDiscipline(item.discipline);
+      const streamId = item.stream_id;
+
+      if (!coursesByStreamSets[streamId]) coursesByStreamSets[streamId] = new Set();
+      coursesByStreamSets[streamId].add(course);
+
+      const scKey = `${streamId}|${course}`;
+      if (!semestersByStreamCourseSets[scKey]) semestersByStreamCourseSets[scKey] = new Set();
+      semestersByStreamCourseSets[scKey].add(semester);
+
+      const scsKey = `${streamId}|${course}|${semester}`;
+      if (!disciplinesBySCSets[scsKey]) disciplinesBySCSets[scsKey] = new Set();
+      disciplinesBySCSets[scsKey].add(discipline);
+    });
+
+    const coursesByStream: Record<string, string[]> = {};
+    Object.entries(coursesByStreamSets).forEach(([key, set]) => {
+      coursesByStream[key] = Array.from(set).sort((a, b) => courseLabel(a).localeCompare(courseLabel(b), 'ru'));
+    });
+
+    const semestersByStreamCourse: Record<string, SemesterKey[]> = {};
+    Object.entries(semestersByStreamCourseSets).forEach(([key, set]) => {
+      semestersByStreamCourse[key] = Array.from(set).sort((a, b) => semesterLabel(a).localeCompare(semesterLabel(b), 'ru'));
+    });
+
+    const disciplinesBySCS: Record<string, string[]> = {};
+    Object.entries(disciplinesBySCSets).forEach(([key, set]) => {
+      disciplinesBySCS[key] = Array.from(set).sort((a, b) => disciplineLabel(a).localeCompare(disciplineLabel(b), 'ru'));
+    });
+
+    return {
+      coursesByStream,
+      semestersByStreamCourse,
+      disciplinesBySCS,
+    };
+  }, [allItems]);
+
+  const navigateTo = useCallback((nextPath: ExplorerPath, pushHistory = true) => {
+    if (isSamePath(currentPath, nextPath)) return;
+    if (pushHistory) {
+      setBackStack((prev) => [...prev, currentPath]);
+      setForwardStack([]);
+    }
+    setCurrentPath(nextPath);
+    setSelectedEntryKey('');
     setSelectedLecture(null);
-  };
+  }, [currentPath]);
+
+  const goBack = useCallback(() => {
+    if (backStack.length === 0) return;
+    const prevPath = backStack[backStack.length - 1];
+    setBackStack((prev) => prev.slice(0, -1));
+    setForwardStack((prev) => [currentPath, ...prev]);
+    setCurrentPath(prevPath);
+    setSelectedLecture(null);
+    setSelectedEntryKey('');
+  }, [backStack, currentPath]);
+
+  const goForward = useCallback(() => {
+    if (forwardStack.length === 0) return;
+    const nextPath = forwardStack[0];
+    setForwardStack((prev) => prev.slice(1));
+    setBackStack((prev) => [...prev, currentPath]);
+    setCurrentPath(nextPath);
+    setSelectedLecture(null);
+    setSelectedEntryKey('');
+  }, [forwardStack, currentPath]);
+
+  const goUp = useCallback(() => {
+    if (currentPath.disciplineKey) return navigateTo({ ...currentPath, disciplineKey: undefined });
+    if (currentPath.semesterKey) return navigateTo({ ...currentPath, semesterKey: undefined });
+    if (currentPath.courseKey) return navigateTo({ ...currentPath, courseKey: undefined });
+    if (currentPath.streamId) return navigateTo({ ...currentPath, streamId: undefined });
+    if (currentPath.directionId) return navigateTo({ ...currentPath, directionId: undefined });
+    if (currentPath.facultyId) return navigateTo({ ...currentPath, facultyId: undefined });
+  }, [currentPath, navigateTo]);
+
+  useEffect(() => {
+    const expandUpdates: Record<string, boolean> = {};
+    if (currentPath.facultyId) expandUpdates[`faculty:${currentPath.facultyId}`] = true;
+    if (currentPath.directionId) expandUpdates[`direction:${currentPath.directionId}`] = true;
+    if (currentPath.streamId) expandUpdates[`stream:${currentPath.streamId}`] = true;
+    if (currentPath.streamId && currentPath.courseKey) expandUpdates[`course:${currentPath.streamId}|${currentPath.courseKey}`] = true;
+    if (currentPath.streamId && currentPath.courseKey && currentPath.semesterKey) {
+      expandUpdates[`semester:${currentPath.streamId}|${currentPath.courseKey}|${currentPath.semesterKey}`] = true;
+    }
+    if (Object.keys(expandUpdates).length > 0) {
+      setExpandedNodes((prev) => ({ ...prev, ...expandUpdates }));
+    }
+  }, [currentPath]);
+
+  const breadcrumbs = useMemo(() => {
+    const list: { label: string; path: ExplorerPath }[] = [{ label: 'Каталог', path: {} }];
+    if (currentPath.facultyId) {
+      const faculty = faculties.find((f) => f.id === currentPath.facultyId);
+      list.push({ label: faculty?.name || 'Факультет', path: { facultyId: currentPath.facultyId } });
+    }
+    if (currentPath.directionId) {
+      const direction = directions.find((d) => d.id === currentPath.directionId);
+      list.push({ label: direction?.name || 'Направление', path: { facultyId: currentPath.facultyId, directionId: currentPath.directionId } });
+    }
+    if (currentPath.streamId) {
+      const stream = streams.find((s) => s.id === currentPath.streamId);
+      list.push({ label: stream?.name || 'Поток', path: { facultyId: currentPath.facultyId, directionId: currentPath.directionId, streamId: currentPath.streamId } });
+    }
+    if (currentPath.courseKey) {
+      list.push({
+        label: courseLabel(currentPath.courseKey),
+        path: {
+          facultyId: currentPath.facultyId,
+          directionId: currentPath.directionId,
+          streamId: currentPath.streamId,
+          courseKey: currentPath.courseKey,
+        },
+      });
+    }
+    if (currentPath.semesterKey) {
+      list.push({
+        label: semesterLabel(currentPath.semesterKey),
+        path: {
+          facultyId: currentPath.facultyId,
+          directionId: currentPath.directionId,
+          streamId: currentPath.streamId,
+          courseKey: currentPath.courseKey,
+          semesterKey: currentPath.semesterKey,
+        },
+      });
+    }
+    if (currentPath.disciplineKey) {
+      list.push({
+        label: disciplineLabel(currentPath.disciplineKey),
+        path: {
+          facultyId: currentPath.facultyId,
+          directionId: currentPath.directionId,
+          streamId: currentPath.streamId,
+          courseKey: currentPath.courseKey,
+          semesterKey: currentPath.semesterKey,
+          disciplineKey: currentPath.disciplineKey,
+        },
+      });
+    }
+    return list;
+  }, [currentPath, faculties, directions, streams]);
+
+  const currentFolder = useMemo(() => {
+    const folders: FolderEntry[] = [];
+    let lectures: CatalogItem[] = [];
+
+    if (!currentPath.facultyId) {
+      faculties
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+        .forEach((faculty) => {
+          folders.push({
+            id: `faculty:${faculty.id}`,
+            label: faculty.name,
+            typeLabel: 'Факультет',
+            icon: 'folder',
+            nextPath: { facultyId: faculty.id },
+          });
+        });
+      return { folders, lectures };
+    }
+
+    if (!currentPath.directionId) {
+      (directionsByFaculty[currentPath.facultyId] || []).forEach((direction) => {
+        folders.push({
+          id: `direction:${direction.id}`,
+          label: direction.name,
+          typeLabel: 'Направление',
+          icon: 'folder',
+          nextPath: { facultyId: currentPath.facultyId, directionId: direction.id },
+        });
+      });
+      return { folders, lectures };
+    }
+
+    if (!currentPath.streamId) {
+      (streamsByDirection[currentPath.directionId] || []).forEach((stream) => {
+        folders.push({
+          id: `stream:${stream.id}`,
+          label: stream.name,
+          typeLabel: 'Поток',
+          icon: 'folder',
+          nextPath: {
+            facultyId: currentPath.facultyId,
+            directionId: currentPath.directionId,
+            streamId: stream.id,
+          },
+        });
+      });
+      return { folders, lectures };
+    }
+
+    if (!currentPath.courseKey) {
+      const courses = indexData.coursesByStream[currentPath.streamId] || [];
+      courses.forEach((course) => {
+        folders.push({
+          id: `course:${currentPath.streamId}|${course}`,
+          label: courseLabel(course),
+          typeLabel: 'Курс',
+          icon: 'folder',
+          nextPath: {
+            facultyId: currentPath.facultyId,
+            directionId: currentPath.directionId,
+            streamId: currentPath.streamId,
+            courseKey: course,
+          },
+        });
+      });
+      return { folders, lectures };
+    }
+
+    if (!currentPath.semesterKey) {
+      const key = `${currentPath.streamId}|${currentPath.courseKey}`;
+      const semesters = indexData.semestersByStreamCourse[key] || [];
+      semesters.forEach((semester) => {
+        folders.push({
+          id: `semester:${currentPath.streamId}|${currentPath.courseKey}|${semester}`,
+          label: semesterLabel(semester),
+          typeLabel: 'Семестр',
+          icon: 'folder',
+          nextPath: {
+            facultyId: currentPath.facultyId,
+            directionId: currentPath.directionId,
+            streamId: currentPath.streamId,
+            courseKey: currentPath.courseKey,
+            semesterKey: semester,
+          },
+        });
+      });
+      return { folders, lectures };
+    }
+
+    if (!currentPath.disciplineKey) {
+      const key = `${currentPath.streamId}|${currentPath.courseKey}|${currentPath.semesterKey}`;
+      const disciplines = indexData.disciplinesBySCS[key] || [];
+      disciplines.forEach((discipline) => {
+        folders.push({
+          id: `discipline:${currentPath.streamId}|${currentPath.courseKey}|${currentPath.semesterKey}|${discipline}`,
+          label: disciplineLabel(discipline),
+          typeLabel: 'Дисциплина',
+          icon: 'folder',
+          nextPath: {
+            facultyId: currentPath.facultyId,
+            directionId: currentPath.directionId,
+            streamId: currentPath.streamId,
+            courseKey: currentPath.courseKey,
+            semesterKey: currentPath.semesterKey,
+            disciplineKey: discipline,
+          },
+        });
+      });
+      return { folders, lectures };
+    }
+
+    lectures = allItems
+      .filter((item) => matchItemToPath(item, currentPath))
+      .sort((a, b) => a.lecture_title.localeCompare(b.lecture_title, 'ru'));
+
+    return { folders, lectures };
+  }, [allItems, currentPath, directionsByFaculty, faculties, indexData, streamsByDirection]);
+
+  const visibleFolders = useMemo(() => {
+    const query = searchInFolder.trim().toLowerCase();
+    if (!query) return currentFolder.folders;
+    return currentFolder.folders.filter((folder) => folder.label.toLowerCase().includes(query));
+  }, [currentFolder.folders, searchInFolder]);
+
+  const visibleLectures = useMemo(() => {
+    const query = searchInFolder.trim().toLowerCase();
+    if (!query) return currentFolder.lectures;
+    return currentFolder.lectures.filter((item) =>
+      item.lecture_title.toLowerCase().includes(query) ||
+      (item.lecturer_name || '').toLowerCase().includes(query) ||
+      item.discipline.toLowerCase().includes(query)
+    );
+  }, [currentFolder.lectures, searchInFolder]);
 
   const openLectureDetails = async (item: CatalogItem) => {
     setSelectedLecture(item);
+    setSelectedEntryKey(`lecture:${item.lecture_id}`);
+
     if (!notesByLecture[item.lecture_id]) {
       const nRes = await fetch(`${API_BASE}/api/lectures/${item.lecture_id}/notes`, { headers });
       if (nRes.ok) {
         const notes = await nRes.json();
-        setNotesByLecture(prev => ({ ...prev, [item.lecture_id]: notes }));
+        setNotesByLecture((prev) => ({ ...prev, [item.lecture_id]: notes }));
       }
     }
+
     if (!lectureTextByLecture[item.lecture_id]) {
       const lRes = await fetch(`${API_BASE}/api/lectures/${item.lecture_id}`, { headers });
       if (lRes.ok) {
         const detail: LectureDetail = await lRes.json();
         const text = detail.transcriptions?.[0]?.processed_text || detail.transcriptions?.[0]?.raw_text || '';
-        setLectureTextByLecture(prev => ({ ...prev, [item.lecture_id]: text }));
+        setLectureTextByLecture((prev) => ({ ...prev, [item.lecture_id]: text }));
       }
     }
   };
@@ -202,18 +510,21 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     const mode = addNoteModeByLecture[lectureId];
     const content = (addNoteContentByLecture[lectureId] || '').trim();
     if (!mode || !content) return;
+
     const res = await fetch(`${API_BASE}/api/lectures/${lectureId}/notes`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode, content }),
     });
     if (!res.ok) return;
+
     const nRes = await fetch(`${API_BASE}/api/lectures/${lectureId}/notes`, { headers });
     if (nRes.ok) {
       const notes = await nRes.json();
-      setNotesByLecture(prev => ({ ...prev, [lectureId]: notes }));
+      setNotesByLecture((prev) => ({ ...prev, [lectureId]: notes }));
     }
-    setAddNoteContentByLecture(prev => ({ ...prev, [lectureId]: '' }));
+
+    setAddNoteContentByLecture((prev) => ({ ...prev, [lectureId]: '' }));
   };
 
   const openNoteText = async (lectureId: string, noteId: string, title: string) => {
@@ -224,77 +535,421 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     setNoteTextModal({ lectureId, noteId, title });
   };
 
+  const toggleTreeNode = (nodeKey: string) => {
+    setExpandedNodes((prev) => ({ ...prev, [nodeKey]: !prev[nodeKey] }));
+  };
+
+  const treeRow = (params: {
+    nodeKey: string;
+    level: number;
+    label: string;
+    icon?: 'folder' | 'folder_open';
+    isSelected: boolean;
+    hasChildren: boolean;
+    expanded: boolean;
+    onSelect: () => void;
+    onToggle: () => void;
+  }) => (
+    <div className="flex items-center gap-1 rounded-md" style={{ paddingLeft: `${params.level * 14}px` }}>
+      {params.hasChildren ? (
+        <button
+          onClick={params.onToggle}
+          className="w-5 h-5 flex items-center justify-center rounded text-xs"
+          style={{ color: mutedColor }}
+          aria-label="toggle"
+        >
+          {params.expanded ? '▾' : '▸'}
+        </button>
+      ) : (
+        <span className="w-5 h-5" />
+      )}
+      <button
+        key={params.nodeKey}
+        onClick={params.onSelect}
+        className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded-md text-left"
+        style={{
+          background: params.isSelected ? 'rgba(31,111,235,0.2)' : 'transparent',
+          color: params.isSelected ? (isLightTheme ? '#0f3a72' : '#b8d8ff') : 'var(--text-primary)',
+        }}
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
+          {params.icon || (params.hasChildren ? 'folder' : 'description')}
+        </span>
+        <span className="truncate text-sm">{params.label}</span>
+      </button>
+    </div>
+  );
+
   return (
     <div>
-      <div className="text-center mb-8 px-4">
+      <div className="text-center mb-6 px-4">
         <h1 className="text-3xl lg:text-4xl font-light mb-3 tracking-wide" style={{ color: headingColor }}>База лекций</h1>
-        <p className="text-sm opacity-70" style={{ color: mutedColor }}>Проводник: факультет / направление / поток / курс / семестр / дисциплина / лекции.</p>
+        <p className="text-sm opacity-80" style={{ color: mutedColor }}>
+          Режим проводника: дерево каталога слева, содержимое папки справа.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-4 mb-5">
-        <div className="border rounded-xl p-3" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
-          <div className="text-xs mb-2" style={{ color: mutedColor }}>
-            Путь: Каталог
-            {facultyId ? ` / ${faculties.find(f => f.id === facultyId)?.name || ''}` : ''}
-            {directionId ? ` / ${directions.find(d => d.id === directionId)?.name || ''}` : ''}
-            {streamId ? ` / ${streams.find(s => s.id === streamId)?.name || ''}` : ''}
-            {courseText ? ` / ${courseText === NO_COURSE ? 'Курс не указан' : `Курс ${courseText}`}` : ''}
-            {semesterText ? ` / ${semesterLabel(semesterText)}` : ''}
-            {discipline ? ` / ${discipline === NO_DISCIPLINE ? 'Дисциплина не указана' : discipline}` : ''}
-          </div>
-          <button onClick={() => setPath()} className="mb-2 px-2 py-1 rounded border text-xs" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>В корень</button>
-          <div className="space-y-1 max-h-[64vh] overflow-y-auto">
-            {folderEntries.map(entry => (
-              <button
-                key={entry.key}
-                onClick={() => {
-                  if (entry.type === 'faculty') setPath(entry.key);
-                  if (entry.type === 'direction') setPath(facultyId, entry.key);
-                  if (entry.type === 'stream') setPath(facultyId, directionId, entry.key);
-                  if (entry.type === 'course') setPath(facultyId, directionId, streamId, entry.meta as string);
-                  if (entry.type === 'semester') setPath(facultyId, directionId, streamId, courseText, entry.meta as Semester);
-                  if (entry.type === 'discipline') setPath(facultyId, directionId, streamId, courseText, semesterText, entry.meta as string);
-                }}
-                className="w-full text-left px-3 py-2 rounded-lg border text-sm"
-                style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-              >
-                {entry.label}
-              </button>
+      <div className="rounded-2xl overflow-hidden" style={{ border: cardBorder, background: panelBg }}>
+        <div
+          className="flex flex-wrap items-center gap-2 p-3 border-b"
+          style={{ borderColor: 'var(--border-color)', background: isLightTheme ? 'rgba(68,41,43,0.04)' : 'rgba(255,247,236,0.04)' }}
+        >
+          <button
+            onClick={goBack}
+            disabled={backStack.length === 0}
+            className="px-2.5 py-1.5 rounded-md border text-xs disabled:opacity-45"
+            style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+          >
+            Назад
+          </button>
+          <button
+            onClick={goForward}
+            disabled={forwardStack.length === 0}
+            className="px-2.5 py-1.5 rounded-md border text-xs disabled:opacity-45"
+            style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+          >
+            Вперёд
+          </button>
+          <button
+            onClick={goUp}
+            disabled={pathKey(currentPath) === pathKey({})}
+            className="px-2.5 py-1.5 rounded-md border text-xs disabled:opacity-45"
+            style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+          >
+            Вверх
+          </button>
+
+          <div
+            className="flex-1 min-w-[260px] px-3 py-1.5 rounded-md border flex items-center gap-1 overflow-x-auto"
+            style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}
+          >
+            {breadcrumbs.map((crumb, idx) => (
+              <React.Fragment key={`${idx}-${crumb.label}`}>
+                {idx > 0 && <span style={{ color: mutedColor }}>/</span>}
+                <button
+                  onClick={() => navigateTo(crumb.path)}
+                  className="text-xs whitespace-nowrap hover:underline"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  {crumb.label}
+                </button>
+              </React.Fragment>
             ))}
-            {folderEntries.length === 0 && <p className="text-xs px-2 py-2" style={{ color: mutedColor }}>Папки не найдены</p>}
           </div>
+
+          <input
+            value={searchInFolder}
+            onChange={(e) => setSearchInFolder(e.target.value)}
+            placeholder="Поиск в текущей папке"
+            className="px-3 py-1.5 rounded-md border text-sm min-w-[200px]"
+            style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+          />
         </div>
 
-        <div>
-          {loading ? <p className="text-center py-8" style={{ color: mutedColor }}>Загрузка...</p> : items.length === 0 ? (
-            <p className="text-center py-8" style={{ color: mutedColor }}>В этой папке пока пусто</p>
-          ) : (
-            <div className="space-y-3">
-              {items.map(item => (
-                <div key={item.id} className="rounded-xl" style={{ background: cardBg, border: cardBorder }}>
-                  <div className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-base font-medium" style={{ color: headingColor }}>{item.lecture_title}</h3>
-                        <p className="text-xs mt-1" style={{ color: mutedColor }}>
-                          {item.faculty_name} · {item.direction_name} · {item.stream_name} · Курс: {item.course_text || '—'} · Семестр: {item.semester_text || '—'} · Год: {item.study_year_text || '—'}
-                        </p>
-                        <p className="text-xs mt-1" style={{ color: mutedColor }}>{item.discipline}{item.lecturer_name ? ` · ${item.lecturer_name}` : ''}</p>
-                      </div>
-                      <button onClick={() => openLectureDetails(item)} className="px-3 py-2 rounded-lg text-xs" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Открыть</button>
+        <div className="grid grid-cols-1 xl:grid-cols-[320px,1fr] min-h-[520px]">
+          <aside className="border-r p-3 max-h-[74vh] overflow-y-auto" style={{ borderColor: 'var(--border-color)' }}>
+            <p className="text-xs uppercase tracking-wider mb-2" style={{ color: mutedColor }}>Дерево каталога</p>
+
+            {treeRow({
+              nodeKey: 'root',
+              level: 0,
+              label: 'Каталог',
+              icon: 'folder_open',
+              isSelected: isSamePath(currentPath, {}),
+              hasChildren: true,
+              expanded: true,
+              onSelect: () => navigateTo({}),
+              onToggle: () => undefined,
+            })}
+
+            <div className="mt-1 space-y-0.5">
+              {faculties
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+                .map((faculty) => {
+                  const facultyKey = `faculty:${faculty.id}`;
+                  const facultyExpanded = expandedNodes[facultyKey] ?? false;
+                  const facultySelected = isSamePath(currentPath, { facultyId: faculty.id });
+                  const directionList = directionsByFaculty[faculty.id] || [];
+
+                  return (
+                    <div key={faculty.id}>
+                      {treeRow({
+                        nodeKey: facultyKey,
+                        level: 1,
+                        label: faculty.name,
+                        icon: 'folder',
+                        isSelected: facultySelected,
+                        hasChildren: directionList.length > 0,
+                        expanded: facultyExpanded,
+                        onSelect: () => navigateTo({ facultyId: faculty.id }),
+                        onToggle: () => toggleTreeNode(facultyKey),
+                      })}
+
+                      {facultyExpanded && directionList.map((direction) => {
+                        const directionKey = `direction:${direction.id}`;
+                        const directionExpanded = expandedNodes[directionKey] ?? false;
+                        const directionSelected = isSamePath(currentPath, { facultyId: faculty.id, directionId: direction.id });
+                        const streamList = streamsByDirection[direction.id] || [];
+
+                        return (
+                          <div key={direction.id}>
+                            {treeRow({
+                              nodeKey: directionKey,
+                              level: 2,
+                              label: direction.name,
+                              icon: 'folder',
+                              isSelected: directionSelected,
+                              hasChildren: streamList.length > 0,
+                              expanded: directionExpanded,
+                              onSelect: () => navigateTo({ facultyId: faculty.id, directionId: direction.id }),
+                              onToggle: () => toggleTreeNode(directionKey),
+                            })}
+
+                            {directionExpanded && streamList.map((stream) => {
+                              const streamKey = `stream:${stream.id}`;
+                              const streamExpanded = expandedNodes[streamKey] ?? false;
+                              const streamSelected = isSamePath(currentPath, {
+                                facultyId: faculty.id,
+                                directionId: direction.id,
+                                streamId: stream.id,
+                              });
+                              const courses = indexData.coursesByStream[stream.id] || [];
+
+                              return (
+                                <div key={stream.id}>
+                                  {treeRow({
+                                    nodeKey: streamKey,
+                                    level: 3,
+                                    label: stream.name,
+                                    icon: 'folder',
+                                    isSelected: streamSelected,
+                                    hasChildren: courses.length > 0,
+                                    expanded: streamExpanded,
+                                    onSelect: () => navigateTo({ facultyId: faculty.id, directionId: direction.id, streamId: stream.id }),
+                                    onToggle: () => toggleTreeNode(streamKey),
+                                  })}
+
+                                  {streamExpanded && courses.map((course) => {
+                                    const courseKey = `course:${stream.id}|${course}`;
+                                    const courseExpanded = expandedNodes[courseKey] ?? false;
+                                    const courseSelected = isSamePath(currentPath, {
+                                      facultyId: faculty.id,
+                                      directionId: direction.id,
+                                      streamId: stream.id,
+                                      courseKey: course,
+                                    });
+                                    const semesterKey = `${stream.id}|${course}`;
+                                    const semesters = indexData.semestersByStreamCourse[semesterKey] || [];
+
+                                    return (
+                                      <div key={courseKey}>
+                                        {treeRow({
+                                          nodeKey: courseKey,
+                                          level: 4,
+                                          label: courseLabel(course),
+                                          icon: 'folder',
+                                          isSelected: courseSelected,
+                                          hasChildren: semesters.length > 0,
+                                          expanded: courseExpanded,
+                                          onSelect: () => navigateTo({
+                                            facultyId: faculty.id,
+                                            directionId: direction.id,
+                                            streamId: stream.id,
+                                            courseKey: course,
+                                          }),
+                                          onToggle: () => toggleTreeNode(courseKey),
+                                        })}
+
+                                        {courseExpanded && semesters.map((semester) => {
+                                          const semNodeKey = `semester:${stream.id}|${course}|${semester}`;
+                                          const semExpanded = expandedNodes[semNodeKey] ?? false;
+                                          const semSelected = isSamePath(currentPath, {
+                                            facultyId: faculty.id,
+                                            directionId: direction.id,
+                                            streamId: stream.id,
+                                            courseKey: course,
+                                            semesterKey: semester,
+                                          });
+                                          const scsKey = `${stream.id}|${course}|${semester}`;
+                                          const disciplines = indexData.disciplinesBySCS[scsKey] || [];
+
+                                          return (
+                                            <div key={semNodeKey}>
+                                              {treeRow({
+                                                nodeKey: semNodeKey,
+                                                level: 5,
+                                                label: semesterLabel(semester),
+                                                icon: 'folder',
+                                                isSelected: semSelected,
+                                                hasChildren: disciplines.length > 0,
+                                                expanded: semExpanded,
+                                                onSelect: () => navigateTo({
+                                                  facultyId: faculty.id,
+                                                  directionId: direction.id,
+                                                  streamId: stream.id,
+                                                  courseKey: course,
+                                                  semesterKey: semester,
+                                                }),
+                                                onToggle: () => toggleTreeNode(semNodeKey),
+                                              })}
+
+                                              {semExpanded && disciplines.map((discipline) => {
+                                                const disciplineNodeKey = `discipline:${stream.id}|${course}|${semester}|${discipline}`;
+                                                const disciplineSelected = isSamePath(currentPath, {
+                                                  facultyId: faculty.id,
+                                                  directionId: direction.id,
+                                                  streamId: stream.id,
+                                                  courseKey: course,
+                                                  semesterKey: semester,
+                                                  disciplineKey: discipline,
+                                                });
+                                                return (
+                                                  <div key={disciplineNodeKey}>
+                                                    {treeRow({
+                                                      nodeKey: disciplineNodeKey,
+                                                      level: 6,
+                                                      label: disciplineLabel(discipline),
+                                                      icon: 'folder',
+                                                      isSelected: disciplineSelected,
+                                                      hasChildren: false,
+                                                      expanded: false,
+                                                      onSelect: () => navigateTo({
+                                                        facultyId: faculty.id,
+                                                        directionId: direction.id,
+                                                        streamId: stream.id,
+                                                        courseKey: course,
+                                                        semesterKey: semester,
+                                                        disciplineKey: discipline,
+                                                      }),
+                                                      onToggle: () => undefined,
+                                                    })}
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
                     </div>
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
             </div>
-          )}
+          </aside>
+
+          <section className="p-3">
+            <p className="text-xs uppercase tracking-wider mb-2" style={{ color: mutedColor }}>Содержимое папки</p>
+
+            <div className="border rounded-xl overflow-hidden" style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+              <div
+                className="grid grid-cols-[minmax(220px,1fr)_120px_200px_120px] gap-2 px-3 py-2 border-b text-xs font-medium"
+                style={{ borderColor: 'var(--border-color)', color: mutedColor }}
+              >
+                <span>Имя</span>
+                <span>Тип</span>
+                <span>Детали</span>
+                <span>Действие</span>
+              </div>
+
+              <div className="max-h-[58vh] overflow-y-auto">
+                {loading ? (
+                  <p className="text-sm px-4 py-6" style={{ color: mutedColor }}>Загрузка каталога...</p>
+                ) : (
+                  <>
+                    {visibleFolders.map((folder) => (
+                      <div
+                        key={folder.id}
+                        onClick={() => setSelectedEntryKey(folder.id)}
+                        onDoubleClick={() => navigateTo(folder.nextPath)}
+                        className="grid grid-cols-[minmax(220px,1fr)_120px_200px_120px] gap-2 px-3 py-2 border-b text-sm cursor-default"
+                        style={{
+                          borderColor: 'var(--border-color)',
+                          background: selectedEntryKey === folder.id ? 'rgba(31,111,235,0.15)' : 'transparent',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{folder.icon}</span>
+                          <span className="truncate">{folder.label}</span>
+                        </span>
+                        <span style={{ color: mutedColor }}>{folder.typeLabel}</span>
+                        <span style={{ color: mutedColor }}>—</span>
+                        <span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigateTo(folder.nextPath); }}
+                            className="px-2 py-1 rounded border text-xs"
+                            style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                          >
+                            Открыть
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+
+                    {visibleLectures.map((item) => {
+                      const rowKey = `lecture:${item.lecture_id}`;
+                      const detail = item.lecturer_name || item.discipline;
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            setSelectedEntryKey(rowKey);
+                            setSelectedLecture(item);
+                          }}
+                          onDoubleClick={() => openLectureDetails(item)}
+                          className="grid grid-cols-[minmax(220px,1fr)_120px_200px_120px] gap-2 px-3 py-2 border-b text-sm cursor-default"
+                          style={{
+                            borderColor: 'var(--border-color)',
+                            background: selectedEntryKey === rowKey ? 'rgba(31,111,235,0.15)' : 'transparent',
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>description</span>
+                            <span className="truncate">{item.lecture_title}</span>
+                          </span>
+                          <span style={{ color: mutedColor }}>Лекция</span>
+                          <span className="truncate" style={{ color: mutedColor }}>{detail || '—'}</span>
+                          <span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openLectureDetails(item); }}
+                              className="px-2 py-1 rounded border text-xs"
+                              style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                            >
+                              Просмотр
+                            </button>
+                          </span>
+                        </div>
+                      );
+                    })}
+
+                    {visibleFolders.length === 0 && visibleLectures.length === 0 && (
+                      <p className="text-sm px-4 py-6" style={{ color: mutedColor }}>
+                        В этой папке пусто.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
       {selectedLecture && (
-        <div className="border rounded-xl p-4" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+        <div className="border rounded-xl p-4 mt-5" style={{ borderColor: 'var(--border-color)', background: cardBg }}>
           <h3 className="text-lg font-medium mb-2" style={{ color: headingColor }}>{selectedLecture.lecture_title}</h3>
-          <p className="text-xs mb-3" style={{ color: mutedColor }}>Материалы лекции</p>
+          <p className="text-xs mb-3" style={{ color: mutedColor }}>
+            {selectedLecture.faculty_name} / {selectedLecture.direction_name} / {selectedLecture.stream_name} / {courseLabel(normalizeCourse(selectedLecture.course_text))} / {semesterLabel(normalizeSemesterKey(selectedLecture.semester_text))} / {disciplineLabel(normalizeDiscipline(selectedLecture.discipline))}
+          </p>
 
           <div className="flex flex-wrap gap-2 mb-3">
             <button
@@ -309,9 +964,14 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
           <div className="mb-3">
             <p className="text-xs mb-2" style={{ color: mutedColor }}>Готовые режимы</p>
             <div className="flex flex-wrap gap-2">
-              {(notesByLecture[selectedLecture.lecture_id] || []).map(n => (
-                <button key={n.id} onClick={() => openNoteText(selectedLecture.lecture_id, n.id, n.mode)} className="px-3 py-1.5 rounded-lg text-xs border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
-                  {NOTE_MODES.find(m => m.id === n.mode)?.label || n.mode}
+              {(notesByLecture[selectedLecture.lecture_id] || []).map((n) => (
+                <button
+                  key={n.id}
+                  onClick={() => openNoteText(selectedLecture.lecture_id, n.id, n.mode)}
+                  className="px-3 py-1.5 rounded-lg text-xs border"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                >
+                  {NOTE_MODES.find((m) => m.id === n.mode)?.label || n.mode}
                 </button>
               ))}
               {(notesByLecture[selectedLecture.lecture_id] || []).length === 0 && (
@@ -323,21 +983,25 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
           <div className="grid grid-cols-1 md:grid-cols-[240px,1fr,auto] gap-2">
             <select
               value={addNoteModeByLecture[selectedLecture.lecture_id] || ''}
-              onChange={(e) => setAddNoteModeByLecture(prev => ({ ...prev, [selectedLecture.lecture_id]: e.target.value }))}
+              onChange={(e) => setAddNoteModeByLecture((prev) => ({ ...prev, [selectedLecture.lecture_id]: e.target.value }))}
               className="px-3 py-2 rounded-lg border text-sm"
               style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
             >
               <option value="">Выберите режим</option>
-              {NOTE_MODES.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+              {NOTE_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
             <input
               value={addNoteContentByLecture[selectedLecture.lecture_id] || ''}
-              onChange={(e) => setAddNoteContentByLecture(prev => ({ ...prev, [selectedLecture.lecture_id]: e.target.value }))}
+              onChange={(e) => setAddNoteContentByLecture((prev) => ({ ...prev, [selectedLecture.lecture_id]: e.target.value }))}
               placeholder="Вставьте готовый текст режима"
               className="px-3 py-2 rounded-lg border text-sm"
               style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
             />
-            <button onClick={() => saveNote(selectedLecture.lecture_id)} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>
+            <button
+              onClick={() => saveNote(selectedLecture.lecture_id)}
+              className="px-3 py-2 rounded-lg text-sm"
+              style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
+            >
               Добавить
             </button>
           </div>
@@ -345,17 +1009,36 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
       )}
 
       {noteTextModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={() => setNoteTextModal(null)}>
-          <div className="rounded-2xl p-5 w-full max-w-4xl" style={{ background: isLightTheme ? 'rgba(255,255,240,.98)' : 'rgba(33,24,25,.97)', border: cardBorder }} onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          onClick={() => setNoteTextModal(null)}
+        >
+          <div
+            className="rounded-2xl p-5 w-full max-w-4xl"
+            style={{ background: isLightTheme ? 'rgba(255,255,240,.98)' : 'rgba(33,24,25,.97)', border: cardBorder }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <h4 className="text-base font-medium mb-2" style={{ color: headingColor }}>{noteTextModal.title}</h4>
-            <div className="max-h-[60vh] overflow-y-auto text-sm whitespace-pre-wrap p-3 rounded-lg border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+            <div
+              className="max-h-[60vh] overflow-y-auto text-sm whitespace-pre-wrap p-3 rounded-lg border"
+              style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+            >
               {noteTextContent || 'Пусто'}
             </div>
             <div className="mt-3 flex gap-2">
-              <button onClick={() => onOpenInEditor(noteTextContent, noteTextModal.lectureId, selectedLecture?.lecture_title)} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>
+              <button
+                onClick={() => onOpenInEditor(noteTextContent, noteTextModal.lectureId, selectedLecture?.lecture_title)}
+                className="px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
+              >
                 Открыть в редакторе
               </button>
-              <button onClick={() => setNoteTextModal(null)} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+              <button
+                onClick={() => setNoteTextModal(null)}
+                className="px-3 py-2 rounded-lg text-sm border"
+                style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+              >
                 Закрыть
               </button>
             </div>

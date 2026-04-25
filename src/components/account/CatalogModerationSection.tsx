@@ -8,6 +8,8 @@ interface ReqItem {
   lecture_id: string;
   lecture_title: string;
   stream_id: string;
+  direction_id: string;
+  faculty_id: string;
   stream_name: string;
   direction_name: string;
   faculty_name: string;
@@ -26,7 +28,6 @@ interface ReqItem {
 interface LookupItem { id: string; name: string }
 interface DirectionItem extends LookupItem { faculty_id: string }
 interface StreamItem extends LookupItem { direction_id: string; course: number | null; study_year_start: number | null }
-interface LectureOption { lecture_id: string; lecture_title: string; uploader_login: string }
 
 interface CatalogModerationSectionProps {
   isLightTheme: boolean;
@@ -52,13 +53,18 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [statusFilter, setStatusFilter] = useState<string>('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [reviewText, setReviewText] = useState<Record<string, string>>({});
+  const [lectureTitleText, setLectureTitleText] = useState<Record<string, string>>({});
   const [disciplineText, setDisciplineText] = useState<Record<string, string>>({});
   const [lecturerText, setLecturerText] = useState<Record<string, string>>({});
   const [courseText, setCourseText] = useState<Record<string, string>>({});
   const [semesterText, setSemesterText] = useState<Record<string, string>>({});
   const [lectureNumberText, setLectureNumberText] = useState<Record<string, string>>({});
   const [studyYearText, setStudyYearText] = useState<Record<string, string>>({});
+  const [facultyIdText, setFacultyIdText] = useState<Record<string, string>>({});
+  const [directionIdText, setDirectionIdText] = useState<Record<string, string>>({});
+  const [streamIdText, setStreamIdText] = useState<Record<string, string>>({});
   const [disciplineOptions, setDisciplineOptions] = useState<string[]>([]);
+  const [requestLecturerOptions, setRequestLecturerOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [previewText, setPreviewText] = useState('');
@@ -77,20 +83,6 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [newFacultyName, setNewFacultyName] = useState('');
   const [newDirectionName, setNewDirectionName] = useState('');
   const [newStreamName, setNewStreamName] = useState('');
-
-  const [streamDisciplineOptions, setStreamDisciplineOptions] = useState<string[]>([]);
-  const [streamLecturerOptions, setStreamLecturerOptions] = useState<string[]>([]);
-  const [lectureSearch, setLectureSearch] = useState('');
-  const [lectureOptions, setLectureOptions] = useState<LectureOption[]>([]);
-  const [manual, setManual] = useState({
-    lecture_id: '',
-    discipline: '',
-    lecturer_name: '',
-    course_text: '',
-    semester_text: 'winter',
-    lecture_number_text: '',
-    study_year_text: '',
-  });
 
   const headingColor = isLightTheme ? '#2a1918' : '#fff7ec';
   const mutedColor = isLightTheme ? '#7a5a5c' : '#c6b7a7';
@@ -157,59 +149,42 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   }, [requests, searchQuery]);
 
   const selected = useMemo(() => filtered.find(r => r.id === selectedId) ?? filtered[0] ?? null, [filtered, selectedId]);
+  const selectedFacultyId = selected ? (facultyIdText[selected.id] ?? selected.faculty_id ?? '') : '';
+  const selectedDirectionId = selected ? (directionIdText[selected.id] ?? selected.direction_id ?? '') : '';
+  const selectedStreamId = selected ? (streamIdText[selected.id] ?? selected.stream_id ?? '') : '';
+  const selectedDirectionOptions = directions.filter(d => !selectedFacultyId || d.faculty_id === selectedFacultyId);
+  const selectedStreamOptions = streams.filter(s => !selectedDirectionId || s.direction_id === selectedDirectionId);
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
   useEffect(() => { loadLookups(); }, [loadLookups]);
   useEffect(() => { setPreviewText(''); }, [selectedId]);
   useEffect(() => {
     if (!selected) return;
+    setLectureTitleText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.lecture_title ?? '' }));
     setDisciplineText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.discipline ?? '' }));
     setLecturerText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.lecturer_name ?? '' }));
     setCourseText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.course_text ?? '' }));
     setSemesterText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.semester_text ?? 'winter' }));
     setLectureNumberText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.lecture_number_text ?? '' }));
     setStudyYearText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.study_year_text ?? '' }));
+    setFacultyIdText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.faculty_id ?? '' }));
+    setDirectionIdText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.direction_id ?? '' }));
+    setStreamIdText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.stream_id ?? '' }));
   }, [selected]);
 
   useEffect(() => {
-    if (!selected?.stream_id) return;
+    if (!selected) return;
+    const selectedStreamId = (streamIdText[selected.id] || selected.stream_id || '').trim();
+    if (!selectedStreamId) return;
     (async () => {
       const [dRes, lRes] = await Promise.all([
-        fetch(`${API_BASE}/api/catalog/disciplines?stream_id=${selected.stream_id}`, { headers }),
-        fetch(`${API_BASE}/api/catalog/lecturers?stream_id=${selected.stream_id}`, { headers }),
+        fetch(`${API_BASE}/api/catalog/disciplines?stream_id=${selectedStreamId}`, { headers }),
+        fetch(`${API_BASE}/api/catalog/lecturers?stream_id=${selectedStreamId}`, { headers }),
       ]);
       setDisciplineOptions(dRes.ok ? await dRes.json() : []);
-      setStreamLecturerOptions(lRes.ok ? await lRes.json() : []);
+      setRequestLecturerOptions(lRes.ok ? await lRes.json() : []);
     })();
-  }, [selected?.id, selected?.stream_id, headers]);
-
-  useEffect(() => {
-    if (activeNodeType !== 'stream' || !activeStreamId) {
-      setStreamDisciplineOptions([]);
-      setStreamLecturerOptions([]);
-      return;
-    }
-    (async () => {
-      const [dRes, lRes] = await Promise.all([
-        fetch(`${API_BASE}/api/catalog/disciplines?stream_id=${activeStreamId}`, { headers }),
-        fetch(`${API_BASE}/api/catalog/lecturers?stream_id=${activeStreamId}`, { headers }),
-      ]);
-      setStreamDisciplineOptions(dRes.ok ? await dRes.json() : []);
-      setStreamLecturerOptions(lRes.ok ? await lRes.json() : []);
-    })();
-  }, [activeNodeType, activeDirectionId, activeStreamId, headers]);
-
-  useEffect(() => {
-    if (activeNodeType !== 'stream') return;
-    const controller = new AbortController();
-    const params = new URLSearchParams();
-    if (lectureSearch.trim()) params.set('search', lectureSearch.trim());
-    params.set('limit', '50');
-    fetch(`${API_BASE}/api/catalog/lecture-options?${params}`, { headers, signal: controller.signal })
-      .then(async (res) => (res.ok ? setLectureOptions(await res.json()) : setLectureOptions([])))
-      .catch(() => setLectureOptions([]));
-    return () => controller.abort();
-  }, [activeNodeType, lectureSearch, headers]);
+  }, [selected?.id, selected?.stream_id, streamIdText, headers]);
 
   const selectFacultyNode = (facultyId: string) => {
     setActiveNodeType('faculty');
@@ -239,13 +214,16 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
 
   const moderate = async (id: string, action: 'approve' | 'reject') => {
     const review_comment = (reviewText[id] || '').trim();
+    const lecture_title = (lectureTitleText[id] || '').trim();
     const discipline = (disciplineText[id] || '').trim();
     const lecturer_name = (lecturerText[id] || '').trim();
     const course_text = (courseText[id] || '').trim();
     const semester_text = normalizeSemesterForApi(semesterText[id]);
     const lecture_number_text = (lectureNumberText[id] || '').trim();
     const study_year_text = (studyYearText[id] || '').trim();
+    const stream_id = (streamIdText[id] || '').trim();
     if (action === 'approve' && !discipline) return alert('Для одобрения укажите дисциплину.');
+    if (action === 'approve' && !stream_id) return alert('Для одобрения нужно выбрать поток.');
     if (action === 'reject' && !review_comment) return alert('Для отклонения нужно указать причину.');
     setProcessing(true);
     try {
@@ -253,6 +231,8 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          lecture_title: lecture_title || null,
+          stream_id: stream_id || null,
           review_comment: review_comment || null,
           discipline: discipline || null,
           lecturer_name: lecturer_name || null,
@@ -331,40 +311,12 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     selectStreamNode(activeFacultyId, activeDirectionId, created.id);
   };
 
-  const publishManual = async () => {
-    if (!activeStreamId) return alert('Выберите поток в дереве слева.');
-    if (!manual.lecture_id) return alert('Выберите лекцию из списка.');
-    const res = await fetch(`${API_BASE}/api/catalog/publish`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        lecture_id: manual.lecture_id,
-        stream_id: activeStreamId,
-        discipline: manual.discipline,
-        lecturer_name: manual.lecturer_name || null,
-        course_text: manual.course_text || null,
-        semester_text: normalizeSemesterForApi(manual.semester_text),
-        lecture_number_text: manual.lecture_number_text || null,
-        study_year_text: manual.study_year_text || null,
-      }),
-    });
-    if (res.ok) {
-      setManual(prev => ({ ...prev, lecture_id: '', discipline: '', lecturer_name: '', course_text: '', semester_text: 'winter', lecture_number_text: '', study_year_text: '' }));
-      await Promise.all([loadRequests(), loadLookups()]);
-      alert('Лекция опубликована в базу.');
-      window.dispatchEvent(new Event('catalog:refresh'));
-    } else {
-      const err = await res.json().catch(() => ({}));
-      alert(err.detail || 'Не удалось опубликовать лекцию в базу.');
-    }
-  };
-
   return (
     <div>
       <div className="text-center mb-6 px-4">
         <h1 className="text-3xl lg:text-4xl font-light mb-3 tracking-wide" style={{ color: headingColor }}>Модерация базы лекций</h1>
         <p className="text-sm opacity-70" style={{ color: mutedColor }}>
-          {user?.role === 'admin' ? 'Inbox всех заявок + проводник каталога' : 'Inbox заявок потока + публикация через проводник'}
+          {user?.role === 'admin' ? 'Inbox всех заявок + управление структурой каталога' : 'Inbox заявок потока + просмотр структуры каталога'}
         </p>
       </div>
 
@@ -399,8 +351,17 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
             <>
               <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
                 <div>
-                  <h2 className="text-lg font-medium" style={{ color: headingColor }}>{selected.lecture_title}</h2>
-                  <p className="text-xs" style={{ color: mutedColor }}>{selected.faculty_name} · {selected.direction_name} · {selected.stream_name}</p>
+                  <p className="text-xs mb-1" style={{ color: mutedColor }}>Название лекции</p>
+                  <input
+                    value={lectureTitleText[selected.id] ?? selected.lecture_title}
+                    onChange={(e) => setLectureTitleText(prev => ({ ...prev, [selected.id]: e.target.value }))}
+                    className="w-full md:w-[420px] px-3 py-2 rounded-lg border text-sm"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                    placeholder="Название лекции"
+                  />
+                  <p className="text-xs mt-2" style={{ color: mutedColor }}>
+                    {faculties.find(f => f.id === selectedFacultyId)?.name || 'Факультет'} · {directions.find(d => d.id === selectedDirectionId)?.name || 'Направление'} · {streams.find(s => s.id === selectedStreamId)?.name || 'Поток'}
+                  </p>
                 </div>
                 <span className="text-xs px-2 py-1 rounded-full h-fit" style={{ background: `${statusColor[selected.status]}22`, color: statusColor[selected.status] }}>{statusLabel[selected.status]}</span>
               </div>
@@ -429,6 +390,47 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
+                <select
+                  value={selectedFacultyId}
+                  onChange={(e) => {
+                    const nextFaculty = e.target.value;
+                    setFacultyIdText(prev => ({ ...prev, [selected.id]: nextFaculty }));
+                    setDirectionIdText(prev => ({ ...prev, [selected.id]: '' }));
+                    setStreamIdText(prev => ({ ...prev, [selected.id]: '' }));
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                >
+                  <option value="">Факультет</option>
+                  {faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+
+                <select
+                  value={selectedDirectionId}
+                  onChange={(e) => {
+                    const nextDirection = e.target.value;
+                    setDirectionIdText(prev => ({ ...prev, [selected.id]: nextDirection }));
+                    setStreamIdText(prev => ({ ...prev, [selected.id]: '' }));
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                >
+                  <option value="">Направление</option>
+                  {selectedDirectionOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+
+                <select
+                  value={selectedStreamId}
+                  onChange={(e) => setStreamIdText(prev => ({ ...prev, [selected.id]: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                >
+                  <option value="">Поток</option>
+                  {selectedStreamOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
                 <input list={`discipline-options-${selected.id}`} value={disciplineText[selected.id] ?? ''} onChange={(e) => setDisciplineText(prev => ({ ...prev, [selected.id]: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Дисциплина" />
                 <input list={`lecturer-options-${selected.id}`} value={lecturerText[selected.id] ?? ''} onChange={(e) => setLecturerText(prev => ({ ...prev, [selected.id]: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Лектор" />
@@ -441,7 +443,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                 <input value={studyYearText[selected.id] ?? ''} onChange={(e) => setStudyYearText(prev => ({ ...prev, [selected.id]: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Год записи (напр. 2025)" />
               </div>
               <datalist id={`discipline-options-${selected.id}`}>{disciplineOptions.map((opt) => <option key={opt} value={opt} />)}</datalist>
-              <datalist id={`lecturer-options-${selected.id}`}>{streamLecturerOptions.map((opt) => <option key={opt} value={opt} />)}</datalist>
+              <datalist id={`lecturer-options-${selected.id}`}>{requestLecturerOptions.map((opt) => <option key={opt} value={opt} />)}</datalist>
 
               <textarea value={reviewText[selected.id] ?? ''} onChange={(e) => setReviewText(prev => ({ ...prev, [selected.id]: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} rows={3} placeholder="Комментарий модератора (обязателен при отклонении)" />
               <div className="flex flex-wrap gap-2">
@@ -454,7 +456,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       </div>
 
       <section className="mt-5 border rounded-xl p-4" style={surface}>
-        <h3 className="text-base font-medium mb-2" style={{ color: headingColor }}>Проводник каталога</h3>
+        <h3 className="text-base font-medium mb-2" style={{ color: headingColor }}>Структура каталога</h3>
         <div className="grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-4">
           <div className="border rounded-lg p-3 max-h-[560px] overflow-y-auto" style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
             <button onClick={() => { setActiveNodeType('root'); setActiveFacultyId(''); setActiveDirectionId(''); setActiveStreamId(''); }} className="text-left px-2 py-1 rounded text-sm w-full mb-1" style={{ background: activeNodeType === 'root' ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'root' ? 'var(--bg-primary)' : 'var(--text-primary)' }}>Каталог</button>
@@ -517,27 +519,8 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
             )}
 
             {activeNodeType === 'stream' && activeStream && (
-              <div className="space-y-3">
-                <input value={lectureSearch} onChange={(e) => setLectureSearch(e.target.value)} placeholder="Поиск лекции по названию / логину автора" className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                <select value={manual.lecture_id} onChange={(e) => setManual(prev => ({ ...prev, lecture_id: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
-                  <option value="">Выберите лекцию</option>
-                  {lectureOptions.map(opt => <option key={opt.lecture_id} value={opt.lecture_id}>{opt.lecture_title} — @{opt.uploader_login}</option>)}
-                </select>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <input list="stream-discipline-options" value={manual.discipline} onChange={(e) => setManual(prev => ({ ...prev, discipline: e.target.value }))} placeholder="Дисциплина" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                  <input list="stream-lecturer-options" value={manual.lecturer_name} onChange={(e) => setManual(prev => ({ ...prev, lecturer_name: e.target.value }))} placeholder="Лектор" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                  <input value={manual.course_text} onChange={(e) => setManual(prev => ({ ...prev, course_text: e.target.value }))} placeholder="Курс" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                  <select value={manual.semester_text} onChange={(e) => setManual(prev => ({ ...prev, semester_text: e.target.value }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
-                    <option value="winter">Зимний семестр</option>
-                    <option value="spring">Весенний семестр</option>
-                  </select>
-                  <input value={manual.lecture_number_text} onChange={(e) => setManual(prev => ({ ...prev, lecture_number_text: e.target.value }))} placeholder="Номер лекции" className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                  <input value={manual.study_year_text} onChange={(e) => setManual(prev => ({ ...prev, study_year_text: e.target.value }))} placeholder="Год записи (напр. 2025)" className="px-3 py-2 rounded-lg border text-sm md:col-span-2" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                </div>
-                <datalist id="stream-discipline-options">{streamDisciplineOptions.map((opt) => <option key={opt} value={opt} />)}</datalist>
-                <datalist id="stream-lecturer-options">{streamLecturerOptions.map((opt) => <option key={opt} value={opt} />)}</datalist>
-                <button onClick={publishManual} className="px-4 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Опубликовать</button>
+              <div className="p-3 rounded-lg border text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+                Публикация лекций в базу выполняется в разделе «Лекции» через кнопки «Предложить в базу» и «Добавить в базу».
               </div>
             )}
           </div>
