@@ -1,4 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { saveAs } from 'file-saver';
+import htmlDocx from 'html-docx-js/dist/html-docx';
+import pdfMake from 'pdfmake/build/pdfmake';
+import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { useAuth } from '../../contexts/AuthContext';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -12,6 +16,17 @@ const NOTE_MODES = [
   { id: 'flashcards', label: 'Флешкарточки', icon: 'style' },
   { id: 'mindmap', label: 'Майнд-карта', icon: 'account_tree' },
 ];
+
+const EXPORT_FORMATS = [
+  { id: 'txt', label: 'TXT', icon: 'description', hint: 'Простой текст' },
+  { id: 'md', label: 'MD', icon: 'markdown', hint: 'Markdown' },
+  { id: 'docx', label: 'DOCX', icon: 'article', hint: 'Документ Word' },
+  { id: 'pdf', label: 'PDF', icon: 'picture_as_pdf', hint: 'PDF файл' },
+] as const;
+
+type ExportFormatId = (typeof EXPORT_FORMATS)[number]['id'];
+
+(pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || {};
 
 const NO_COURSE = '__no_course__';
 const NO_DISCIPLINE = '__no_discipline__';
@@ -88,6 +103,27 @@ const semesterLabel = (key: SemesterKey) => {
 const courseLabel = (key: string) => (key === NO_COURSE ? 'Курс не указан' : `Курс ${key}`);
 const disciplineLabel = (key: string) => (key === NO_DISCIPLINE ? 'Дисциплина не указана' : key);
 
+const sanitizeFilename = (value: string): string => {
+  const withoutForbidden = value.replace(/[<>:"/\\|?*]/g, ' ');
+  const withoutControl = Array.from(withoutForbidden)
+    .map((ch) => (ch.charCodeAt(0) < 32 ? ' ' : ch))
+    .join('');
+  return withoutControl.replace(/\s+/g, ' ').trim();
+};
+
+const escapeHtml = (value: string): string => value
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const buildExportFilename = (title?: string): string => {
+  const base = sanitizeFilename(title || '');
+  if (base) return base;
+  return `lecture_${new Date().toISOString().split('T')[0]}`;
+};
+
 const pathKey = (path: ExplorerPath) => [
   path.facultyId || '',
   path.directionId || '',
@@ -141,6 +177,10 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   const [requestModal, setRequestModal] = useState<{ lecture: CatalogItem; modeId: string; modeLabel: string } | null>(null);
   const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [requestModalError, setRequestModalError] = useState('');
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const [downloadingFormat, setDownloadingFormat] = useState<ExportFormatId | null>(null);
+  const [downloadMenuError, setDownloadMenuError] = useState('');
+  const downloadMenuRef = useRef<HTMLDivElement | null>(null);
 
   const fetchLookups = useCallback(async () => {
     const [f, d, s] = await Promise.all([
@@ -523,6 +563,109 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     }
   };
 
+  const ensureLectureTextLoaded = useCallback(async (lectureId: string): Promise<string> => {
+    const cached = lectureTextByLecture[lectureId];
+    if (typeof cached === 'string') return cached;
+
+    const lRes = await fetch(`${API_BASE}/api/lectures/${lectureId}`, { headers });
+    if (!lRes.ok) {
+      throw new Error('Не удалось загрузить текст лекции');
+    }
+
+    const detail: LectureDetail = await lRes.json();
+    const text = detail.transcriptions?.[0]?.processed_text || detail.transcriptions?.[0]?.raw_text || '';
+    setLectureTextByLecture((prev) => ({ ...prev, [lectureId]: text }));
+    return text;
+  }, [headers, lectureTextByLecture]);
+
+  const exportLectureText = async (text: string, lectureTitle: string, format: ExportFormatId): Promise<void> => {
+    const baseName = buildExportFilename(lectureTitle);
+
+    if (format === 'txt') {
+      saveAs(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${baseName}.txt`);
+      return;
+    }
+
+    if (format === 'md') {
+      saveAs(new Blob([text], { type: 'text/markdown;charset=utf-8' }), `${baseName}.md`);
+      return;
+    }
+
+    if (format === 'docx') {
+      const htmlBody = text
+        .split(/\n\s*\n/g)
+        .map((chunk) => `<p>${escapeHtml(chunk).replace(/\n/g, '<br/>')}</p>`)
+        .join('');
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(lectureTitle || 'Lecture')}</title>
+</head>
+<body>
+  ${htmlBody || '<p></p>'}
+</body>
+</html>`;
+      const docxBlob = htmlDocx.asBlob(html);
+      saveAs(docxBlob, `${baseName}.docx`);
+      return;
+    }
+
+    const lines = text.split(/\r?\n/);
+    const content = lines.map((line) => ({
+      text: line || ' ',
+      margin: [0, 0, 0, 4],
+    }));
+    const docDefinition = {
+      pageSize: 'A4',
+      pageMargins: [40, 50, 40, 50],
+      content,
+      defaultStyle: {
+        font: 'Roboto',
+        fontSize: 12,
+        lineHeight: 1.45,
+      },
+      fonts: {
+        Roboto: {
+          normal: 'Roboto-Regular.ttf',
+          bold: 'Roboto-Regular.ttf',
+          italics: 'Roboto-Regular.ttf',
+          bolditalics: 'Roboto-Regular.ttf',
+        },
+      },
+    };
+    (pdfMake as any).createPdf(docDefinition).download(`${baseName}.pdf`);
+  };
+
+  const handleOpenCleanTextInEditor = async (lecture: CatalogItem) => {
+    try {
+      const text = await ensureLectureTextLoaded(lecture.lecture_id);
+      onOpenInEditor(text, lecture.lecture_id, lecture.lecture_title);
+    } catch {
+      onOpenInEditor('', lecture.lecture_id, lecture.lecture_title);
+    }
+  };
+
+  const handleDownloadLecture = async (format: ExportFormatId) => {
+    if (!selectedLecture) return;
+    setDownloadMenuError('');
+    setDownloadingFormat(format);
+    try {
+      const text = await ensureLectureTextLoaded(selectedLecture.lecture_id);
+      if (!text.trim()) {
+        setDownloadMenuError('Текст лекции пустой. Скачивание недоступно.');
+        return;
+      }
+      await exportLectureText(text, selectedLecture.lecture_title, format);
+      setDownloadMenuOpen(false);
+    } catch {
+      setDownloadMenuError('Не удалось подготовить файл для скачивания.');
+    } finally {
+      setDownloadingFormat(null);
+    }
+  };
+
   const parseApiErrorMessage = (payload: any) => {
     if (typeof payload?.detail === 'string') return payload.detail;
     if (typeof payload?.detail?.message === 'string') return payload.detail.message;
@@ -637,6 +780,23 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
 
     return { noteMap, requestMap };
   }, [selectedLecture, notesByLecture, materialRequestsByLecture]);
+
+  useEffect(() => {
+    if (!downloadMenuOpen) return;
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(target)) {
+        setDownloadMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [downloadMenuOpen]);
+
+  useEffect(() => {
+    setDownloadMenuOpen(false);
+    setDownloadMenuError('');
+  }, [selectedLecture?.lecture_id]);
 
   return (
     <div>
@@ -1011,12 +1171,74 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
 
           <div className="flex flex-wrap gap-2 mb-3">
             <button
-              onClick={() => onOpenInEditor(lectureTextByLecture[selectedLecture.lecture_id] || '', selectedLecture.lecture_id, selectedLecture.lecture_title)}
+              onClick={() => handleOpenCleanTextInEditor(selectedLecture)}
               className="px-3 py-2 rounded-lg text-sm"
               style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
             >
               Открыть чистый текст в редакторе
             </button>
+
+            <div className="relative" ref={downloadMenuRef}>
+              <button
+                onClick={() => {
+                  setDownloadMenuOpen((prev) => !prev);
+                  setDownloadMenuError('');
+                }}
+                className="px-3 py-2 rounded-lg text-sm border flex items-center gap-1.5"
+                style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
+                Загрузить текст лекции
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
+                  {downloadMenuOpen ? 'expand_less' : 'expand_more'}
+                </span>
+              </button>
+
+              <div
+                className={`absolute left-0 top-full mt-2 w-[300px] rounded-xl border shadow-xl overflow-hidden transition-all duration-300 origin-top ${downloadMenuOpen ? 'max-h-[420px] opacity-100 scale-100' : 'max-h-0 opacity-0 scale-95 pointer-events-none'}`}
+                style={{
+                  borderColor: 'var(--border-color)',
+                  background: isLightTheme ? 'rgba(255,255,247,0.98)' : 'rgba(28,21,22,0.98)',
+                }}
+              >
+                <div className="p-3 border-b" style={{ borderColor: 'var(--border-color)' }}>
+                  <p className="text-sm font-medium" style={{ color: headingColor }}>Формат загрузки</p>
+                  <p className="text-xs mt-1" style={{ color: mutedColor }}>
+                    Выберите формат: TXT, MD, DOCX или PDF.
+                  </p>
+                </div>
+
+                <div className="p-2 space-y-1">
+                  {EXPORT_FORMATS.map((format) => (
+                    <button
+                      key={format.id}
+                      onClick={() => handleDownloadLecture(format.id)}
+                      className="w-full text-left px-3 py-2 rounded-lg border transition-all flex items-center justify-between gap-2 disabled:opacity-60"
+                      style={{
+                        borderColor: 'var(--border-color)',
+                        color: 'var(--text-primary)',
+                        background: 'var(--bg-primary)',
+                      }}
+                      disabled={Boolean(downloadingFormat)}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{format.icon}</span>
+                        <span className="truncate text-sm">{format.label} - {format.hint}</span>
+                      </span>
+                      {downloadingFormat === format.id && (
+                        <span className="text-xs" style={{ color: mutedColor }}>Подготовка...</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {downloadMenuError && (
+                  <p className="px-3 pb-3 text-xs" style={{ color: '#ef4444' }}>
+                    {downloadMenuError}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="mb-3">
