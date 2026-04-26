@@ -68,6 +68,9 @@ interface MaterialRequestInfo {
 interface LectureDetail { id: string; transcriptions: { raw_text: string; processed_text: string | null }[] }
 interface CatalogSectionProps { isLightTheme: boolean; onOpenInEditor: (text: string, lectureId: string, lectureTitle?: string) => void }
 
+const POLL_BASE_MS = 12000;
+const POLL_MAX_MS = 60000;
+
 interface ExplorerPath {
   facultyId?: string;
   directionId?: string;
@@ -123,6 +126,14 @@ const buildExportFilename = (title?: string): string => {
   const base = sanitizeFilename(title || '');
   if (base) return base;
   return `lecture_${new Date().toISOString().split('T')[0]}`;
+};
+
+const hasActiveMaterialRequests = (items: MaterialRequestInfo[]): boolean =>
+  items.some((req) => req.status === 'pending' || req.status === 'processing');
+
+const pollDelayWithJitter = (baseMs: number): number => {
+  const jitter = Math.floor(Math.random() * 2000);
+  return baseMs + jitter;
 };
 
 const pathKey = (path: ExplorerPath) => [
@@ -539,12 +550,10 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     setSelectedLecture(item);
     setSelectedEntryKey(`lecture:${item.lecture_id}`);
 
-    if (!notesByLecture[item.lecture_id]) {
-      const nRes = await fetch(`${API_BASE}/api/lectures/${item.lecture_id}/notes`, { headers });
-      if (nRes.ok) {
-        const notes = await nRes.json();
-        setNotesByLecture((prev) => ({ ...prev, [item.lecture_id]: notes }));
-      }
+    const nRes = await fetch(`${API_BASE}/api/lectures/${item.lecture_id}/notes`, { headers });
+    if (nRes.ok) {
+      const notes = await nRes.json();
+      setNotesByLecture((prev) => ({ ...prev, [item.lecture_id]: notes }));
     }
 
     if (!lectureTextByLecture[item.lecture_id]) {
@@ -555,12 +564,10 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
         setLectureTextByLecture((prev) => ({ ...prev, [item.lecture_id]: text }));
       }
     }
-    if (!materialRequestsByLecture[item.lecture_id]) {
-      const reqRes = await fetch(`${API_BASE}/api/catalog/material-requests/my?lecture_id=${item.lecture_id}`, { headers });
-      if (reqRes.ok) {
-        const reqs = await reqRes.json();
-        setMaterialRequestsByLecture((prev) => ({ ...prev, [item.lecture_id]: reqs }));
-      }
+    const reqRes = await fetch(`${API_BASE}/api/catalog/material-requests/lecture?lecture_id=${item.lecture_id}`, { headers });
+    if (reqRes.ok) {
+      const reqs = await reqRes.json();
+      setMaterialRequestsByLecture((prev) => ({ ...prev, [item.lecture_id]: reqs }));
     }
   };
 
@@ -667,6 +674,23 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     }
   };
 
+  const refreshLectureRuntimeData = useCallback(async (lectureId: string): Promise<{ hasActive: boolean }> => {
+    const [nRes, reqRes] = await Promise.all([
+      fetch(`${API_BASE}/api/lectures/${lectureId}/notes`, { headers }),
+      fetch(`${API_BASE}/api/catalog/material-requests/lecture?lecture_id=${lectureId}`, { headers }),
+    ]);
+
+    if (!nRes.ok || !reqRes.ok) {
+      throw new Error('Не удалось обновить статус генерации');
+    }
+
+    const [notes, reqs] = await Promise.all([nRes.json(), reqRes.json()]);
+    setNotesByLecture((prev) => ({ ...prev, [lectureId]: notes }));
+    setMaterialRequestsByLecture((prev) => ({ ...prev, [lectureId]: reqs }));
+
+    return { hasActive: hasActiveMaterialRequests(reqs) };
+  }, [headers]);
+
   const parseApiErrorMessage = (payload: any) => {
     if (typeof payload?.detail === 'string') return payload.detail;
     if (typeof payload?.detail?.message === 'string') return payload.detail.message;
@@ -699,7 +723,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
         return;
       }
 
-      const reqRes = await fetch(`${API_BASE}/api/catalog/material-requests/my?lecture_id=${requestModal.lecture.lecture_id}`, { headers });
+      const reqRes = await fetch(`${API_BASE}/api/catalog/material-requests/lecture?lecture_id=${requestModal.lecture.lecture_id}`, { headers });
       if (reqRes.ok) {
         const reqs = await reqRes.json();
         setMaterialRequestsByLecture((prev) => ({ ...prev, [requestModal.lecture.lecture_id]: reqs }));
@@ -798,6 +822,52 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     setDownloadMenuOpen(false);
     setDownloadMenuError('');
   }, [selectedLecture?.lecture_id]);
+
+  useEffect(() => {
+    const lectureId = selectedLecture?.lecture_id;
+    if (!lectureId) return;
+
+    const lectureReqs = materialRequestsByLecture[lectureId] || [];
+    if (!hasActiveMaterialRequests(lectureReqs)) return;
+
+    let timeoutId: number | null = null;
+    let cancelled = false;
+    let errorStreak = 0;
+
+    const schedule = (delayMs: number) => {
+      if (cancelled) return;
+      timeoutId = window.setTimeout(tick, delayMs);
+    };
+
+    const tick = async () => {
+      if (cancelled) return;
+
+      if (document.hidden) {
+        schedule(pollDelayWithJitter(POLL_BASE_MS));
+        return;
+      }
+
+      try {
+        const result = await refreshLectureRuntimeData(lectureId);
+        errorStreak = 0;
+        if (cancelled || !result.hasActive) return;
+        schedule(pollDelayWithJitter(POLL_BASE_MS));
+      } catch {
+        errorStreak += 1;
+        const backoffBase = Math.min(POLL_MAX_MS, POLL_BASE_MS * (2 ** Math.min(errorStreak, 3)));
+        schedule(pollDelayWithJitter(backoffBase));
+      }
+    };
+
+    schedule(pollDelayWithJitter(POLL_BASE_MS));
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [selectedLecture?.lecture_id, materialRequestsByLecture, refreshLectureRuntimeData]);
 
   return (
     <div>
@@ -1306,7 +1376,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                         : isProcessing
                           ? 'Генерация запущена и выполняется в фоне.'
                         : isPending
-                          ? 'Заявка отправлена модератору.'
+                          ? 'Заявка уже отправлена и ожидает модерации.'
                           : isRejected
                             ? `Отклонено${latestReq?.review_comment ? `: ${latestReq.review_comment}` : ''}`
                           : isFailed

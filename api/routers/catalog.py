@@ -962,6 +962,42 @@ async def list_my_material_generation_requests(
     return out
 
 
+@router.get("/material-requests/lecture", response_model=List[MaterialGenerationRequestOut])
+async def list_lecture_material_generation_requests(
+    lecture_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    del user
+    lecture_result = await db.execute(
+        select(Lecture)
+        .options(selectinload(Lecture.catalog_item))
+        .where(Lecture.id == lecture_id, Lecture.is_deleted == False)
+    )
+    lecture = lecture_result.scalar_one_or_none()
+    if lecture is None:
+        raise HTTPException(status_code=404, detail="Лекция не найдена")
+    if lecture.catalog_item is None:
+        raise HTTPException(status_code=400, detail="Лекция не опубликована в базе")
+
+    req_result = await db.execute(
+        select(LectureMaterialGenerationRequest)
+        .where(LectureMaterialGenerationRequest.lecture_id == lecture_id)
+        .order_by(LectureMaterialGenerationRequest.created_at.desc())
+    )
+    reqs = req_result.scalars().all()
+
+    latest_by_mode: dict[str, LectureMaterialGenerationRequest] = {}
+    for req in reqs:
+        if req.mode not in latest_by_mode:
+            latest_by_mode[req.mode] = req
+
+    out: list[MaterialGenerationRequestOut] = []
+    for req in latest_by_mode.values():
+        out.append(await _material_request_out(db, req))
+    return out
+
+
 @router.get("/material-requests", response_model=List[MaterialGenerationRequestOut])
 async def list_material_generation_requests(
     status_filter: Optional[str] = Query(None, alias="status"),
