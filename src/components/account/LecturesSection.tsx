@@ -31,6 +31,9 @@ interface LectureItem {
   has_text: boolean;
   is_ai_filtered: boolean;
   filtered_at?: string | null;
+  ai_filter_request_status?: 'pending' | 'approved' | 'rejected' | 'failed' | null;
+  ai_filter_request_generation_status?: 'processing' | 'completed' | 'failed' | null;
+  ai_filter_request_review_comment?: string | null;
   audio_expires_at: string | null;
   notes: NoteInfo[];
 }
@@ -136,7 +139,7 @@ const FilterTooltip: React.FC<{ isLightTheme: boolean }> = ({ isLightTheme }) =>
             boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
           }}
         >
-          AI-фильтрация исправляет ошибки распознавания речи, удаляет слова-паразиты и форматирует текст. После применения кнопка исчезает.
+          ИИ-фильтрация исправляет ошибки распознавания речи, удаляет слова-паразиты и форматирует текст.
         </span>
       )}
     </span>
@@ -615,19 +618,28 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
-  const handleApplyFilter = async (lecture: LectureItem) => {
+  const handleRequestAiFilter = async (lecture: LectureItem, regenerate = false) => {
     setFilteringId(lecture.id);
     try {
-      const res = await fetch(`${API_BASE}/api/lectures/${lecture.id}/apply-filter`, {
+      const res = await fetch(`${API_BASE}/api/lectures/${lecture.id}/filter-request`, {
         method: 'POST',
         headers: authHeaders(),
+        body: JSON.stringify({ regenerate }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Ошибка фильтрации');
+        throw new Error(err.detail || 'Не удалось отправить заявку на фильтрацию');
       }
+      const req = await res.json();
       setLectures(prev => prev.map(l =>
-        l.id === lecture.id ? { ...l, is_ai_filtered: true } : l
+        l.id === lecture.id
+          ? {
+              ...l,
+              ai_filter_request_status: req.status,
+              ai_filter_request_generation_status: req.generation_status,
+              ai_filter_request_review_comment: req.review_comment,
+            }
+          : l
       ));
     } catch (e: any) {
       alert(`Ошибка: ${e.message}`);
@@ -984,26 +996,79 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                     </button>
                   )}
 
-                  {/* AI filter button (only if has text and not yet filtered) */}
-                  {lecture.has_text && !lecture.is_ai_filtered && (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleApplyFilter(lecture)}
-                        disabled={isFiltering}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
-                        style={{ background: btnBg, color: btnColor }}
-                      >
-                        {isFiltering ? (
-                          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                          </svg>
-                        ) : (
-                          <span className="material-symbols-outlined text-base">auto_fix_high</span>
-                        )}
-                        {isFiltering ? 'Фильтрация...' : 'Применить AI-фильтр'}
-                      </button>
-                      <FilterTooltip isLightTheme={isLightTheme} />
+                  {/* AI filter request controls */}
+                  {lecture.has_text && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {lecture.is_ai_filtered ? (
+                        <span className="text-xs px-2 py-1 rounded-full" style={{ background: 'rgba(34,197,94,.14)', color: '#22c55e' }}>
+                          Фильтрация проведена
+                        </span>
+                      ) : lecture.ai_filter_request_status === 'pending' || lecture.ai_filter_request_generation_status === 'processing' ? (
+                        <span className="text-xs px-2 py-1 rounded-full" style={{ background: 'rgba(245,158,11,.14)', color: '#f59e0b' }}>
+                          {lecture.ai_filter_request_status === 'pending' ? 'Заявка на модерации' : 'Фильтрация выполняется'}
+                        </span>
+                      ) : lecture.ai_filter_request_status === 'rejected' ? (
+                        <>
+                          <button
+                            onClick={() => handleRequestAiFilter(lecture)}
+                            disabled={isFiltering}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+                            style={{ background: btnBg, color: btnColor }}
+                          >
+                            {isFiltering ? (
+                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                              </svg>
+                            ) : (
+                              <span className="material-symbols-outlined text-base">refresh</span>
+                            )}
+                            {isFiltering ? 'Отправка...' : 'Отправить повторно'}
+                          </button>
+                          {lecture.ai_filter_request_review_comment && (
+                            <span className="text-xs" style={{ color: '#ef4444' }}>
+                              Причина: {lecture.ai_filter_request_review_comment}
+                            </span>
+                          )}
+                        </>
+                      ) : lecture.ai_filter_request_generation_status === 'failed' || lecture.ai_filter_request_status === 'failed' ? (
+                        <button
+                          onClick={() => handleRequestAiFilter(lecture, true)}
+                          disabled={isFiltering}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+                          style={{ background: btnBg, color: btnColor }}
+                        >
+                          {isFiltering ? (
+                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                          ) : (
+                            <span className="material-symbols-outlined text-base">refresh</span>
+                          )}
+                          {isFiltering ? 'Отправка...' : 'Повторить заявку на фильтрацию'}
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleRequestAiFilter(lecture)}
+                            disabled={isFiltering}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+                            style={{ background: btnBg, color: btnColor }}
+                          >
+                            {isFiltering ? (
+                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                              </svg>
+                            ) : (
+                              <span className="material-symbols-outlined text-base">auto_fix_high</span>
+                            )}
+                            {isFiltering ? 'Отправка...' : 'Подать заявку на ИИ-фильтрацию'}
+                          </button>
+                          <FilterTooltip isLightTheme={isLightTheme} />
+                        </div>
+                      )}
                     </div>
                   )}
 
