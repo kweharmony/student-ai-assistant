@@ -188,8 +188,12 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   const [notesByLecture, setNotesByLecture] = useState<Record<string, LectureNoteInfo[]>>({});
   const [materialRequestsByLecture, setMaterialRequestsByLecture] = useState<Record<string, MaterialRequestInfo[]>>({});
   const [lectureTextByLecture, setLectureTextByLecture] = useState<Record<string, string>>({});
-  const [noteTextModal, setNoteTextModal] = useState<{ lectureId: string; noteId: string; title: string } | null>(null);
+  const [notePreviewModal, setNotePreviewModal] = useState<{ lectureId: string; noteId: string; title: string } | null>(null);
   const [noteTextContent, setNoteTextContent] = useState('');
+  const [noteActionMenu, setNoteActionMenu] = useState<{ lectureId: string; noteId: string; title: string; content: string; x: number; y: number } | null>(null);
+  const [noteExportMenuOpen, setNoteExportMenuOpen] = useState(false);
+  const [noteDownloadFormat, setNoteDownloadFormat] = useState<ExportFormatId | null>(null);
+  const [noteExportError, setNoteExportError] = useState('');
   const [requestModal, setRequestModal] = useState<{ lecture: CatalogItem; modeId: string; modeLabel: string } | null>(null);
   const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [requestModalError, setRequestModalError] = useState('');
@@ -197,6 +201,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   const [downloadingFormat, setDownloadingFormat] = useState<ExportFormatId | null>(null);
   const [downloadMenuError, setDownloadMenuError] = useState('');
   const downloadMenuRef = useRef<HTMLDivElement | null>(null);
+  const noteActionMenuRef = useRef<HTMLDivElement | null>(null);
   const noteTextContainerRef = useRef<HTMLDivElement | null>(null);
 
   const fetchLookups = useCallback(async () => {
@@ -745,7 +750,21 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     if (!res.ok) return;
     const data = await res.json();
     setNoteTextContent(data.content || '');
-    setNoteTextModal({ lectureId, noteId, title });
+    setNotePreviewModal({ lectureId, noteId, title });
+  };
+
+  const openNoteActionMenu = async (lectureId: string, noteId: string, title: string, anchorEl: HTMLElement) => {
+    const res = await fetch(`${API_BASE}/api/lectures/${lectureId}/notes/${noteId}`, { headers });
+    if (!res.ok) return;
+    const data = await res.json();
+    const rect = anchorEl.getBoundingClientRect();
+    const popupWidth = 280;
+    const x = Math.max(12, Math.min(rect.left, window.innerWidth - popupWidth - 12));
+    const y = Math.min(rect.bottom + 10, window.innerHeight - 12);
+    setNoteTextContent(data.content || '');
+    setNoteExportError('');
+    setNoteExportMenuOpen(false);
+    setNoteActionMenu({ lectureId, noteId, title, content: data.content || '', x, y });
   };
 
   const toggleTreeNode = (nodeKey: string) => {
@@ -829,7 +848,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   }, [selectedLecture?.lecture_id]);
 
   useEffect(() => {
-    if (!noteTextModal || !noteTextContainerRef.current) return;
+    if (!notePreviewModal || !noteTextContainerRef.current) return;
     import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
       if (!noteTextContainerRef.current) return;
       renderMathInElement(noteTextContainerRef.current, {
@@ -842,7 +861,28 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
         throwOnError: false,
       });
     });
-  }, [noteTextModal, noteTextContent]);
+  }, [notePreviewModal, noteTextContent]);
+
+  useEffect(() => {
+    if (!noteActionMenu || !noteActionMenuRef.current) return;
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (noteActionMenuRef.current && !noteActionMenuRef.current.contains(target)) {
+        setNoteActionMenu(null);
+        setNoteExportMenuOpen(false);
+        setNoteExportError('');
+      }
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [noteActionMenu]);
+
+  useEffect(() => {
+    if (!noteActionMenu) {
+      setNoteExportMenuOpen(false);
+      setNoteExportError('');
+    }
+  }, [noteActionMenu]);
 
   useEffect(() => {
     const lectureId = selectedLecture?.lecture_id;
@@ -1378,7 +1418,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                     key={mode.id}
                     onClick={() => {
                       if (isGenerated && note) {
-                        openNoteText(selectedLecture.lecture_id, note.id, mode.label);
+                        openNoteActionMenu(selectedLecture.lecture_id, note.id, mode.label, e.currentTarget);
                         return;
                       }
                       if (isPending || isProcessing || isFailed) return;
@@ -1455,18 +1495,119 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
         </div>
       )}
 
-      {noteTextModal && (
+      {noteActionMenu && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => {
+            setNoteActionMenu(null);
+            setNoteExportMenuOpen(false);
+            setNoteExportError('');
+          }}
+        >
+          <div
+            ref={noteActionMenuRef}
+            className="fixed w-[280px] rounded-2xl p-3 border shadow-2xl transition-all duration-200"
+            style={{
+              left: `${noteActionMenu.x}px`,
+              top: `${noteActionMenu.y}px`,
+              background: isLightTheme ? 'rgba(255,255,247,0.98)' : 'rgba(28,21,22,0.98)',
+              borderColor: 'var(--border-color)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 className="text-sm font-medium mb-1 truncate" style={{ color: headingColor }}>{noteActionMenu.title}</h4>
+            <p className="text-[11px] mb-3" style={{ color: mutedColor }}>Выберите действие.</p>
+
+            {!noteExportMenuOpen ? (
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => {
+                    setNotePreviewModal({ lectureId: noteActionMenu.lectureId, noteId: noteActionMenu.noteId, title: noteActionMenu.title });
+                    setNoteActionMenu(null);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border text-left flex items-center gap-2 text-sm"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>visibility</span>
+                  Предпросмотр
+                </button>
+                <button
+                  onClick={() => {
+                    onOpenInEditor(noteActionMenu.content, noteActionMenu.lectureId, selectedLecture?.lecture_title);
+                    setNoteActionMenu(null);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border text-left flex items-center gap-2 text-sm"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>
+                  Открыть в редакторе
+                </button>
+                <button
+                  onClick={() => setNoteExportMenuOpen(true)}
+                  className="w-full px-3 py-2 rounded-lg border text-left flex items-center gap-2 text-sm"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
+                  Скачать
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    onClick={() => setNoteExportMenuOpen(false)}
+                    className="px-2 py-1 rounded-lg border text-xs"
+                    style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                  >
+                    Назад
+                  </button>
+                  <span className="text-xs" style={{ color: mutedColor }}>Выберите формат экспорта.</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {EXPORT_FORMATS.map((format) => (
+                    <button
+                      key={format.id}
+                      onClick={async () => {
+                        setNoteDownloadFormat(format.id);
+                        setNoteExportError('');
+                        try {
+                          await exportLectureText(noteActionMenu.content || noteTextContent, noteActionMenu.title, format.id);
+                          setNoteActionMenu(null);
+                          setNoteExportMenuOpen(false);
+                        } catch {
+                          setNoteExportError('Не удалось скачать файл.');
+                        } finally {
+                          setNoteDownloadFormat(null);
+                        }
+                      }}
+                      className="px-2.5 py-2 rounded-lg border text-left transition-all flex items-center gap-2 disabled:opacity-60 text-sm"
+                      style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}
+                      disabled={Boolean(noteDownloadFormat)}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{format.icon}</span>
+                      <span className="text-sm">{format.label}</span>
+                    </button>
+                  ))}
+                </div>
+                {noteExportError && <p className="mt-3 text-xs" style={{ color: '#ef4444' }}>{noteExportError}</p>}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {notePreviewModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.55)' }}
-          onClick={() => setNoteTextModal(null)}
+          onClick={() => setNotePreviewModal(null)}
         >
           <div
             className="rounded-2xl p-5 w-full max-w-4xl"
             style={{ background: isLightTheme ? 'rgba(255,255,240,.98)' : 'rgba(33,24,25,.97)', border: cardBorder }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h4 className="text-base font-medium mb-2" style={{ color: headingColor }}>{noteTextModal.title}</h4>
+            <h4 className="text-base font-medium mb-2" style={{ color: headingColor }}>{notePreviewModal.title}</h4>
             <div
               ref={noteTextContainerRef}
               className="max-h-[60vh] overflow-y-auto prose-modal text-sm leading-relaxed p-3 rounded-lg border"
@@ -1476,14 +1617,14 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
             </div>
             <div className="mt-3 flex gap-2">
               <button
-                onClick={() => onOpenInEditor(noteTextContent, noteTextModal.lectureId, selectedLecture?.lecture_title)}
+                onClick={() => onOpenInEditor(noteTextContent, notePreviewModal.lectureId, selectedLecture?.lecture_title)}
                 className="px-3 py-2 rounded-lg text-sm"
                 style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
               >
                 Открыть в редакторе
               </button>
               <button
-                onClick={() => setNoteTextModal(null)}
+                onClick={() => setNotePreviewModal(null)}
                 className="px-3 py-2 rounded-lg text-sm border"
                 style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
               >
