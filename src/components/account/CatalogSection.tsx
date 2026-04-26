@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { saveAs } from 'file-saver';
 import htmlDocx from 'html-docx-js/dist/html-docx';
 import pdfMake from 'pdfmake/build/pdfmake';
@@ -238,9 +238,9 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     }
   }, [headers]);
 
-  useEffect(() => { fetchLookups(); fetchCatalog(); }, [fetchLookups, fetchCatalog]);
+  React.useEffect(() => { fetchLookups(); fetchCatalog(); }, [fetchLookups, fetchCatalog]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const onCatalogRefresh = () => {
       fetchLookups();
       fetchCatalog();
@@ -354,7 +354,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     if (currentPath.facultyId) return navigateTo({ ...currentPath, facultyId: undefined });
   }, [currentPath, navigateTo]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const expandUpdates: Record<string, boolean> = {};
     if (currentPath.facultyId) expandUpdates[`faculty:${currentPath.facultyId}`] = true;
     if (currentPath.directionId) expandUpdates[`direction:${currentPath.directionId}`] = true;
@@ -830,7 +830,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     return { noteMap, requestMap };
   }, [selectedLecture, notesByLecture, materialRequestsByLecture]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!downloadMenuOpen) return;
     const onMouseDown = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -842,12 +842,12 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [downloadMenuOpen]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     setDownloadMenuOpen(false);
     setDownloadMenuError('');
   }, [selectedLecture?.lecture_id]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!notePreviewModal || !noteTextContainerRef.current) return;
     import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
       if (!noteTextContainerRef.current) return;
@@ -863,7 +863,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     });
   }, [notePreviewModal, noteTextContent]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!noteActionMenu || !noteActionMenuRef.current) return;
     const onMouseDown = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -877,14 +877,14 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [noteActionMenu]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!noteActionMenu) {
       setNoteExportMenuOpen(false);
       setNoteExportError('');
     }
   }, [noteActionMenu]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const lectureId = selectedLecture?.lecture_id;
     if (!lectureId) return;
 
@@ -1416,9 +1416,9 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                 return (
                   <button
                     key={mode.id}
-                    onClick={() => {
+                    onClick={(e) => {
                       if (isGenerated && note) {
-                        openNoteActionMenu(selectedLecture.lecture_id, note.id, mode.label, e.currentTarget);
+                        openNoteActionMenu(selectedLecture.lecture_id, note.id, mode.label, e.currentTarget as HTMLElement);
                         return;
                       }
                       if (isPending || isProcessing || isFailed) return;
