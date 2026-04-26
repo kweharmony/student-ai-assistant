@@ -4,6 +4,10 @@ import htmlDocx from 'html-docx-js/dist/html-docx';
 import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { useAuth } from '../../contexts/AuthContext';
+import 'katex/dist/katex.min.css';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 type Semester = 'winter' | 'spring';
@@ -193,6 +197,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   const [downloadingFormat, setDownloadingFormat] = useState<ExportFormatId | null>(null);
   const [downloadMenuError, setDownloadMenuError] = useState('');
   const downloadMenuRef = useRef<HTMLDivElement | null>(null);
+  const noteTextContainerRef = useRef<HTMLDivElement | null>(null);
 
   const fetchLookups = useCallback(async () => {
     const [f, d, s] = await Promise.all([
@@ -824,6 +829,22 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   }, [selectedLecture?.lecture_id]);
 
   useEffect(() => {
+    if (!noteTextModal || !noteTextContainerRef.current) return;
+    import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
+      if (!noteTextContainerRef.current) return;
+      renderMathInElement(noteTextContainerRef.current, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true },
+        ],
+        throwOnError: false,
+      });
+    });
+  }, [noteTextModal, noteTextContent]);
+
+  useEffect(() => {
     const lectureId = selectedLecture?.lecture_id;
     if (!lectureId) return;
 
@@ -1447,10 +1468,11 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
           >
             <h4 className="text-base font-medium mb-2" style={{ color: headingColor }}>{noteTextModal.title}</h4>
             <div
-              className="max-h-[60vh] overflow-y-auto text-sm whitespace-pre-wrap p-3 rounded-lg border"
+              ref={noteTextContainerRef}
+              className="max-h-[60vh] overflow-y-auto prose-modal text-sm leading-relaxed p-3 rounded-lg border"
               style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              dangerouslySetInnerHTML={{ __html: mdParse(noteTextContent || '') }}
             >
-              {noteTextContent || 'Пусто'}
             </div>
             <div className="mt-3 flex gap-2">
               <button
