@@ -889,7 +889,7 @@ async def create_material_generation_request(
         raise HTTPException(status_code=400, detail="Поток заявки не совпадает с потоком лекции в базе")
 
     existing_note = next((n for n in lecture.notes if n.mode == mode), None)
-    if existing_note is not None:
+    if existing_note is not None and not body.regenerate:
         raise HTTPException(status_code=409, detail="Материал для этого режима уже создан")
 
     pending_result = await db.execute(

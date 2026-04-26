@@ -43,6 +43,17 @@ interface MaterialReqItem {
   created_at: string;
 }
 
+interface AiFilterReqItem {
+  id: string;
+  lecture_id: string;
+  lecture_title: string;
+  requested_by_login: string;
+  status: 'pending' | 'approved' | 'rejected' | 'failed';
+  review_comment: string | null;
+  generation_error?: string | null;
+  created_at: string;
+}
+
 interface LookupItem { id: string; name: string }
 interface DirectionItem extends LookupItem { faculty_id: string }
 interface StreamItem extends LookupItem { direction_id: string; course: number | null; study_year_start: number | null }
@@ -123,6 +134,12 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [materialReviewText, setMaterialReviewText] = useState<Record<string, string>>({});
   const [materialLoading, setMaterialLoading] = useState(false);
   const [materialProcessingById, setMaterialProcessingById] = useState<Record<string, boolean>>({});
+  const [aiFilterRequests, setAiFilterRequests] = useState<AiFilterReqItem[]>([]);
+  const [aiFilterSelectedId, setAiFilterSelectedId] = useState<string | null>(null);
+  const [aiFilterStatusFilter, setAiFilterStatusFilter] = useState<string>('pending');
+  const [aiFilterReviewText, setAiFilterReviewText] = useState<Record<string, string>>({});
+  const [aiFilterLoading, setAiFilterLoading] = useState(false);
+  const [aiFilterProcessingById, setAiFilterProcessingById] = useState<Record<string, boolean>>({});
 
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
   const [directions, setDirections] = useState<DirectionItem[]>([]);
@@ -185,6 +202,21 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     }
   }, [headers, materialStatusFilter]);
 
+  const loadAiFilterRequests = useCallback(async () => {
+    setAiFilterLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (aiFilterStatusFilter) params.set('status', aiFilterStatusFilter);
+      const res = await fetch(`${API_BASE}/api/lectures/filter-requests?${params}`, { headers });
+      if (!res.ok) return;
+      const data: AiFilterReqItem[] = await res.json();
+      setAiFilterRequests(data);
+      setAiFilterSelectedId(prev => (prev && data.some(d => d.id === prev) ? prev : (data[0]?.id ?? null)));
+    } finally {
+      setAiFilterLoading(false);
+    }
+  }, [headers, aiFilterStatusFilter]);
+
   const directionsByFaculty = useMemo(() => {
     const map: Record<string, DirectionItem[]> = {};
     directions.forEach(d => {
@@ -243,6 +275,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   useEffect(() => { loadRequests(); }, [loadRequests]);
   useEffect(() => { loadLookups(); }, [loadLookups]);
   useEffect(() => { loadMaterialRequests(); }, [loadMaterialRequests]);
+  useEffect(() => { loadAiFilterRequests(); }, [loadAiFilterRequests]);
   useEffect(() => { setPreviewText(''); }, [selectedId]);
   useEffect(() => {
     if (!selected) return;
@@ -360,6 +393,29 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       alert(e.message);
     } finally {
       setMaterialProcessingById(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const moderateAiFilterRequest = async (id: string, action: 'approve' | 'reject') => {
+    const review_comment = (aiFilterReviewText[id] || '').trim();
+    if (action === 'reject' && !review_comment) return alert('Для отклонения нужно указать причину.');
+    setAiFilterProcessingById(prev => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/api/lectures/filter-requests/${id}/${action}`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ review_comment: review_comment || null }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Ошибка обработки заявки на фильтрацию');
+      }
+      await loadAiFilterRequests();
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setAiFilterProcessingById(prev => ({ ...prev, [id]: false }));
     }
   };
 
@@ -747,6 +803,85 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                 </div>
               </>
             )}
+          </section>
+        </div>
+      </section>
+
+      <section className="mt-5 border rounded-xl p-4" style={surface}>
+        <h3 className="text-base font-medium mb-3" style={{ color: headingColor }}>Заявки на AI-фильтрацию</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] gap-4">
+          <section className="border rounded-xl p-3" style={{ ...surface, background: 'var(--bg-primary)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <select value={aiFilterStatusFilter} onChange={(e) => setAiFilterStatusFilter(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                <option value="pending">На модерации</option>
+                <option value="processing">Фильтруются</option>
+                <option value="approved">Одобрено</option>
+                <option value="rejected">Отклонено</option>
+                <option value="failed">Ошибка фильтрации</option>
+                <option value="">Все</option>
+              </select>
+              <button onClick={loadAiFilterRequests} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>Обновить</button>
+            </div>
+            <div className="max-h-[40vh] overflow-y-auto space-y-2 pr-1">
+              {aiFilterLoading ? <p className="text-sm px-2 py-3" style={{ color: mutedColor }}>Загрузка...</p> : aiFilterRequests.length === 0 ? <p className="text-sm px-2 py-3" style={{ color: mutedColor }}>Заявок нет</p> : aiFilterRequests.map((req) => (
+                <button key={req.id} onClick={() => setAiFilterSelectedId(req.id)} className="w-full text-left border rounded-lg p-3 transition-all" style={{ borderColor: aiFilterSelectedId === req.id ? 'var(--text-primary)' : 'var(--border-color)', background: aiFilterSelectedId === req.id ? 'rgba(68,41,43,0.08)' : 'var(--bg-primary)' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium truncate" style={{ color: headingColor }}>{req.lecture_title}</p>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: `${statusColor[req.status]}22`, color: statusColor[req.status] }}>{statusLabel[req.status]}</span>
+                  </div>
+                  <p className="text-xs mt-1 truncate" style={{ color: mutedColor }}>От: {req.requested_by_login}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="border rounded-xl p-4" style={{ ...surface, background: 'var(--bg-primary)' }}>
+            {!aiFilterRequests.find((req) => req.id === aiFilterSelectedId) ? <p className="text-sm" style={{ color: mutedColor }}>Выберите заявку слева.</p> : (() => {
+              const req = aiFilterRequests.find((item) => item.id === aiFilterSelectedId)!;
+              return (
+                <>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: headingColor }}>{req.lecture_title}</p>
+                      <p className="text-xs mt-1" style={{ color: mutedColor }}>Автор заявки: {req.requested_by_login}</p>
+                    </div>
+                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: `${statusColor[req.status]}22`, color: statusColor[req.status] }}>{statusLabel[req.status]}</span>
+                  </div>
+
+                  {req.review_comment && <p className="text-xs mb-3" style={{ color: mutedColor }}>Комментарий: {req.review_comment}</p>}
+                  {req.generation_error && <p className="text-xs mb-3" style={{ color: '#ef4444' }}>Ошибка фильтрации: {req.generation_error}</p>}
+                  {req.status === 'failed' && <p className="text-xs mb-3" style={{ color: '#ef4444' }}>Ранее фильтрация завершилась ошибкой. Эту же заявку можно повторно принять или отклонить.</p>}
+
+                  <textarea
+                    value={aiFilterReviewText[req.id] ?? ''}
+                    onChange={(e) => setAiFilterReviewText(prev => ({ ...prev, [req.id]: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border text-sm mb-3"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                    rows={3}
+                    placeholder="Комментарий модератора (обязателен при отклонении)"
+                  />
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      disabled={Boolean(aiFilterProcessingById[req.id]) || !['pending', 'failed'].includes(req.status)}
+                      onClick={() => moderateAiFilterRequest(req.id, 'approve')}
+                      className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+                      style={{ background: '#22c55e', color: '#fff' }}
+                    >
+                      {aiFilterProcessingById[req.id] ? 'Отправка...' : req.status === 'failed' ? 'Повторно принять и фильтровать' : 'Одобрить и фильтровать'}
+                    </button>
+                    <button
+                      disabled={Boolean(aiFilterProcessingById[req.id]) || !['pending', 'failed'].includes(req.status)}
+                      onClick={() => moderateAiFilterRequest(req.id, 'reject')}
+                      className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+                      style={{ background: '#ef4444', color: '#fff' }}
+                    >
+                      Отклонить
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </section>
         </div>
       </section>

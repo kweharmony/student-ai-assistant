@@ -9,21 +9,25 @@ from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Query, status
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..dependencies import can_moderate_stream, get_current_user, get_db
-from ..models import AudioFile, Lecture, LectureCatalogItem, LectureNote, LectureStatus, Transcription, TranscriptionTask, User
+from ..models import AudioFile, Lecture, LectureAiFilterRequest, LectureAiFilterRequestStatus, LectureCatalogItem, LectureNote, LectureStatus, Transcription, TranscriptionTask, User
 import asyncio
 from uuid import UUID as PyUUID
 
+from ..database import async_session
 from ..schemas import (
     ApplyFilterOut,
     AudioFileOut,
     LectureCreateRequest,
     LectureDetailOut,
+    LectureAiFilterRequestCreateIn,
+    LectureAiFilterRequestModerateIn,
+    LectureAiFilterRequestOut,
     LectureMyOut,
     LectureNoteContentOut,
     LectureNoteIn,
@@ -53,6 +57,7 @@ async def _get_lecture_or_404(
             selectinload(Lecture.audio_files),
             selectinload(Lecture.transcriptions),
             selectinload(Lecture.catalog_item),
+            selectinload(Lecture.ai_filter_requests),
         )
     result = await db.execute(stmt)
     lecture = result.scalar_one_or_none()
@@ -98,6 +103,43 @@ def _can_read_lecture(lecture: Lecture, user: User) -> bool:
     return False
 
 
+def _latest_active_transcription(lecture: Lecture) -> Optional[Transcription]:
+    active_transcriptions = [t for t in lecture.transcriptions if not t.is_deleted]
+    if not active_transcriptions:
+        return None
+    return sorted(active_transcriptions, key=lambda t: t.created_at, reverse=True)[0]
+
+
+def _latest_lecture_ai_filter_request(lecture: Lecture) -> Optional[LectureAiFilterRequest]:
+    if not lecture.ai_filter_requests:
+        return None
+    return sorted(lecture.ai_filter_requests, key=lambda r: r.created_at, reverse=True)[0]
+
+
+def _ai_filter_request_out(lecture: Lecture, req: LectureAiFilterRequest, *, reviewer_login: Optional[str] = None, requested_by_login: Optional[str] = None) -> LectureAiFilterRequestOut:
+    requester = requested_by_login or getattr(req.requester, "login", None) or ""
+    reviewer = reviewer_login or getattr(req.reviewer, "login", None) or None
+    return LectureAiFilterRequestOut(
+        id=req.id,
+        lecture_id=lecture.id,
+        lecture_title=lecture.title,
+        requested_by=req.requested_by,
+        requested_by_login=requester,
+        status=req.status.value,
+        review_comment=req.review_comment,
+        generation_error=req.generation_error,
+        reviewed_by=req.reviewed_by,
+        reviewed_by_login=reviewer,
+        reviewed_at=req.reviewed_at,
+        created_at=req.created_at,
+    )
+
+
+def _ai_filter_generation_error_message(exc: Exception) -> str:
+    message = str(exc).strip()
+    return message or exc.__class__.__name__
+
+
 # ---------- CRUD ----------
 
 @router.get("/", response_model=List[LectureOut])
@@ -115,6 +157,12 @@ async def list_lectures(
         .where(
             Lecture.is_deleted == False,
             or_(Lecture.uploaded_by == user.id, Lecture.is_public == True),
+        )
+        .options(
+            selectinload(Lecture.transcriptions),
+            selectinload(Lecture.notes),
+            selectinload(Lecture.catalog_item),
+            selectinload(Lecture.ai_filter_requests),
         )
         .order_by(Lecture.created_at.desc())
         .offset(offset)
@@ -197,6 +245,9 @@ async def list_my_lectures(
             sorted(active_transcriptions, key=lambda t: t.created_at, reverse=True)[0]
             if active_transcriptions else None
         )
+        latest_filter_request = None
+        if lec.ai_filter_requests:
+            latest_filter_request = sorted(lec.ai_filter_requests, key=lambda r: r.created_at, reverse=True)[0]
 
         out.append(LectureMyOut(
             id=lec.id,
@@ -206,11 +257,16 @@ async def list_my_lectures(
             created_at=lec.created_at,
             task_status=task_status,
             transcription_id=latest_transcription.id if latest_transcription else None,
+            catalog_stream_id=lec.catalog_item.stream_id if lec.catalog_item is not None else None,
             has_text=bool(
                 latest_transcription and
                 (latest_transcription.processed_text or latest_transcription.raw_text)
             ),
             is_ai_filtered=bool(latest_transcription and latest_transcription.is_ai_filtered),
+            filtered_at=latest_transcription.filtered_at if latest_transcription and latest_transcription.is_ai_filtered else None,
+            ai_filter_request_status=latest_filter_request.status.value if latest_filter_request else None,
+            ai_filter_request_generation_status=latest_filter_request.generation_status if latest_filter_request else None,
+            ai_filter_request_review_comment=latest_filter_request.review_comment if latest_filter_request else None,
             audio_expires_at=audio_expires_at,
             notes=[
                 LectureNoteOut(id=n.id, mode=n.mode, created_at=n.created_at)
@@ -524,9 +580,231 @@ async def apply_ai_filter(
 
     latest.processed_text = filtered
     latest.is_ai_filtered = True
+    latest.filtered_at = datetime.utcnow()
     await db.commit()
 
     return ApplyFilterOut(success=True, filtered_text=filtered)
+
+
+@router.post("/{lecture_id}/filter-request", response_model=LectureAiFilterRequestOut, status_code=status.HTTP_201_CREATED)
+async def create_ai_filter_request(
+    lecture_id: UUID,
+    body: LectureAiFilterRequestCreateIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    if not _can_read_lecture(lecture, user):
+        raise HTTPException(status_code=403, detail="Нет доступа к этой лекции")
+    if lecture.catalog_item is None:
+        raise HTTPException(status_code=400, detail="Лекция еще не опубликована в базе")
+
+    latest = _latest_active_transcription(lecture)
+    if latest is None:
+        raise HTTPException(status_code=404, detail="Транскрипция не найдена")
+    if latest.is_ai_filtered and not body.regenerate:
+        raise HTTPException(status_code=409, detail="Лекция уже профильтрована")
+
+    pending_exists = await db.execute(
+        select(LectureAiFilterRequest).where(
+            LectureAiFilterRequest.lecture_id == lecture_id,
+            LectureAiFilterRequest.status == LectureAiFilterRequestStatus.pending,
+        )
+    )
+    if pending_exists.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Заявка на фильтрацию уже отправлена и ожидает модерации")
+
+    processing_exists = await db.execute(
+        select(LectureAiFilterRequest).where(
+            LectureAiFilterRequest.lecture_id == lecture_id,
+            LectureAiFilterRequest.status == LectureAiFilterRequestStatus.approved,
+            LectureAiFilterRequest.generation_status == "processing",
+        )
+    )
+    if processing_exists.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Фильтрация этой лекции уже выполняется")
+
+    req = LectureAiFilterRequest(
+        lecture_id=lecture_id,
+        requested_by=user.id,
+        status=LectureAiFilterRequestStatus.pending,
+        generation_status="idle",
+        generation_error=None,
+    )
+    db.add(req)
+    await db.commit()
+    await db.refresh(req)
+    return _ai_filter_request_out(lecture, req, requested_by_login=user.login)
+
+
+@router.get("/filter-requests", response_model=List[LectureAiFilterRequestOut])
+async def list_ai_filter_requests(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    limit: int = Query(100, ge=1, le=300),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    stmt = (
+        select(LectureAiFilterRequest)
+        .options(
+            selectinload(LectureAiFilterRequest.lecture),
+            selectinload(LectureAiFilterRequest.requester),
+            selectinload(LectureAiFilterRequest.reviewer),
+        )
+        .join(Lecture, Lecture.id == LectureAiFilterRequest.lecture_id)
+        .join(LectureCatalogItem, LectureCatalogItem.lecture_id == Lecture.id)
+        .order_by(LectureAiFilterRequest.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    if status_filter:
+        normalized = status_filter.strip().lower()
+        if normalized == "pending":
+            stmt = stmt.where(LectureAiFilterRequest.status == LectureAiFilterRequestStatus.pending)
+        elif normalized == "rejected":
+            stmt = stmt.where(LectureAiFilterRequest.status == LectureAiFilterRequestStatus.rejected)
+        elif normalized == "approved":
+            stmt = stmt.where(
+                LectureAiFilterRequest.status == LectureAiFilterRequestStatus.approved,
+                LectureAiFilterRequest.generation_status == "completed",
+            )
+        elif normalized == "processing":
+            stmt = stmt.where(
+                LectureAiFilterRequest.status == LectureAiFilterRequestStatus.approved,
+                LectureAiFilterRequest.generation_status == "processing",
+            )
+        elif normalized == "failed":
+            stmt = stmt.where(
+                LectureAiFilterRequest.status == LectureAiFilterRequestStatus.approved,
+                LectureAiFilterRequest.generation_status == "failed",
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Невалидный статус")
+
+    if moderator.role != "admin":
+        stmt = stmt.where(LectureCatalogItem.stream_id == moderator.stream_id)
+
+    result = await db.execute(stmt)
+    reqs = result.scalars().all()
+    return [_ai_filter_request_out(req.lecture, req) for req in reqs]
+
+
+async def _run_ai_filter_job(request_id: UUID) -> None:
+    async with async_session() as job_db:
+        req_result = await job_db.execute(
+            select(LectureAiFilterRequest)
+            .options(
+                selectinload(LectureAiFilterRequest.lecture).selectinload(Lecture.transcriptions),
+                selectinload(LectureAiFilterRequest.requester),
+                selectinload(LectureAiFilterRequest.reviewer),
+            )
+            .where(LectureAiFilterRequest.id == request_id)
+        )
+        req = req_result.scalar_one_or_none()
+        if req is None or req.status != LectureAiFilterRequestStatus.approved or req.generation_status != "processing":
+            return
+
+        lecture = req.lecture
+        latest = _latest_active_transcription(lecture)
+        if latest is None:
+            req.generation_status = "failed"
+            req.generation_error = "Транскрипция не найдена"
+            await job_db.commit()
+            return
+
+        source_text = latest.raw_text
+        try:
+            from ml.transcription_filter import TranscriptionFilter
+
+            fltr = TranscriptionFilter()
+            filtered = await fltr.filter_text_async(source_text, chunk_size=8000)
+            latest.processed_text = filtered
+            latest.is_ai_filtered = True
+            latest.filtered_at = datetime.utcnow()
+            req.generation_status = "completed"
+            req.generation_error = None
+            await job_db.commit()
+        except Exception as exc:
+            req.generation_status = "failed"
+            req.generation_error = _ai_filter_generation_error_message(exc)[:500]
+            await job_db.commit()
+
+
+@router.post("/filter-requests/{request_id}/approve", response_model=LectureAiFilterRequestOut)
+async def approve_ai_filter_request(
+    request_id: UUID,
+    body: LectureAiFilterRequestModerateIn,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    req_result = await db.execute(
+        select(LectureAiFilterRequest)
+        .options(
+            selectinload(LectureAiFilterRequest.lecture).selectinload(Lecture.transcriptions),
+            selectinload(LectureAiFilterRequest.requester),
+            selectinload(LectureAiFilterRequest.reviewer),
+        )
+        .where(LectureAiFilterRequest.id == request_id)
+    )
+    req = req_result.scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    if req.lecture.catalog_item is None or not can_moderate_stream(moderator, req.lecture.catalog_item.stream_id):
+        raise HTTPException(status_code=403, detail="Нет прав для этой лекции")
+    if req.status not in {LectureAiFilterRequestStatus.pending, LectureAiFilterRequestStatus.failed}:
+        raise HTTPException(status_code=400, detail="Заявка уже обработана")
+
+    req.status = LectureAiFilterRequestStatus.approved
+    req.generation_status = "processing"
+    req.generation_error = None
+    req.reviewed_by = moderator.id
+    req.reviewed_at = datetime.utcnow()
+    req.review_comment = (body.review_comment or "").strip() or None
+    await db.commit()
+    await db.refresh(req)
+    background_tasks.add_task(_run_ai_filter_job, req.id)
+    return _ai_filter_request_out(req.lecture, req)
+
+
+@router.post("/filter-requests/{request_id}/reject", response_model=LectureAiFilterRequestOut)
+async def reject_ai_filter_request(
+    request_id: UUID,
+    body: LectureAiFilterRequestModerateIn,
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    req_result = await db.execute(
+        select(LectureAiFilterRequest)
+        .options(
+            selectinload(LectureAiFilterRequest.lecture).selectinload(Lecture.transcriptions),
+            selectinload(LectureAiFilterRequest.requester),
+            selectinload(LectureAiFilterRequest.reviewer),
+        )
+        .where(LectureAiFilterRequest.id == request_id)
+    )
+    req = req_result.scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    if req.lecture.catalog_item is None or not can_moderate_stream(moderator, req.lecture.catalog_item.stream_id):
+        raise HTTPException(status_code=403, detail="Нет прав для этой лекции")
+    if req.status not in {LectureAiFilterRequestStatus.pending, LectureAiFilterRequestStatus.failed}:
+        raise HTTPException(status_code=400, detail="Заявка уже обработана")
+
+    review_comment = (body.review_comment or "").strip()
+    if not review_comment:
+        raise HTTPException(status_code=400, detail="Нужно указать причину отклонения")
+
+    req.status = LectureAiFilterRequestStatus.rejected
+    req.generation_status = "idle"
+    req.reviewed_by = moderator.id
+    req.reviewed_at = datetime.utcnow()
+    req.review_comment = review_comment
+    await db.commit()
+    await db.refresh(req)
+    return _ai_filter_request_out(req.lecture, req)
 
 
 # ---------- Lecture Notes ----------

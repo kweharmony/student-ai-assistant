@@ -124,6 +124,7 @@ class Lecture(Base):
     notes = relationship("LectureNote", back_populates="lecture", cascade="all, delete-orphan")
     catalog_item = relationship("LectureCatalogItem", back_populates="lecture", uselist=False)
     publication_requests = relationship("LecturePublicationRequest", back_populates="lecture")
+    ai_filter_requests = relationship("LectureAiFilterRequest", back_populates="lecture")
 
 
 # ========== 5. audio_files ==========
@@ -159,6 +160,7 @@ class Transcription(Base):
     raw_text = Column(Text, nullable=False)
     processed_text = Column(Text, nullable=True)
     is_ai_filtered = Column(Boolean, default=False, nullable=False)
+    filtered_at = Column(DateTime, nullable=True)
     whisper_model = Column(String(20), nullable=True)
     language = Column(String(10), nullable=True)
     confidence = Column(Float, nullable=True)
@@ -219,6 +221,40 @@ class LectureNote(Base):
     lecture = relationship("Lecture", back_populates="notes")
 
     __table_args__ = (UniqueConstraint("lecture_id", "mode", name="uq_lecture_note_mode"),)
+
+
+# ========== 9. lecture_ai_filter_requests ==========
+
+class LectureAiFilterRequestStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+    failed = "failed"
+
+
+class LectureAiFilterRequest(Base):
+    __tablename__ = "lecture_ai_filter_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    lecture_id = Column(UUID(as_uuid=True), ForeignKey("lectures.id", ondelete="CASCADE"), nullable=False, index=True)
+    requested_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    status = Column(
+        Enum(LectureAiFilterRequestStatus, name="lecture_ai_filter_request_status", native_enum=False),
+        default=LectureAiFilterRequestStatus.pending,
+        nullable=False,
+        index=True,
+    )
+    review_comment = Column(Text, nullable=True)
+    reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    generation_status = Column(String(20), default="idle", nullable=False)
+    generation_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    lecture = relationship("Lecture", back_populates="ai_filter_requests")
+    requester = relationship("User", foreign_keys=[requested_by])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
 
 
 # ========== 9. boards ==========

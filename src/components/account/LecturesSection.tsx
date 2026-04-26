@@ -27,8 +27,10 @@ interface LectureItem {
   status: string;
   created_at: string;
   task_status: string | null;
+  catalog_stream_id?: string | null;
   has_text: boolean;
   is_ai_filtered: boolean;
+  filtered_at?: string | null;
   audio_expires_at: string | null;
   notes: NoteInfo[];
 }
@@ -406,6 +408,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const [noteExportMenuOpen, setNoteExportMenuOpen] = useState(false);
   const [noteDownloadFormat, setNoteDownloadFormat] = useState<NoteExportFormat | null>(null);
   const noteActionMenuRef = useRef<HTMLDivElement>(null);
+  const [noteRegenerateWarning, setNoteRegenerateWarning] = useState<{ lecture: LectureItem; note: NoteInfo; anchorEl: HTMLElement } | null>(null);
 
   // Per-card actions loading state
   const [filteringId,     setFilteringId]           = useState<string | null>(null);
@@ -752,6 +755,34 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     } finally {
       setGeneratingNote(null);
       setTopicInput('');
+    }
+  };
+
+  const handleRequestNoteRegeneration = async (lecture: LectureItem, note: NoteInfo) => {
+    if (!lecture.catalog_stream_id) {
+      alert('Эта лекция пока не добавлена в базу, поэтому заявку на перегенерацию отправить нельзя.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/material-requests`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lecture_id: lecture.id,
+          stream_id: lecture.catalog_stream_id,
+          mode: note.mode,
+          regenerate: true,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось отправить заявку');
+      }
+      setNoteRegenerateWarning(null);
+      alert('Заявка на перегенерацию отправлена модератору.');
+    } catch (e: any) {
+      alert(e.message || 'Не удалось отправить заявку');
     }
   };
 
@@ -1103,7 +1134,15 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                         {lecture.notes.map(note => (
                           <button
                             key={note.id}
-                            onClick={(e) => openNoteActionMenu(note, lecture, e.currentTarget as HTMLElement)}
+                            onClick={(e) => {
+                              const filteredAt = lecture.filtered_at ? new Date(lecture.filtered_at).getTime() : null;
+                              const noteCreatedAt = new Date(note.created_at).getTime();
+                              if (filteredAt && lecture.catalog_stream_id && noteCreatedAt < filteredAt) {
+                                setNoteRegenerateWarning({ lecture, note, anchorEl: e.currentTarget as HTMLElement });
+                                return;
+                              }
+                              openNoteActionMenu(note, lecture, e.currentTarget as HTMLElement);
+                            }}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border"
                             style={{
                               background: isLightTheme ? 'rgba(34,197,94,.08)' : 'rgba(34,197,94,.1)',
@@ -1357,6 +1396,57 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {noteRegenerateWarning && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          onClick={() => setNoteRegenerateWarning(null)}
+        >
+          <div
+            className="rounded-2xl p-5 w-full max-w-md border shadow-2xl"
+            style={{
+              background: isLightTheme ? 'rgba(255,255,247,0.98)' : 'rgba(28,21,22,0.98)',
+              borderColor: 'var(--border-color)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-medium mb-2" style={{ color: headingColor }}>
+              Режим был сгенерирован до фильтрации
+            </h3>
+            <p className="text-sm mb-4" style={{ color: mutedColor }}>
+              После фильтрации текста этот материал может устареть. Хотите отправить заявку на его перегенерацию или открыть текущую версию без изменений?
+            </p>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button
+                onClick={() => handleRequestNoteRegeneration(noteRegenerateWarning.lecture, noteRegenerateWarning.note)}
+                className="px-3 py-2 rounded-lg text-sm font-medium"
+                style={{ background: 'rgba(31,111,235,0.16)', color: 'var(--text-primary)' }}
+              >
+                Отправить заявку
+              </button>
+              <button
+                onClick={() => {
+                  const { lecture, note, anchorEl } = noteRegenerateWarning;
+                  setNoteRegenerateWarning(null);
+                  openNoteActionMenu(note, lecture, anchorEl);
+                }}
+                className="px-3 py-2 rounded-lg text-sm font-medium"
+                style={{ background: btnBg, color: btnColor }}
+              >
+                Открыть режим
+              </button>
+              <button
+                onClick={() => setNoteRegenerateWarning(null)}
+                className="px-3 py-2 rounded-lg text-sm font-medium"
+                style={{ background: 'rgba(156,163,175,.14)', color: 'var(--text-primary)' }}
+              >
+                Отмена
+              </button>
+            </div>
           </div>
         </div>
       )}

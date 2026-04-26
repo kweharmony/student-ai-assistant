@@ -142,6 +142,7 @@ class TranscriptionOut(BaseModel):
     audio_file_id: UUID
     raw_text: str
     processed_text: Optional[str] = None
+    filtered_at: Optional[datetime] = None
     whisper_model: Optional[str] = None
     language: Optional[str] = None
     confidence: Optional[float] = None
@@ -248,8 +249,13 @@ class LectureMyOut(BaseModel):
     created_at: datetime
     task_status: Optional[str] = None
     transcription_id: Optional[UUID] = None
+    catalog_stream_id: Optional[UUID] = None
     has_text: bool = False
     is_ai_filtered: bool = False
+    filtered_at: Optional[datetime] = None
+    ai_filter_request_status: Optional[str] = None
+    ai_filter_request_generation_status: Optional[str] = None
+    ai_filter_request_review_comment: Optional[str] = None
     audio_expires_at: Optional[datetime] = None
     notes: List[LectureNoteOut] = []
 
@@ -374,6 +380,7 @@ class MaterialGenerationRequestCreateIn(BaseModel):
     lecture_id: UUID
     stream_id: UUID
     mode: str = Field(..., min_length=1, max_length=50)
+    regenerate: bool = False
 
 
 class MaterialGenerationRequestModerateIn(BaseModel):
@@ -454,6 +461,30 @@ class SaveTextIn(BaseModel):
 class ApplyFilterOut(BaseModel):
     success: bool
     filtered_text: str
+
+
+class LectureAiFilterRequestCreateIn(BaseModel):
+    regenerate: bool = False
+
+
+class LectureAiFilterRequestModerateIn(BaseModel):
+    review_comment: Optional[str] = Field(None, max_length=500)
+
+
+class LectureAiFilterRequestOut(BaseModel):
+    id: UUID
+    lecture_id: UUID
+    lecture_title: str
+    requested_by: UUID
+    requested_by_login: str
+    status: str
+    review_comment: Optional[str] = None
+    generation_error: Optional[str] = None
+    reviewed_by: Optional[UUID] = None
+    reviewed_by_login: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime
+
 
 
 # ==================== Admin ====================
