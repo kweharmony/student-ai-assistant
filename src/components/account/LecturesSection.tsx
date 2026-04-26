@@ -962,8 +962,13 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                     <h3 className="text-base font-medium truncate" style={{ color: headingColor }}>
                       {lecture.title}
                     </h3>
-                    <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                       {lecture.subject && <span className="text-sm" style={{ color: mutedColor }}>{lecture.subject}</span>}
+                      {lecture.catalog_stream_id && (
+                        <span className="text-xs px-2 py-1 rounded-full" style={{ background: 'rgba(34,197,94,.14)', color: '#22c55e' }}>
+                          В базе лекций
+                        </span>
+                      )}
                       <span className="text-xs" style={{ color: mutedColor }}>
                         {new Date(lecture.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })}
                       </span>
