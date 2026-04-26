@@ -36,8 +36,9 @@ interface MaterialReqItem {
   direction_name: string;
   faculty_name: string;
   mode: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'processing' | 'approved' | 'rejected' | 'failed';
   review_comment: string | null;
+  generation_error?: string | null;
   requested_by_login: string;
   created_at: string;
 }
@@ -60,8 +61,20 @@ interface CatalogModerationSectionProps {
   isLightTheme: boolean;
 }
 
-const statusLabel: Record<string, string> = { pending: 'На модерации', approved: 'Одобрено', rejected: 'Отклонено' };
-const statusColor: Record<string, string> = { pending: '#f59e0b', approved: '#22c55e', rejected: '#ef4444' };
+const statusLabel: Record<string, string> = {
+  pending: 'На модерации',
+  processing: 'Генерируется',
+  approved: 'Готово',
+  rejected: 'Отклонено',
+  failed: 'Ошибка генерации',
+};
+const statusColor: Record<string, string> = {
+  pending: '#f59e0b',
+  processing: '#3b82f6',
+  approved: '#22c55e',
+  rejected: '#ef4444',
+  failed: '#dc2626',
+};
 const materialModeLabels: Record<string, string> = {
   summary: 'Краткий конспект',
   detailed_notes: 'Расширенный конспект',
@@ -109,7 +122,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [materialSearchQuery, setMaterialSearchQuery] = useState('');
   const [materialReviewText, setMaterialReviewText] = useState<Record<string, string>>({});
   const [materialLoading, setMaterialLoading] = useState(false);
-  const [materialProcessing, setMaterialProcessing] = useState(false);
+  const [materialProcessingById, setMaterialProcessingById] = useState<Record<string, boolean>>({});
 
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
   const [directions, setDirections] = useState<DirectionItem[]>([]);
@@ -330,7 +343,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const moderateMaterialRequest = async (id: string, action: 'approve' | 'reject') => {
     const review_comment = (materialReviewText[id] || '').trim();
     if (action === 'reject' && !review_comment) return alert('Для отклонения нужно указать причину.');
-    setMaterialProcessing(true);
+    setMaterialProcessingById(prev => ({ ...prev, [id]: true }));
     try {
       const res = await fetch(`${API_BASE}/api/catalog/material-requests/${id}/${action}`, {
         method: 'POST',
@@ -346,7 +359,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     } catch (e: any) {
       alert(e.message);
     } finally {
-      setMaterialProcessing(false);
+      setMaterialProcessingById(prev => ({ ...prev, [id]: false }));
     }
   };
 
@@ -641,8 +654,10 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
             <div className="flex items-center gap-2 mb-2">
               <select value={materialStatusFilter} onChange={(e) => setMaterialStatusFilter(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
                 <option value="pending">На модерации</option>
+                <option value="processing">Генерируются</option>
                 <option value="approved">Одобрено</option>
                 <option value="rejected">Отклонено</option>
+                <option value="failed">Ошибка генерации</option>
                 <option value="">Все</option>
               </select>
               <button onClick={loadMaterialRequests} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>Обновить</button>
@@ -696,9 +711,39 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                   </p>
                 )}
 
+                {materialSelected.generation_error && (
+                  <p className="text-xs mb-3" style={{ color: '#ef4444' }}>
+                    Ошибка генерации: {materialSelected.generation_error}
+                  </p>
+                )}
+
+                {materialSelected.status === 'failed' && (
+                  <p className="text-xs mb-3" style={{ color: '#ef4444' }}>
+                    Ранее генерация завершилась ошибкой. Эту же заявку можно повторно принять или отклонить.
+                  </p>
+                )}
+
                 <div className="flex flex-wrap gap-2">
-                  <button disabled={materialProcessing || materialSelected.status !== 'pending'} onClick={() => moderateMaterialRequest(materialSelected.id, 'approve')} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#22c55e', color: '#fff' }}>Одобрить и сгенерировать</button>
-                  <button disabled={materialProcessing || materialSelected.status !== 'pending'} onClick={() => moderateMaterialRequest(materialSelected.id, 'reject')} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#ef4444', color: '#fff' }}>Отклонить</button>
+                  <button
+                    disabled={Boolean(materialProcessingById[materialSelected.id]) || !['pending', 'failed'].includes(materialSelected.status)}
+                    onClick={() => moderateMaterialRequest(materialSelected.id, 'approve')}
+                    className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+                    style={{ background: '#22c55e', color: '#fff' }}
+                  >
+                    {materialProcessingById[materialSelected.id]
+                      ? 'Отправка...'
+                      : materialSelected.status === 'failed'
+                        ? 'Повторно принять и сгенерировать'
+                        : 'Одобрить и сгенерировать'}
+                  </button>
+                  <button
+                    disabled={Boolean(materialProcessingById[materialSelected.id]) || !['pending', 'failed'].includes(materialSelected.status)}
+                    onClick={() => moderateMaterialRequest(materialSelected.id, 'reject')}
+                    className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+                    style={{ background: '#ef4444', color: '#fff' }}
+                  >
+                    Отклонить
+                  </button>
                 </div>
               </>
             )}

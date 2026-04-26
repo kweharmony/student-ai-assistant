@@ -428,6 +428,8 @@ class LectureMaterialGenerationRequest(Base):
         index=True,
     )
     review_comment = Column(String(500), nullable=True)
+    generation_status = Column(String(20), nullable=False, default="idle", index=True)
+    generation_error = Column(String(500), nullable=True)
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_now, nullable=False)

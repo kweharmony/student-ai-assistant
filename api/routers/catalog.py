@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,6 +14,7 @@ from ..dependencies import (
     require_admin,
     require_catalog_moderator,
 )
+from ..database import async_session
 from ..models import (
     CatalogDisciplineTemplate,
     CatalogLecturerTemplate,
@@ -66,6 +67,37 @@ MATERIAL_MODE_TO_ML_MODE: dict[str, str] = {
 
 def _is_catalog_editor(user: User, stream_id: Optional[UUID]) -> bool:
     return can_moderate_stream(user, stream_id)
+
+
+def _public_material_request_status(req: LectureMaterialGenerationRequest) -> str:
+    if req.status == MaterialGenerationRequestStatus.pending:
+        return "pending"
+    if req.status == MaterialGenerationRequestStatus.rejected:
+        return "rejected"
+
+    generation_status = (req.generation_status or "idle").strip().lower()
+    if generation_status == "processing":
+        return "processing"
+    if generation_status == "failed":
+        return "failed"
+    return "approved"
+
+
+def _material_generation_error_message(exc: Exception) -> str:
+    if isinstance(exc, HTTPException):
+        detail = exc.detail
+        if isinstance(detail, str):
+            return detail
+        if isinstance(detail, dict):
+            if isinstance(detail.get("message"), str):
+                return detail["message"]
+            return str(detail)
+        return str(detail)
+    return str(exc)
+
+
+def _is_material_request_failed(req: LectureMaterialGenerationRequest) -> bool:
+    return req.status == MaterialGenerationRequestStatus.approved and (req.generation_status or "").lower() == "failed"
 
 
 def _has_catalog_node_content(counts: dict[str, int]) -> bool:
@@ -788,13 +820,49 @@ async def _material_request_out(db: AsyncSession, req: LectureMaterialGeneration
         mode=req.mode,
         requested_by=req.requested_by,
         requested_by_login=requester.login,
-        status=req.status.value,
+        status=_public_material_request_status(req),
         review_comment=req.review_comment,
+        generation_error=req.generation_error,
         reviewed_by=req.reviewed_by,
         reviewed_by_login=reviewer_login,
         reviewed_at=req.reviewed_at,
         created_at=req.created_at,
     )
+
+
+async def _run_material_generation_job(request_id: UUID) -> None:
+    async with async_session() as db:
+        req_result = await db.execute(
+            select(LectureMaterialGenerationRequest).where(LectureMaterialGenerationRequest.id == request_id)
+        )
+        req = req_result.scalar_one_or_none()
+        if req is None:
+            return
+        if req.status != MaterialGenerationRequestStatus.approved:
+            return
+        if (req.generation_status or "").lower() != "processing":
+            return
+
+        try:
+            lecture_result = await db.execute(
+                select(Lecture)
+                .options(selectinload(Lecture.transcriptions), selectinload(Lecture.notes), selectinload(Lecture.catalog_item))
+                .where(Lecture.id == req.lecture_id, Lecture.is_deleted == False)
+            )
+            lecture = lecture_result.scalar_one_or_none()
+            if lecture is None:
+                raise HTTPException(status_code=404, detail="Лекция не найдена")
+            if lecture.catalog_item is None or lecture.catalog_item.stream_id != req.stream_id:
+                raise HTTPException(status_code=400, detail="Лекция больше не принадлежит потоку заявки")
+
+            await _generate_note_for_mode(db, lecture, req.mode)
+            req.generation_status = "completed"
+            req.generation_error = None
+            await db.commit()
+        except Exception as exc:
+            req.generation_status = "failed"
+            req.generation_error = _material_generation_error_message(exc)[:500]
+            await db.commit()
 
 
 @router.post("/material-requests", response_model=MaterialGenerationRequestOut, status_code=status.HTTP_201_CREATED)
@@ -834,12 +902,39 @@ async def create_material_generation_request(
     if pending_result.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Заявка на этот режим уже отправлена и ожидает модерации")
 
+    processing_result = await db.execute(
+        select(LectureMaterialGenerationRequest).where(
+            LectureMaterialGenerationRequest.lecture_id == body.lecture_id,
+            LectureMaterialGenerationRequest.mode == mode,
+            LectureMaterialGenerationRequest.status == MaterialGenerationRequestStatus.approved,
+            LectureMaterialGenerationRequest.generation_status == "processing",
+        )
+    )
+    if processing_result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Материал для этого режима уже генерируется")
+
+    failed_result = await db.execute(
+        select(LectureMaterialGenerationRequest).where(
+            LectureMaterialGenerationRequest.lecture_id == body.lecture_id,
+            LectureMaterialGenerationRequest.mode == mode,
+            LectureMaterialGenerationRequest.status == MaterialGenerationRequestStatus.approved,
+            LectureMaterialGenerationRequest.generation_status == "failed",
+        )
+    )
+    if failed_result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="По этому режиму уже есть заявка с ошибкой генерации. Модератор может повторно принять или отклонить ее.",
+        )
+
     req = LectureMaterialGenerationRequest(
         lecture_id=body.lecture_id,
         stream_id=body.stream_id,
         mode=mode,
         requested_by=user.id,
         status=MaterialGenerationRequestStatus.pending,
+        generation_status="idle",
+        generation_error=None,
     )
     db.add(req)
     await db.commit()
@@ -884,9 +979,27 @@ async def list_material_generation_requests(
     )
 
     if status_filter:
-        try:
-            stmt = stmt.where(LectureMaterialGenerationRequest.status == MaterialGenerationRequestStatus(status_filter))
-        except ValueError:
+        normalized = status_filter.strip().lower()
+        if normalized == "pending":
+            stmt = stmt.where(LectureMaterialGenerationRequest.status == MaterialGenerationRequestStatus.pending)
+        elif normalized == "rejected":
+            stmt = stmt.where(LectureMaterialGenerationRequest.status == MaterialGenerationRequestStatus.rejected)
+        elif normalized == "approved":
+            stmt = stmt.where(
+                LectureMaterialGenerationRequest.status == MaterialGenerationRequestStatus.approved,
+                LectureMaterialGenerationRequest.generation_status == "completed",
+            )
+        elif normalized == "processing":
+            stmt = stmt.where(
+                LectureMaterialGenerationRequest.status == MaterialGenerationRequestStatus.approved,
+                LectureMaterialGenerationRequest.generation_status == "processing",
+            )
+        elif normalized == "failed":
+            stmt = stmt.where(
+                LectureMaterialGenerationRequest.status == MaterialGenerationRequestStatus.approved,
+                LectureMaterialGenerationRequest.generation_status == "failed",
+            )
+        else:
             raise HTTPException(status_code=400, detail="Невалидный статус")
 
     if stream_id:
@@ -907,6 +1020,7 @@ async def list_material_generation_requests(
 async def approve_material_generation_request(
     request_id: UUID,
     body: MaterialGenerationRequestModerateIn,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     moderator: User = Depends(require_catalog_moderator),
 ):
@@ -918,7 +1032,8 @@ async def approve_material_generation_request(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     if not _is_catalog_editor(moderator, req.stream_id):
         raise HTTPException(status_code=403, detail="Нет прав для этого потока")
-    if req.status != MaterialGenerationRequestStatus.pending:
+    can_approve = req.status == MaterialGenerationRequestStatus.pending or _is_material_request_failed(req)
+    if not can_approve:
         raise HTTPException(status_code=400, detail="Заявка уже обработана")
 
     lecture_result = await db.execute(
@@ -932,13 +1047,15 @@ async def approve_material_generation_request(
     if lecture.catalog_item is None or lecture.catalog_item.stream_id != req.stream_id:
         raise HTTPException(status_code=400, detail="Лекция больше не принадлежит потоку заявки")
 
-    await _generate_note_for_mode(db, lecture, req.mode)
     req.status = MaterialGenerationRequestStatus.approved
+    req.generation_status = "processing"
+    req.generation_error = None
     req.reviewed_by = moderator.id
     req.reviewed_at = datetime.utcnow()
     req.review_comment = (body.review_comment or "").strip() or None
     await db.commit()
     await db.refresh(req)
+    background_tasks.add_task(_run_material_generation_job, req.id)
     return await _material_request_out(db, req)
 
 
@@ -957,7 +1074,8 @@ async def reject_material_generation_request(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     if not _is_catalog_editor(moderator, req.stream_id):
         raise HTTPException(status_code=403, detail="Нет прав для этого потока")
-    if req.status != MaterialGenerationRequestStatus.pending:
+    can_reject = req.status == MaterialGenerationRequestStatus.pending or _is_material_request_failed(req)
+    if not can_reject:
         raise HTTPException(status_code=400, detail="Заявка уже обработана")
 
     review_comment = (body.review_comment or "").strip()
@@ -965,6 +1083,7 @@ async def reject_material_generation_request(
         raise HTTPException(status_code=400, detail="Нужно указать причину отклонения")
 
     req.status = MaterialGenerationRequestStatus.rejected
+    req.generation_status = "idle"
     req.reviewed_by = moderator.id
     req.reviewed_at = datetime.utcnow()
     req.review_comment = review_comment

@@ -89,7 +89,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   lectureTitle,
   onSaveLecture,
 }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   // Модалка выбора лекции
   const [showLectureModal, setShowLectureModal] = useState(false);
@@ -162,9 +162,50 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   const [isDownloaded, setIsDownloaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [canSaveLecture, setCanSaveLecture] = useState(false);
   const [showEditorHelp, setShowEditorHelp] = useState(false);
   // Исходный Markdown от LLM (до конвертации в HTML) — нужен для MD-экспорта и PDF
   const [rawMarkdown, setRawMarkdown] = useState('');
+
+  useEffect(() => {
+    if (!lectureId || !onSaveLecture) {
+      setCanSaveLecture(false);
+      return;
+    }
+
+    if (!token) {
+      setCanSaveLecture(false);
+      return;
+    }
+
+    if (user?.role === 'admin') {
+      setCanSaveLecture(true);
+      return;
+    }
+
+    let isMounted = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/lectures/${lectureId}/save-text-permission`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!isMounted) return;
+        if (!res.ok) {
+          setCanSaveLecture(false);
+          return;
+        }
+        const data = await res.json();
+        setCanSaveLecture(Boolean(data?.can_save));
+      } catch {
+        if (!isMounted) return;
+        setCanSaveLecture(false);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [lectureId, onSaveLecture, token, user?.role]);
 
   // Хук для экспорта
   const { exportToTxt, exportToMarkdown, exportToDocx, exportToPdf } = useExport(editorInstance);
@@ -820,7 +861,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
                 )}
               </button>
 
-              {lectureId && onSaveLecture && (
+              {lectureId && onSaveLecture && canSaveLecture && (
                 <button
                   onClick={async () => {
                     if (!editorInstance) return;

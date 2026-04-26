@@ -74,6 +74,20 @@ def _check_owner_or_catalog_moderator(lecture: Lecture, user: User):
     raise HTTPException(status_code=403, detail="Нет прав на изменение этой лекции")
 
 
+def _can_save_text_in_lecture(lecture: Lecture, user: User) -> bool:
+    if user.role == "admin":
+        return True
+    if user.is_group_head and lecture.catalog_item is not None:
+        return can_moderate_stream(user, lecture.catalog_item.stream_id)
+    return False
+
+
+def _check_can_save_text_in_lecture(lecture: Lecture, user: User):
+    if _can_save_text_in_lecture(lecture, user):
+        return
+    raise HTTPException(status_code=403, detail="Только администратор или староста своего потока может сохранять текст в лекцию")
+
+
 def _can_read_lecture(lecture: Lecture, user: User) -> bool:
     if lecture.uploaded_by == user.id:
         return True
@@ -416,7 +430,7 @@ async def save_transcription_text(
     """Сохранить отредактированный/отфильтрованный текст в транскрипцию лекции."""
 
     lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
-    _check_owner(lecture, user)
+    _check_can_save_text_in_lecture(lecture, user)
 
     active_transcriptions = [t for t in lecture.transcriptions if not t.is_deleted]
     if not active_transcriptions:
@@ -426,6 +440,21 @@ async def save_transcription_text(
     latest.processed_text = body.text
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/{lecture_id}/save-text-permission", status_code=status.HTTP_200_OK)
+async def get_save_text_permission(
+    lecture_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Проверить, может ли пользователь сохранять текст в выбранную лекцию."""
+
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    if not _can_read_lecture(lecture, user):
+        raise HTTPException(status_code=403, detail="Нет доступа к этой лекции")
+
+    return {"can_save": _can_save_text_in_lecture(lecture, user)}
 
 
 @router.post("/{lecture_id}/re-transcribe", response_model=TaskEnqueuedOut, status_code=status.HTTP_202_ACCEPTED)

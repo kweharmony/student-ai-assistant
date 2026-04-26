@@ -395,6 +395,7 @@ class MaterialGenerationRequestOut(BaseModel):
     requested_by_login: str
     status: str
     review_comment: Optional[str] = None
+    generation_error: Optional[str] = None
     reviewed_by: Optional[UUID] = None
     reviewed_by_login: Optional[str] = None
     reviewed_at: Optional[datetime] = None

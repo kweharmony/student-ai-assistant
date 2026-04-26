@@ -60,8 +60,9 @@ interface MaterialRequestInfo {
   id: string;
   lecture_id: string;
   mode: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'processing' | 'approved' | 'rejected' | 'failed';
   review_comment: string | null;
+  generation_error?: string | null;
   created_at: string;
 }
 interface LectureDetail { id: string; transcriptions: { raw_text: string; processed_text: string | null }[] }
@@ -1249,27 +1250,35 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                 const latestReq = selectedLectureModeState?.requestMap.get(mode.id);
                 const isGenerated = Boolean(note);
                 const isPending = !isGenerated && latestReq?.status === 'pending';
+                const isProcessing = !isGenerated && latestReq?.status === 'processing';
                 const isRejected = !isGenerated && latestReq?.status === 'rejected';
+                const isFailed = !isGenerated && latestReq?.status === 'failed';
 
                 const bg = isGenerated
                   ? (isLightTheme ? 'rgba(34,197,94,.10)' : 'rgba(34,197,94,.12)')
-                  : isPending
+                  : isProcessing
+                    ? (isLightTheme ? 'rgba(59,130,246,.12)' : 'rgba(59,130,246,.18)')
+                    : isPending
                     ? (isLightTheme ? 'rgba(245,158,11,.12)' : 'rgba(245,158,11,.16)')
-                    : isRejected
+                    : (isRejected || isFailed)
                       ? (isLightTheme ? 'rgba(239,68,68,.10)' : 'rgba(239,68,68,.14)')
                       : 'var(--bg-primary)';
                 const borderColor = isGenerated
                   ? 'rgba(34,197,94,.35)'
-                  : isPending
+                  : isProcessing
+                    ? 'rgba(59,130,246,.45)'
+                    : isPending
                     ? 'rgba(245,158,11,.4)'
-                    : isRejected
+                    : (isRejected || isFailed)
                       ? 'rgba(239,68,68,.35)'
                       : 'var(--border-color)';
                 const titleColor = isGenerated
                   ? '#22c55e'
-                  : isPending
+                  : isProcessing
+                    ? '#3b82f6'
+                    : isPending
                     ? '#f59e0b'
-                    : isRejected
+                    : (isRejected || isFailed)
                       ? '#ef4444'
                       : 'var(--text-primary)';
 
@@ -1281,7 +1290,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                         openNoteText(selectedLecture.lecture_id, note.id, mode.label);
                         return;
                       }
-                      if (isPending) return;
+                      if (isPending || isProcessing || isFailed) return;
                       openMaterialRequestModal(selectedLecture, mode.id, mode.label);
                     }}
                     className="text-left p-3 rounded-lg border transition-all"
@@ -1294,10 +1303,14 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                     <p className="text-xs" style={{ color: mutedColor }}>
                       {isGenerated
                         ? 'Материал готов. Нажмите, чтобы открыть.'
+                        : isProcessing
+                          ? 'Генерация запущена и выполняется в фоне.'
                         : isPending
                           ? 'Заявка отправлена модератору.'
                           : isRejected
                             ? `Отклонено${latestReq?.review_comment ? `: ${latestReq.review_comment}` : ''}`
+                          : isFailed
+                            ? `Ошибка генерации${latestReq?.generation_error ? `: ${latestReq.generation_error}` : ''}. Модератор повторно обработает эту же заявку.`
                             : 'Материала пока нет. Нажмите, чтобы отправить заявку.'}
                     </p>
                   </button>
