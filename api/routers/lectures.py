@@ -14,7 +14,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ..dependencies import can_moderate_stream, get_current_user, get_db
+from ..dependencies import can_moderate_stream, get_current_user, get_db, require_catalog_moderator
 from ..models import AudioFile, Lecture, LectureAiFilterRequest, LectureAiFilterRequestStatus, LectureCatalogItem, LectureNote, LectureStatus, Transcription, TranscriptionTask, User
 import asyncio
 from uuid import UUID as PyUUID
