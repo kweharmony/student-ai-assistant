@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { saveAs } from 'file-saver';
+import htmlDocx from 'html-docx-js/dist/html-docx';
+import pdfMake from 'pdfmake/build/pdfmake';
+import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { useAuth } from '../../contexts/AuthContext';
 import 'katex/dist/katex.min.css';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
+
+(pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || {};
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -49,6 +55,14 @@ interface StreamItem {
 }
 
 type CatalogPublishMode = 'request' | 'direct';
+type NoteExportFormat = 'txt' | 'md' | 'docx' | 'pdf';
+
+const NOTE_EXPORT_FORMATS: { id: NoteExportFormat; label: string; icon: string }[] = [
+  { id: 'txt', label: 'TXT', icon: 'description' },
+  { id: 'md', label: 'MD', icon: 'markdown' },
+  { id: 'docx', label: 'DOCX', icon: 'article' },
+  { id: 'pdf', label: 'PDF', icon: 'picture_as_pdf' },
+];
 
 function audioExpiryInfo(expires_at: string | null): { daysLeft: number; expired: boolean } {
   if (!expires_at) return { daysLeft: 0, expired: true };
@@ -388,6 +402,10 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   // Modal state
   const [textModalLecture, setTextModalLecture]     = useState<LectureItem | null>(null);
   const [noteModal, setNoteModal]                   = useState<{ note: NoteInfo; lecture: LectureItem } | null>(null);
+  const [noteActionMenu, setNoteActionMenu]         = useState<{ note: NoteInfo; lecture: LectureItem; content: string; x: number; y: number } | null>(null);
+  const [noteExportMenuOpen, setNoteExportMenuOpen] = useState(false);
+  const [noteDownloadFormat, setNoteDownloadFormat] = useState<NoteExportFormat | null>(null);
+  const noteActionMenuRef = useRef<HTMLDivElement>(null);
 
   // Per-card actions loading state
   const [filteringId,     setFilteringId]           = useState<string | null>(null);
@@ -482,6 +500,59 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     if (token) h['Authorization'] = `Bearer ${token}`;
     return h;
   }, [token]);
+
+  const exportNoteContent = useCallback(async (content: string, title: string, format: NoteExportFormat) => {
+    const safeTitle = title.replace(/[<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').trim() || 'note';
+    const filenameBase = `${safeTitle}`;
+
+    if (format === 'txt') {
+      const text = mdParse(content).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      saveAs(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${filenameBase}.txt`);
+      return;
+    }
+
+    if (format === 'md') {
+      saveAs(new Blob([content], { type: 'text/markdown;charset=utf-8' }), `${filenameBase}.md`);
+      return;
+    }
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title></head><body>${mdParse(content)}</body></html>`;
+
+    if (format === 'docx') {
+      saveAs(htmlDocx.asBlob(html), `${filenameBase}.docx`);
+      return;
+    }
+
+    const container = document.createElement('div');
+    container.innerHTML = mdParse(content);
+    const plainText = (container.textContent || '').replace(/\s+/g, ' ').trim();
+    pdfMake.createPdf({
+      content: [{ text: plainText || safeTitle, fontSize: 12, lineHeight: 1.5 }],
+      defaultStyle: { font: 'Roboto' },
+    }).download(`${filenameBase}.pdf`);
+  }, []);
+
+  const openNoteActionMenu = useCallback(async (note: NoteInfo, lecture: LectureItem, anchorEl: HTMLElement) => {
+    const res = await fetch(`${API_BASE}/api/lectures/${lecture.id}/notes/${note.id}`, { headers: authHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    const rect = anchorEl.getBoundingClientRect();
+    const popupWidth = 280;
+    const popupHeight = 232;
+    const x = Math.max(12, Math.min(rect.left, window.innerWidth - popupWidth - 12));
+    const fitsBelow = rect.bottom + popupHeight + 12 <= window.innerHeight;
+    const fitsAbove = rect.top - popupHeight - 12 >= 12;
+    const y = fitsBelow ? rect.bottom + 10 : fitsAbove ? rect.top - popupHeight - 10 : Math.max(12, window.innerHeight - popupHeight - 12);
+    setNoteExportMenuOpen(false);
+    setNoteDownloadFormat(null);
+    setNoteActionMenu({ note, lecture, content: data.content || '', x, y });
+  }, [authHeaders]);
+
+  const closeNoteActionMenu = useCallback(() => {
+    setNoteActionMenu(null);
+    setNoteExportMenuOpen(false);
+    setNoteDownloadFormat(null);
+  }, []);
 
   const fetchLectures = useCallback(async () => {
     setLoading(true);
@@ -1032,7 +1103,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                         {lecture.notes.map(note => (
                           <button
                             key={note.id}
-                            onClick={() => setNoteModal({ note, lecture })}
+                            onClick={(e) => openNoteActionMenu(note, lecture, e.currentTarget as HTMLElement)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border"
                             style={{
                               background: isLightTheme ? 'rgba(34,197,94,.08)' : 'rgba(34,197,94,.1)',
@@ -1198,6 +1269,96 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
           }}
           authHeaders={authHeaders}
         />
+      )}
+
+      {noteActionMenu && (
+        <div className="fixed inset-0 z-50" onClick={closeNoteActionMenu}>
+          <div
+            ref={noteActionMenuRef}
+            className="fixed w-[280px] rounded-2xl p-3 border shadow-2xl overflow-y-auto"
+            style={{
+              left: `${noteActionMenu.x}px`,
+              top: `${noteActionMenu.y}px`,
+              maxHeight: 'calc(100vh - 24px)',
+              background: isLightTheme ? 'rgba(255,255,247,0.98)' : 'rgba(28,21,22,0.98)',
+              borderColor: 'var(--border-color)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 className="text-sm font-medium mb-1 truncate" style={{ color: headingColor }}>{modeLabel(noteActionMenu.note.mode)}</h4>
+            <p className="text-[11px] mb-3" style={{ color: mutedColor }}>Выберите действие.</p>
+
+            {!noteExportMenuOpen ? (
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => {
+                    setNoteModal({ note: noteActionMenu.note, lecture: noteActionMenu.lecture });
+                    closeNoteActionMenu();
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border text-left flex items-center gap-2 text-sm"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>visibility</span>
+                  Предпросмотр
+                </button>
+                <button
+                  onClick={() => {
+                    onOpenInEditor(mdParse(noteActionMenu.content), noteActionMenu.lecture.id, noteActionMenu.lecture.title);
+                    closeNoteActionMenu();
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border text-left flex items-center gap-2 text-sm"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>
+                  Открыть в редакторе
+                </button>
+                <button
+                  onClick={() => setNoteExportMenuOpen(true)}
+                  className="w-full px-3 py-2 rounded-lg border text-left flex items-center gap-2 text-sm"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
+                  Скачать
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    onClick={() => setNoteExportMenuOpen(false)}
+                    className="px-2 py-1 rounded-lg border text-xs"
+                    style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                  >
+                    Назад
+                  </button>
+                  <span className="text-xs" style={{ color: mutedColor }}>Выберите формат экспорта.</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {NOTE_EXPORT_FORMATS.map((format) => (
+                    <button
+                      key={format.id}
+                      onClick={async () => {
+                        setNoteDownloadFormat(format.id);
+                        try {
+                          await exportNoteContent(noteActionMenu.content, noteActionMenu.note.mode, format.id);
+                          closeNoteActionMenu();
+                        } finally {
+                          setNoteDownloadFormat(null);
+                        }
+                      }}
+                      className="px-2.5 py-2 rounded-lg border text-left transition-all flex items-center gap-2 disabled:opacity-60 text-sm"
+                      style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'var(--bg-primary)' }}
+                      disabled={Boolean(noteDownloadFormat)}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{format.icon}</span>
+                      <span className="text-sm">{format.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Note modal ── */}

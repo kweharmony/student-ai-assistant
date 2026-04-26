@@ -759,8 +759,11 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     const data = await res.json();
     const rect = anchorEl.getBoundingClientRect();
     const popupWidth = 280;
+    const popupHeight = 230;
     const x = Math.max(12, Math.min(rect.left, window.innerWidth - popupWidth - 12));
-    const y = Math.min(rect.bottom + 10, window.innerHeight - 12);
+    const fitsBelow = rect.bottom + popupHeight + 12 <= window.innerHeight;
+    const fitsAbove = rect.top - popupHeight - 12 >= 12;
+    const y = fitsBelow ? rect.bottom + 10 : fitsAbove ? rect.top - popupHeight - 10 : Math.max(12, window.innerHeight - popupHeight - 12);
     setNoteTextContent(data.content || '');
     setNoteExportError('');
     setNoteExportMenuOpen(false);
@@ -1506,10 +1509,11 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
         >
           <div
             ref={noteActionMenuRef}
-            className="fixed w-[280px] rounded-2xl p-3 border shadow-2xl transition-all duration-200"
+            className="fixed w-[280px] rounded-2xl p-3 border shadow-2xl transition-all duration-200 overflow-y-auto"
             style={{
               left: `${noteActionMenu.x}px`,
               top: `${noteActionMenu.y}px`,
+              maxHeight: 'calc(100vh - 24px)',
               background: isLightTheme ? 'rgba(255,255,247,0.98)' : 'rgba(28,21,22,0.98)',
               borderColor: 'var(--border-color)',
             }}
