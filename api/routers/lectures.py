@@ -211,6 +211,7 @@ async def list_my_lectures(
             selectinload(Lecture.transcriptions),
             selectinload(Lecture.audio_files),
             selectinload(Lecture.notes),
+            selectinload(Lecture.ai_filter_requests),
         )
         .order_by(Lecture.created_at.desc())
     )
