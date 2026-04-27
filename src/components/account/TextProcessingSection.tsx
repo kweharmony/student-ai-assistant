@@ -98,35 +98,6 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   const [lectureSelectError, setLectureSelectError] = useState('');
   const [lectureLoadingId, setLectureLoadingId] = useState<string | null>(null);
   const [localLectureTitle, setLocalLectureTitle] = useState<string | null>(null);
-  const [currentLectureInfo, setCurrentLectureInfo] = useState<any | null>(null);
-  const [filterRequestSending, setFilterRequestSending] = useState(false);
-  const [showAiFilterHelp, setShowAiFilterHelp] = useState(false);
-
-  useEffect(() => {
-    if (!lectureId || !token) {
-      setCurrentLectureInfo(null);
-      return;
-    }
-
-    let alive = true;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/lectures/my`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok || !alive) return;
-        const data = await res.json();
-        const found = data.find((item: any) => String(item.id) === String(lectureId)) || null;
-        if (alive) setCurrentLectureInfo(found);
-      } catch {
-        if (alive) setCurrentLectureInfo(null);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [lectureId, token]);
 
   const openLectureModal = async () => {
     setShowLectureModal(true);
@@ -251,28 +222,6 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     const base = sanitizeFilename(lectureTitle || localLectureTitle || '');
     if (base) return base;
     return `document_${new Date().toISOString().split('T')[0]}`;
-  };
-
-  const handleRequestAiFilter = async () => {
-    if (!lectureId || !token) return;
-    setFilterRequestSending(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/lectures/${lectureId}/filter-request`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ regenerate: false }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Не удалось отправить заявку');
-      }
-      const data = await res.json();
-      setCurrentLectureInfo((prev: any) => prev ? { ...prev, ai_filter_request_status: data.status, ai_filter_request_review_comment: data.review_comment } : prev);
-    } catch (error: any) {
-      alert(error.message || 'Не удалось отправить заявку');
-    } finally {
-      setFilterRequestSending(false);
-    }
   };
 
   // Хук для ML обработки
@@ -632,69 +581,6 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
               />
               Загрузить текстовый файл
             </label>
-            <div className="relative inline-flex items-center gap-3 rounded-2xl border px-4 py-3 text-left" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)', color: 'var(--text-primary)' }}>
-              <button
-                type="button"
-                onMouseEnter={() => setShowAiFilterHelp(true)}
-                onMouseLeave={() => setShowAiFilterHelp(false)}
-                className="w-8 h-8 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)' }}
-                aria-label="Что такое AI-фильтрация"
-              >
-                <span className="material-symbols-outlined text-base">help</span>
-              </button>
-              {showAiFilterHelp && (
-                <div
-                  className="absolute right-0 top-full mt-2 z-50 w-72 rounded-xl border p-3 text-xs shadow-2xl"
-                  style={{ background: isLightTheme ? 'rgba(255,255,247,0.98)' : 'rgba(28,21,22,0.98)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                >
-                  ИИ-фильтрация очищает транскрипцию от ошибок распознавания, лишних слов и артефактов, чтобы текст лекции стал чище и удобнее для чтения.
-                </div>
-              )}
-              <div className="min-w-0 max-w-[320px]">
-                {currentLectureInfo?.is_ai_filtered ? (
-                  <div>
-                    <div className="text-sm font-medium">Фильтрация проведена</div>
-                    <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      Текст уже очищен ИИ и сохранён в лекции.
-                    </div>
-                  </div>
-                ) : currentLectureInfo?.ai_filter_request_status === 'pending' || currentLectureInfo?.ai_filter_request_generation_status === 'processing' ? (
-                  <div>
-                    <div className="text-sm font-medium">Заявка на фильтрацию отправлена</div>
-                    <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {currentLectureInfo.ai_filter_request_status === 'pending' ? 'Ожидает модерации.' : 'Фильтрация уже выполняется.'}
-                    </div>
-                  </div>
-                ) : currentLectureInfo?.ai_filter_request_status === 'approved' && currentLectureInfo?.ai_filter_request_generation_status === 'failed' ? (
-                  <div>
-                    <div className="text-sm font-medium" style={{ color: '#ef4444' }}>Фильтрация завершилась с ошибкой</div>
-                    <div className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
-                      Можно повторно отправить заявку на фильтрацию.
-                    </div>
-                    <button
-                      onClick={handleRequestAiFilter}
-                      disabled={filterRequestSending}
-                      className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-all"
-                      style={{ background: 'rgba(31,111,235,0.16)', color: 'var(--text-primary)' }}
-                    >
-                      <span className="material-symbols-outlined text-base">refresh</span>
-                      {filterRequestSending ? 'Отправка...' : 'Повторить заявку'}
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleRequestAiFilter}
-                    disabled={filterRequestSending}
-                    className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-all"
-                    style={{ background: 'rgba(31,111,235,0.16)', color: 'var(--text-primary)' }}
-                  >
-                    <span className="material-symbols-outlined text-base">auto_fix_high</span>
-                    {filterRequestSending ? 'Отправка...' : 'Подать заявку на ИИ-фильтрацию'}
-                  </button>
-                )}
-              </div>
-            </div>
           </div>
         </div>
       </div>

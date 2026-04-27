@@ -62,6 +62,7 @@ MATERIAL_MODE_TO_ML_MODE: dict[str, str] = {
     "qa": "generate_questions",
     "flashcards": "cheat_sheet",
     "mindmap": "extract_terms",
+    "ai_filter": "ai_filter",
 }
 
 
@@ -752,10 +753,44 @@ def _lecture_latest_text(lecture: Lecture) -> str:
     return (latest.processed_text or latest.raw_text or "").strip()
 
 
+def _latest_active_transcription(lecture: Lecture):
+    active_transcriptions = [t for t in lecture.transcriptions if not t.is_deleted]
+    if not active_transcriptions:
+        return None
+    return sorted(active_transcriptions, key=lambda t: t.created_at, reverse=True)[0]
+
+
 async def _generate_note_for_mode(db: AsyncSession, lecture: Lecture, mode: str) -> None:
     ml_mode = MATERIAL_MODE_TO_ML_MODE.get(mode)
     if ml_mode is None:
         raise HTTPException(status_code=400, detail="Неподдерживаемый режим материала")
+
+    if mode == "ai_filter":
+        latest = _latest_active_transcription(lecture)
+        if latest is None:
+            raise HTTPException(status_code=400, detail="У лекции нет текста для фильтрации")
+
+        source_text = (latest.raw_text or latest.processed_text or "").strip()
+        if not source_text:
+            raise HTTPException(status_code=400, detail="У лекции нет текста для фильтрации")
+
+        try:
+            from ml.transcription_filter import TranscriptionFilter
+
+            fltr = TranscriptionFilter()
+            filtered = await fltr.filter_text_async(source_text, chunk_size=8000)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка фильтрации: {str(e)}")
+
+        if not (filtered or "").strip():
+            raise HTTPException(status_code=500, detail="Сервис фильтрации вернул пустой результат")
+
+        latest.processed_text = filtered
+        latest.is_ai_filtered = True
+        latest.filtered_at = datetime.utcnow()
+        return
 
     text = _lecture_latest_text(lecture)
     if not text:
@@ -877,7 +912,7 @@ async def create_material_generation_request(
 
     lecture_result = await db.execute(
         select(Lecture)
-        .options(selectinload(Lecture.catalog_item), selectinload(Lecture.notes))
+        .options(selectinload(Lecture.catalog_item), selectinload(Lecture.notes), selectinload(Lecture.transcriptions))
         .where(Lecture.id == body.lecture_id, Lecture.is_deleted == False)
     )
     lecture = lecture_result.scalar_one_or_none()
@@ -888,9 +923,16 @@ async def create_material_generation_request(
     if lecture.catalog_item.stream_id != body.stream_id:
         raise HTTPException(status_code=400, detail="Поток заявки не совпадает с потоком лекции в базе")
 
-    existing_note = next((n for n in lecture.notes if n.mode == mode), None)
-    if existing_note is not None and not body.regenerate:
-        raise HTTPException(status_code=409, detail="Материал для этого режима уже создан")
+    if mode == "ai_filter":
+        latest = _latest_active_transcription(lecture)
+        if latest is None:
+            raise HTTPException(status_code=400, detail="У лекции нет текста для фильтрации")
+        if latest.is_ai_filtered and not body.regenerate:
+            raise HTTPException(status_code=409, detail="Лекция уже профильтрована")
+    else:
+        existing_note = next((n for n in lecture.notes if n.mode == mode), None)
+        if existing_note is not None and not body.regenerate:
+            raise HTTPException(status_code=409, detail="Материал для этого режима уже создан")
 
     pending_result = await db.execute(
         select(LectureMaterialGenerationRequest).where(
@@ -911,6 +953,8 @@ async def create_material_generation_request(
         )
     )
     if processing_result.scalar_one_or_none() is not None:
+        if mode == "ai_filter":
+            raise HTTPException(status_code=409, detail="Фильтрация этой лекции уже выполняется")
         raise HTTPException(status_code=409, detail="Материал для этого режима уже генерируется")
 
     failed_result = await db.execute(

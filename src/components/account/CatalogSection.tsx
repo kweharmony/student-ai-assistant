@@ -19,6 +19,7 @@ const NOTE_MODES = [
   { id: 'qa', label: 'Q&A', icon: 'help_outline' },
   { id: 'flashcards', label: 'Флешкарточки', icon: 'style' },
   { id: 'mindmap', label: 'Майнд-карта', icon: 'account_tree' },
+  { id: 'ai_filter', label: 'ИИ-фильтрация текста', icon: 'auto_fix_high' },
 ];
 
 const EXPORT_FORMATS = [
@@ -69,7 +70,14 @@ interface MaterialRequestInfo {
   generation_error?: string | null;
   created_at: string;
 }
-interface LectureDetail { id: string; transcriptions: { raw_text: string; processed_text: string | null }[] }
+interface LectureDetail {
+  id: string;
+  transcriptions: {
+    raw_text: string;
+    processed_text: string | null;
+    is_ai_filtered?: boolean;
+  }[];
+}
 interface CatalogSectionProps { isLightTheme: boolean; onOpenInEditor: (text: string, lectureId: string, lectureTitle?: string) => void }
 
 const POLL_BASE_MS = 12000;
@@ -188,6 +196,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   const [notesByLecture, setNotesByLecture] = useState<Record<string, LectureNoteInfo[]>>({});
   const [materialRequestsByLecture, setMaterialRequestsByLecture] = useState<Record<string, MaterialRequestInfo[]>>({});
   const [lectureTextByLecture, setLectureTextByLecture] = useState<Record<string, string>>({});
+  const [aiFilteredByLecture, setAiFilteredByLecture] = useState<Record<string, boolean>>({});
   const [notePreviewModal, setNotePreviewModal] = useState<{ lectureId: string; noteId: string; title: string } | null>(null);
   const [noteTextContent, setNoteTextContent] = useState('');
   const [noteActionMenu, setNoteActionMenu] = useState<{ lectureId: string; noteId: string; title: string; content: string; x: number; y: number } | null>(null);
@@ -570,8 +579,10 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
       const lRes = await fetch(`${API_BASE}/api/lectures/${item.lecture_id}`, { headers });
       if (lRes.ok) {
         const detail: LectureDetail = await lRes.json();
-        const text = detail.transcriptions?.[0]?.processed_text || detail.transcriptions?.[0]?.raw_text || '';
+        const latest = detail.transcriptions?.[0];
+        const text = latest?.processed_text || latest?.raw_text || '';
         setLectureTextByLecture((prev) => ({ ...prev, [item.lecture_id]: text }));
+        setAiFilteredByLecture((prev) => ({ ...prev, [item.lecture_id]: Boolean(latest?.is_ai_filtered) }));
       }
     }
     const reqRes = await fetch(`${API_BASE}/api/catalog/material-requests/lecture?lecture_id=${item.lecture_id}`, { headers });
@@ -591,8 +602,10 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     }
 
     const detail: LectureDetail = await lRes.json();
-    const text = detail.transcriptions?.[0]?.processed_text || detail.transcriptions?.[0]?.raw_text || '';
+    const latest = detail.transcriptions?.[0];
+    const text = latest?.processed_text || latest?.raw_text || '';
     setLectureTextByLecture((prev) => ({ ...prev, [lectureId]: text }));
+    setAiFilteredByLecture((prev) => ({ ...prev, [lectureId]: Boolean(latest?.is_ai_filtered) }));
     return text;
   }, [headers, lectureTextByLecture]);
 
@@ -685,18 +698,21 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   };
 
   const refreshLectureRuntimeData = useCallback(async (lectureId: string): Promise<{ hasActive: boolean }> => {
-    const [nRes, reqRes] = await Promise.all([
+    const [nRes, reqRes, lRes] = await Promise.all([
       fetch(`${API_BASE}/api/lectures/${lectureId}/notes`, { headers }),
       fetch(`${API_BASE}/api/catalog/material-requests/lecture?lecture_id=${lectureId}`, { headers }),
+      fetch(`${API_BASE}/api/lectures/${lectureId}`, { headers }),
     ]);
 
-    if (!nRes.ok || !reqRes.ok) {
+    if (!nRes.ok || !reqRes.ok || !lRes.ok) {
       throw new Error('Не удалось обновить статус генерации');
     }
 
-    const [notes, reqs] = await Promise.all([nRes.json(), reqRes.json()]);
+    const [notes, reqs, detail] = await Promise.all([nRes.json(), reqRes.json(), lRes.json() as Promise<LectureDetail>]);
+    const latest = detail.transcriptions?.[0];
     setNotesByLecture((prev) => ({ ...prev, [lectureId]: notes }));
     setMaterialRequestsByLecture((prev) => ({ ...prev, [lectureId]: reqs }));
+    setAiFilteredByLecture((prev) => ({ ...prev, [lectureId]: Boolean(latest?.is_ai_filtered) }));
 
     return { hasActive: hasActiveMaterialRequests(reqs) };
   }, [headers]);
@@ -818,6 +834,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   const selectedLectureModeState = useMemo(() => {
     if (!selectedLecture) return null;
     const lectureId = selectedLecture.lecture_id;
+    const aiFiltered = Boolean(aiFilteredByLecture[lectureId]);
     const noteMap = new Map<string, LectureNoteInfo>();
     (notesByLecture[lectureId] || []).forEach((note) => {
       noteMap.set(note.mode, note);
@@ -830,8 +847,8 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
       }
     });
 
-    return { noteMap, requestMap };
-  }, [selectedLecture, notesByLecture, materialRequestsByLecture]);
+    return { noteMap, requestMap, aiFiltered };
+  }, [selectedLecture, notesByLecture, materialRequestsByLecture, aiFilteredByLecture]);
 
   React.useEffect(() => {
     if (!downloadMenuOpen) return;
@@ -1268,6 +1285,9 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                           <span className="flex items-center gap-2 min-w-0">
                             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>description</span>
                             <span className="truncate">{item.lecture_title}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0" style={{ background: 'rgba(34,197,94,.14)', color: '#22c55e' }}>
+                              В базе лекций
+                            </span>
                           </span>
                           <span style={{ color: mutedColor }}>Лекция</span>
                           <span className="truncate" style={{ color: mutedColor }}>{detail || '—'}</span>
@@ -1299,7 +1319,12 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
 
       {selectedLecture && (
         <div className="border rounded-xl p-4 mt-5" style={{ borderColor: 'var(--border-color)', background: cardBg }}>
-          <h3 className="text-lg font-medium mb-2" style={{ color: headingColor }}>{selectedLecture.lecture_title}</h3>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h3 className="text-lg font-medium" style={{ color: headingColor }}>{selectedLecture.lecture_title}</h3>
+            <span className="text-xs px-2 py-1 rounded-full" style={{ background: 'rgba(34,197,94,.14)', color: '#22c55e' }}>
+              В базе лекций
+            </span>
+          </div>
           <p className="text-xs mb-3" style={{ color: mutedColor }}>
             {selectedLecture.faculty_name} / {selectedLecture.direction_name} / {selectedLecture.stream_name} / {courseLabel(normalizeCourse(selectedLecture.course_text))} / {semesterLabel(normalizeSemesterKey(selectedLecture.semester_text))} / {disciplineLabel(normalizeDiscipline(selectedLecture.discipline))}
           </p>
@@ -1380,9 +1405,12 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
             <p className="text-xs mb-2" style={{ color: mutedColor }}>Готовые режимы</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {NOTE_MODES.map((mode) => {
+                const isAiMode = mode.id === 'ai_filter';
                 const note = selectedLectureModeState?.noteMap.get(mode.id);
                 const latestReq = selectedLectureModeState?.requestMap.get(mode.id);
-                const isGenerated = Boolean(note);
+                const isGenerated = isAiMode
+                  ? Boolean(selectedLectureModeState?.aiFiltered)
+                  : Boolean(note);
                 const isPending = !isGenerated && latestReq?.status === 'pending';
                 const isProcessing = !isGenerated && latestReq?.status === 'processing';
                 const isRejected = !isGenerated && latestReq?.status === 'rejected';
@@ -1424,6 +1452,10 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                         openNoteActionMenu(selectedLecture.lecture_id, note.id, mode.label, e.currentTarget as HTMLElement);
                         return;
                       }
+                      if (isGenerated && isAiMode) {
+                        handleOpenCleanTextInEditor(selectedLecture);
+                        return;
+                      }
                       if (isPending || isProcessing || isFailed) return;
                       openMaterialRequestModal(selectedLecture, mode.id, mode.label);
                     }}
@@ -1436,16 +1468,28 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                     </div>
                     <p className="text-xs" style={{ color: mutedColor }}>
                       {isGenerated
-                        ? 'Материал готов. Нажмите, чтобы открыть.'
+                        ? isAiMode
+                          ? 'Текст уже отфильтрован. Нажмите, чтобы открыть.'
+                          : 'Материал готов. Нажмите, чтобы открыть.'
                         : isProcessing
-                          ? 'Генерация запущена и выполняется в фоне.'
+                          ? isAiMode
+                            ? 'Фильтрация запущена и выполняется в фоне.'
+                            : 'Генерация запущена и выполняется в фоне.'
                         : isPending
-                          ? 'Заявка уже отправлена и ожидает модерации.'
+                          ? isAiMode
+                            ? 'Заявка на ИИ-фильтрацию уже отправлена и ожидает модерации.'
+                            : 'Заявка уже отправлена и ожидает модерации.'
                           : isRejected
-                            ? `Отклонено${latestReq?.review_comment ? `: ${latestReq.review_comment}` : ''}`
+                            ? isAiMode
+                              ? `Заявка на ИИ-фильтрацию отклонена${latestReq?.review_comment ? `: ${latestReq.review_comment}` : ''}`
+                              : `Отклонено${latestReq?.review_comment ? `: ${latestReq.review_comment}` : ''}`
                           : isFailed
-                            ? `Ошибка генерации${latestReq?.generation_error ? `: ${latestReq.generation_error}` : ''}. Модератор повторно обработает эту же заявку.`
-                            : 'Материала пока нет. Нажмите, чтобы отправить заявку.'}
+                            ? isAiMode
+                              ? `Ошибка ИИ-фильтрации${latestReq?.generation_error ? `: ${latestReq.generation_error}` : ''}. Модератор повторно обработает эту же заявку.`
+                              : `Ошибка генерации${latestReq?.generation_error ? `: ${latestReq.generation_error}` : ''}. Модератор повторно обработает эту же заявку.`
+                            : isAiMode
+                              ? 'Текст пока не отфильтрован. Нажмите, чтобы отправить заявку на ИИ-фильтрацию.'
+                              : 'Материала пока нет. Нажмите, чтобы отправить заявку.'}
                     </p>
                   </button>
                 );
@@ -1466,9 +1510,13 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
             style={{ background: isLightTheme ? 'rgba(255,255,240,.98)' : 'rgba(33,24,25,.97)', border: cardBorder }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h4 className="text-base font-medium mb-2" style={{ color: headingColor }}>Заявка на генерацию материала</h4>
+            <h4 className="text-base font-medium mb-2" style={{ color: headingColor }}>
+              {requestModal.modeId === 'ai_filter' ? 'Заявка на ИИ-фильтрацию' : 'Заявка на генерацию материала'}
+            </h4>
             <p className="text-sm mb-2" style={{ color: 'var(--text-primary)' }}>
-              Отправить модератору заявку на создание материала:
+              {requestModal.modeId === 'ai_filter'
+                ? 'Отправить модератору заявку на фильтрацию текста лекции:'
+                : 'Отправить модератору заявку на создание материала:'}
             </p>
             <p className="text-sm mb-4" style={{ color: mutedColor }}>
               «{requestModal.modeLabel}» для лекции «{requestModal.lecture.lecture_title}»
