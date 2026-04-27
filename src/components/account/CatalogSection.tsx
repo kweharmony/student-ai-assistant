@@ -1276,15 +1276,6 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                           <span className="flex items-center gap-2 min-w-0">
                             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>description</span>
                             <span className="truncate">{item.lecture_title}</span>
-                            {item.is_ai_filtered ? (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0" style={{ background: 'rgba(34,197,94,.14)', color: '#22c55e' }}>
-                                Текст прошел фильтрацию
-                              </span>
-                            ) : (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0" style={{ background: 'rgba(245,158,11,.12)', color: '#d97706' }}>
-                                Текст не фильтрован
-                              </span>
-                            )}
                           </span>
                           <span style={{ color: mutedColor }}>Лекция</span>
                           <span className="truncate" style={{ color: mutedColor }}>{detail || '—'}</span>
