@@ -53,7 +53,7 @@ RUN mkdir -p /app/whisper_models
 
 EXPOSE 8000
 
-COPY scripts/start.sh .
-RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
+COPY scripts/start.sh /start.sh
+RUN sed -i 's/\r$//' /start.sh && chmod +x /start.sh
 
-CMD ["./start.sh"]
+CMD ["/start.sh"]
