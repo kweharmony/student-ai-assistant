@@ -553,6 +553,7 @@ async def list_catalog_items(
             User,
         )
         .join(Lecture, Lecture.id == LectureCatalogItem.lecture_id)
+        .options(selectinload(Lecture.transcriptions))
         .join(Stream, Stream.id == LectureCatalogItem.stream_id)
         .join(Direction, Direction.id == Stream.direction_id)
         .join(Faculty, Faculty.id == Direction.faculty_id)
@@ -612,6 +613,8 @@ async def list_catalog_items(
             faculty_id=faculty.id,
             faculty_name=faculty.name,
             published_by_login=publisher.login,
+            is_ai_filtered=_lecture_ai_filter_state(lecture)[0],
+            filtered_at=_lecture_ai_filter_state(lecture)[1],
             created_at=item.created_at,
         )
         for item, lecture, stream, direction, faculty, publisher in rows
@@ -751,6 +754,14 @@ def _lecture_latest_text(lecture: Lecture) -> str:
         return ""
     latest = sorted(active_transcriptions, key=lambda t: t.created_at, reverse=True)[0]
     return (latest.processed_text or latest.raw_text or "").strip()
+
+
+def _lecture_ai_filter_state(lecture: Lecture) -> tuple[bool, Optional[datetime]]:
+    active_transcriptions = [t for t in lecture.transcriptions if not t.is_deleted]
+    if not active_transcriptions:
+        return False, None
+    latest = sorted(active_transcriptions, key=lambda t: t.created_at, reverse=True)[0]
+    return bool(latest.is_ai_filtered), latest.filtered_at if latest.is_ai_filtered else None
 
 
 def _latest_active_transcription(lecture: Lecture):

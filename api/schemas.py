@@ -303,6 +303,8 @@ class CatalogItemOut(BaseModel):
     faculty_id: UUID
     faculty_name: str
     published_by_login: str
+    is_ai_filtered: bool = False
+    filtered_at: Optional[datetime] = None
     created_at: datetime
 
 
