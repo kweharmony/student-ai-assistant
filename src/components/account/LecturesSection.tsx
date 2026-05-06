@@ -930,15 +930,19 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
             const availableModes  = ML_MODES.filter(m => !existingModes.has(m.id));
             const showAddDropdown = addNoteDropdown === lecture.id;
             const pub = publicationStatuses[lecture.id];
+            const inCatalog = Boolean(lecture.catalog_stream_id);
+            const effectiveStatus = inCatalog
+              ? 'approved'
+              : (pub?.latest_request_status === 'approved' ? null : pub?.latest_request_status ?? null);
             const pubColor =
-              pub?.latest_request_status === 'approved' ? '#22c55e'
-                : pub?.latest_request_status === 'rejected' ? '#ef4444'
-                : pub?.latest_request_status === 'pending' ? '#f59e0b'
+              effectiveStatus === 'approved' ? '#22c55e'
+                : effectiveStatus === 'rejected' ? '#ef4444'
+                : effectiveStatus === 'pending' ? '#f59e0b'
                 : null;
             const pubLabel =
-              pub?.latest_request_status === 'approved' ? 'Одобрено в базе'
-                : pub?.latest_request_status === 'rejected' ? 'Отклонено'
-                : pub?.latest_request_status === 'pending' ? 'На модерации'
+              effectiveStatus === 'approved' ? 'Одобрено в базе'
+                : effectiveStatus === 'rejected' ? 'Отклонено'
+                : effectiveStatus === 'pending' ? 'На модерации'
                 : null;
 
             return (

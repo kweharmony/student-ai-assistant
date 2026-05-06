@@ -39,6 +39,7 @@ const NO_SEMESTER = '__no_semester__';
 interface LookupItem { id: string; name: string }
 interface DirectionItem extends LookupItem { faculty_id: string }
 interface StreamItem { id: string; direction_id: string; name: string; course: number | null }
+interface CatalogSemesterItem { stream_id: string; course_text: string; semester_key: string }
 
 interface CatalogItem {
   id: string;
@@ -185,6 +186,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   const [directions, setDirections] = useState<DirectionItem[]>([]);
   const [streams, setStreams] = useState<StreamItem[]>([]);
   const [allItems, setAllItems] = useState<CatalogItem[]>([]);
+  const [catalogSemesters, setCatalogSemesters] = useState<CatalogSemesterItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [currentPath, setCurrentPath] = useState<ExplorerPath>({});
@@ -244,6 +246,10 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
         offset += limit;
       }
       setAllItems(loaded);
+      const semestersRes = await fetch(`${API_BASE}/api/catalog/semesters`, { headers });
+      if (semestersRes.ok) {
+        setCatalogSemesters(await semestersRes.json());
+      }
     } finally {
       setLoading(false);
     }
@@ -303,6 +309,19 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
       disciplinesBySCSets[scsKey].add(discipline);
     });
 
+    catalogSemesters.forEach((row) => {
+      const course = normalizeCourse(row.course_text);
+      const semester = normalizeSemesterKey(row.semester_key);
+      const streamId = row.stream_id;
+
+      if (!coursesByStreamSets[streamId]) coursesByStreamSets[streamId] = new Set();
+      coursesByStreamSets[streamId].add(course);
+
+      const scKey = `${streamId}|${course}`;
+      if (!semestersByStreamCourseSets[scKey]) semestersByStreamCourseSets[scKey] = new Set();
+      semestersByStreamCourseSets[scKey].add(semester);
+    });
+
     const coursesByStream: Record<string, string[]> = {};
     Object.entries(coursesByStreamSets).forEach(([key, set]) => {
       coursesByStream[key] = Array.from(set).sort((a, b) => courseLabel(a).localeCompare(courseLabel(b), 'ru'));
@@ -323,7 +342,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
       semestersByStreamCourse,
       disciplinesBySCS,
     };
-  }, [allItems]);
+  }, [allItems, catalogSemesters]);
 
   const navigateTo = useCallback((nextPath: ExplorerPath, pushHistory = true) => {
     if (isSamePath(currentPath, nextPath)) return;

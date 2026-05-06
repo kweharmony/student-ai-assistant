@@ -415,14 +415,37 @@ class FacultyCreateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
 
 
+class FacultyUpdateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+
+
 class DirectionCreateIn(BaseModel):
     faculty_id: UUID
+    name: str = Field(..., min_length=1, max_length=150)
+
+
+class DirectionUpdateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
 
 
 class StreamCreateIn(BaseModel):
     direction_id: UUID
     name: str = Field(..., min_length=1, max_length=150)
+
+
+class StreamUpdateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+
+
+class CatalogItemUpdateIn(BaseModel):
+    lecture_title: Optional[str] = Field(None, min_length=1, max_length=300)
+    stream_id: Optional[UUID] = None
+    discipline: Optional[str] = Field(None, min_length=1, max_length=150)
+    lecturer_name: Optional[str] = Field(None, max_length=150)
+    course_text: Optional[str] = Field(None, max_length=50)
+    semester_text: Optional[str] = Field(None, max_length=20)
+    lecture_number_text: Optional[str] = Field(None, max_length=50)
+    study_year_text: Optional[str] = Field(None, max_length=50)
 
 
 class CatalogDisciplineTemplateOut(BaseModel):
@@ -449,6 +472,12 @@ class CatalogLecturerTemplateOut(BaseModel):
 class CatalogLecturerTemplateCreateIn(BaseModel):
     stream_id: UUID
     name: str = Field(..., min_length=1, max_length=150)
+
+
+class CatalogSemesterOut(BaseModel):
+    stream_id: UUID
+    course_text: str
+    semester_key: str
 
 
 class AdminSetGroupHeadIn(BaseModel):

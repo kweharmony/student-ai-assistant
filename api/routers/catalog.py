@@ -18,6 +18,7 @@ from ..database import async_session
 from ..models import (
     CatalogDisciplineTemplate,
     CatalogLecturerTemplate,
+    CatalogSemester,
     Direction,
     Faculty,
     Lecture,
@@ -38,10 +39,14 @@ from ..schemas import (
     CatalogLectureOptionOut,
     CatalogLecturerTemplateCreateIn,
     CatalogLecturerTemplateOut,
+    CatalogItemUpdateIn,
+    CatalogSemesterOut,
     DirectionCreateIn,
     DirectionOut,
+    DirectionUpdateIn,
     FacultyCreateIn,
     FacultyOut,
+    FacultyUpdateIn,
     ManualCatalogPublishIn,
     MaterialGenerationRequestCreateIn,
     MaterialGenerationRequestModerateIn,
@@ -52,6 +57,7 @@ from ..schemas import (
     PublicationRequestOut,
     StreamCreateIn,
     StreamOut,
+    StreamUpdateIn,
 )
 
 router = APIRouter(prefix="/api/catalog", tags=["Catalog"])
@@ -128,6 +134,49 @@ async def _delete_stream_related_data(db: AsyncSession, stream_ids: list[UUID]) 
     await db.execute(delete(LecturePublicationRequest).where(LecturePublicationRequest.stream_id.in_(stream_ids)))
     await db.execute(delete(LectureMaterialGenerationRequest).where(LectureMaterialGenerationRequest.stream_id.in_(stream_ids)))
     await db.execute(delete(CatalogLecturerTemplate).where(CatalogLecturerTemplate.stream_id.in_(stream_ids)))
+    await db.execute(delete(CatalogSemester).where(CatalogSemester.stream_id.in_(stream_ids)))
+
+
+async def _ensure_catalog_semesters(db: AsyncSession, stream_id: UUID, course_text: Optional[str]) -> None:
+    if not course_text:
+        return
+    normalized = course_text.strip()
+    if not normalized:
+        return
+
+    existing_result = await db.execute(
+        select(CatalogSemester.semester_key).where(
+            CatalogSemester.stream_id == stream_id,
+            CatalogSemester.course_text == normalized,
+        )
+    )
+    existing = {row[0] for row in existing_result.all()}
+    for key in ("winter", "spring"):
+        if key in existing:
+            continue
+        db.add(CatalogSemester(stream_id=stream_id, course_text=normalized, semester_key=key))
+
+
+@router.get("/semesters", response_model=List[CatalogSemesterOut])
+async def list_catalog_semesters(
+    stream_id: Optional[UUID] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    del user
+    stmt = select(CatalogSemester)
+    if stream_id is not None:
+        stmt = stmt.where(CatalogSemester.stream_id == stream_id)
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    return [
+        CatalogSemesterOut(
+            stream_id=row.stream_id,
+            course_text=row.course_text,
+            semester_key=row.semester_key,
+        )
+        for row in rows
+    ]
 
 
 async def _stream_usage_counts(db: AsyncSession, stream_ids: list[UUID]) -> dict[str, int]:
@@ -333,6 +382,30 @@ async def create_faculty(
     return obj
 
 
+@router.patch("/faculties/{faculty_id}", response_model=FacultyOut)
+async def update_faculty(
+    faculty_id: UUID,
+    body: FacultyUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    del admin
+    faculty_result = await db.execute(select(Faculty).where(Faculty.id == faculty_id))
+    faculty = faculty_result.scalar_one_or_none()
+    if faculty is None:
+        raise HTTPException(status_code=404, detail="Факультет не найден")
+
+    name = body.name.strip()
+    exists = await db.execute(select(Faculty).where(Faculty.name == name, Faculty.id != faculty_id))
+    if exists.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Факультет уже существует")
+
+    faculty.name = name
+    await db.commit()
+    await db.refresh(faculty)
+    return faculty
+
+
 @router.delete("/faculties/{faculty_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_faculty(
     faculty_id: UUID,
@@ -408,6 +481,36 @@ async def create_direction(
     return obj
 
 
+@router.patch("/directions/{direction_id}", response_model=DirectionOut)
+async def update_direction(
+    direction_id: UUID,
+    body: DirectionUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    del admin
+    direction_result = await db.execute(select(Direction).where(Direction.id == direction_id))
+    direction = direction_result.scalar_one_or_none()
+    if direction is None:
+        raise HTTPException(status_code=404, detail="Направление не найдено")
+
+    name = body.name.strip()
+    exists = await db.execute(
+        select(Direction).where(
+            Direction.faculty_id == direction.faculty_id,
+            Direction.name == name,
+            Direction.id != direction_id,
+        )
+    )
+    if exists.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Направление уже существует на этом факультете")
+
+    direction.name = name
+    await db.commit()
+    await db.refresh(direction)
+    return direction
+
+
 @router.delete("/directions/{direction_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_direction(
     direction_id: UUID,
@@ -473,6 +576,37 @@ async def create_stream(
     await db.commit()
     await db.refresh(obj)
     return obj
+
+
+@router.patch("/streams/{stream_id}", response_model=StreamOut)
+async def update_stream(
+    stream_id: UUID,
+    body: StreamUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    del admin
+    stream_result = await db.execute(select(Stream).where(Stream.id == stream_id))
+    stream = stream_result.scalar_one_or_none()
+    if stream is None:
+        raise HTTPException(status_code=404, detail="Поток не найден")
+
+    name = body.name.strip()
+    exists = await db.execute(
+        select(Stream).where(
+            Stream.direction_id == stream.direction_id,
+            Stream.name == name,
+            Stream.study_year_start == stream.study_year_start,
+            Stream.id != stream_id,
+        )
+    )
+    if exists.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Поток уже существует для этого направления")
+
+    stream.name = name
+    await db.commit()
+    await db.refresh(stream)
+    return stream
 
 
 @router.delete("/streams/{stream_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -619,6 +753,124 @@ async def list_catalog_items(
         )
         for item, lecture, stream, direction, faculty, publisher in rows
     ]
+
+
+@router.patch("/items/{item_id}", response_model=CatalogItemOut)
+async def update_catalog_item(
+    item_id: UUID,
+    body: CatalogItemUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    item_result = await db.execute(
+        select(LectureCatalogItem)
+        .options(selectinload(LectureCatalogItem.lecture).selectinload(Lecture.transcriptions))
+        .where(LectureCatalogItem.id == item_id)
+    )
+    item = item_result.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Запись каталога не найдена")
+
+    if moderator.role != "admin":
+        if moderator.stream_id is None or item.stream_id != moderator.stream_id:
+            raise HTTPException(status_code=403, detail="Нет прав для этого потока")
+        if body.stream_id is not None and body.stream_id != item.stream_id:
+            raise HTTPException(status_code=403, detail="Нельзя переносить лекцию в другой поток")
+
+    if body.stream_id is not None:
+        stream_result = await db.execute(select(Stream).where(Stream.id == body.stream_id))
+        stream = stream_result.scalar_one_or_none()
+        if stream is None:
+            raise HTTPException(status_code=400, detail="Поток не найден")
+        if not _is_catalog_editor(moderator, stream.id):
+            raise HTTPException(status_code=403, detail="Нет прав для этого потока")
+        item.stream_id = stream.id
+
+    if body.discipline is not None:
+        discipline = body.discipline.strip()
+        if not discipline:
+            raise HTTPException(status_code=400, detail="Нужно указать дисциплину")
+        item.discipline = discipline
+    if body.lecturer_name is not None:
+        item.lecturer_name = (body.lecturer_name or "").strip() or None
+    if body.course_text is not None:
+        item.course_text = (body.course_text or "").strip() or None
+    if body.semester_text is not None:
+        item.semester_text = (body.semester_text or "").strip() or None
+    if body.lecture_number_text is not None:
+        item.lecture_number_text = (body.lecture_number_text or "").strip() or None
+    if body.study_year_text is not None:
+        item.study_year_text = (body.study_year_text or "").strip() or None
+
+    if body.lecture_title is not None:
+        lecture_title = body.lecture_title.strip()
+        if not lecture_title:
+            raise HTTPException(status_code=400, detail="Нужно указать название лекции")
+        item.lecture.title = lecture_title
+
+    await _ensure_catalog_semesters(db, item.stream_id, item.course_text)
+
+    await db.commit()
+
+    row_result = await db.execute(
+        select(
+            LectureCatalogItem,
+            Lecture,
+            Stream,
+            Direction,
+            Faculty,
+            User,
+        )
+        .join(Lecture, Lecture.id == LectureCatalogItem.lecture_id)
+        .options(selectinload(Lecture.transcriptions))
+        .join(Stream, Stream.id == LectureCatalogItem.stream_id)
+        .join(Direction, Direction.id == Stream.direction_id)
+        .join(Faculty, Faculty.id == Direction.faculty_id)
+        .join(User, User.id == LectureCatalogItem.published_by)
+        .where(LectureCatalogItem.id == item.id)
+    )
+    item_row, lecture, stream, direction, faculty, publisher = row_result.one()
+    return CatalogItemOut(
+        id=item_row.id,
+        lecture_id=lecture.id,
+        lecture_title=lecture.title,
+        lecture_subject=lecture.subject,
+        discipline=item_row.discipline,
+        lecturer_name=item_row.lecturer_name,
+        course_text=item_row.course_text,
+        semester_text=item_row.semester_text,
+        lecture_number_text=item_row.lecture_number_text,
+        study_year_text=item_row.study_year_text,
+        stream_id=stream.id,
+        stream_name=stream.name,
+        direction_id=direction.id,
+        direction_name=direction.name,
+        faculty_id=faculty.id,
+        faculty_name=faculty.name,
+        published_by_login=publisher.login,
+        is_ai_filtered=_lecture_ai_filter_state(lecture)[0],
+        filtered_at=_lecture_ai_filter_state(lecture)[1],
+        created_at=item_row.created_at,
+    )
+
+
+@router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_catalog_item(
+    item_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    item_result = await db.execute(select(LectureCatalogItem).where(LectureCatalogItem.id == item_id))
+    item = item_result.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Запись каталога не найдена")
+
+    if moderator.role != "admin":
+        if moderator.stream_id is None or item.stream_id != moderator.stream_id:
+            raise HTTPException(status_code=403, detail="Нет прав для этого потока")
+
+    await db.execute(delete(LectureCatalogItem).where(LectureCatalogItem.id == item_id))
+    await db.commit()
 
 
 @router.get("/my-lecture-statuses", response_model=List[MyLecturePublicationStatusOut])
@@ -1237,6 +1489,8 @@ async def _ensure_catalog_item(
             source_request_id=source_request_id,
         )
         db.add(item)
+
+    await _ensure_catalog_semesters(db, stream_id, course_text)
 
     return item
 

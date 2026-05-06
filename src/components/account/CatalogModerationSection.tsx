@@ -48,6 +48,37 @@ interface DirectionItem extends LookupItem { faculty_id: string }
 interface StreamItem extends LookupItem { direction_id: string; course: number | null; study_year_start: number | null }
 type DeletableNodeType = 'faculty' | 'direction' | 'stream';
 
+interface CatalogItem {
+  id: string;
+  lecture_id: string;
+  lecture_title: string;
+  discipline: string;
+  lecturer_name: string | null;
+  course_text: string | null;
+  semester_text: string | null;
+  lecture_number_text: string | null;
+  study_year_text: string | null;
+  stream_id: string;
+  stream_name: string;
+  direction_id: string;
+  direction_name: string;
+  faculty_id: string;
+  faculty_name: string;
+  published_by_login: string;
+  created_at: string;
+}
+
+interface CatalogEditState {
+  lecture_title: string;
+  discipline: string;
+  lecturer_name: string;
+  course_text: string;
+  semester_text: string;
+  lecture_number_text: string;
+  study_year_text: string;
+  stream_id: string;
+}
+
 interface DeleteDialogState {
   open: boolean;
   nodeType: DeletableNodeType;
@@ -141,9 +172,25 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const [deleteProcessing, setDeleteProcessing] = useState(false);
 
+  const [renameFacultyName, setRenameFacultyName] = useState('');
+  const [renameDirectionName, setRenameDirectionName] = useState('');
+  const [renameStreamName, setRenameStreamName] = useState('');
+  const [renameProcessing, setRenameProcessing] = useState(false);
+
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogSelectedId, setCatalogSelectedId] = useState<string | null>(null);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogFacultyFilter, setCatalogFacultyFilter] = useState('');
+  const [catalogDirectionFilter, setCatalogDirectionFilter] = useState('');
+  const [catalogStreamFilter, setCatalogStreamFilter] = useState('');
+  const [catalogEdit, setCatalogEdit] = useState<Record<string, CatalogEditState>>({});
+  const [catalogProcessing, setCatalogProcessing] = useState(false);
+
   const headingColor = isLightTheme ? '#2a1918' : '#fff7ec';
   const mutedColor = isLightTheme ? '#7a5a5c' : '#c6b7a7';
   const surface = { borderColor: 'var(--border-color)', background: 'var(--hover-bg)' };
+  const isAdmin = user?.role === 'admin';
 
   const loadRequests = useCallback(async () => {
     setLoading(true);
@@ -186,6 +233,76 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     }
   }, [headers, materialStatusFilter]);
 
+  const loadCatalogItems = useCallback(async () => {
+    setCatalogLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (catalogSearch.trim()) params.set('search', catalogSearch.trim());
+      if (catalogFacultyFilter) params.set('faculty_id', catalogFacultyFilter);
+      if (catalogDirectionFilter) params.set('direction_id', catalogDirectionFilter);
+      if (catalogStreamFilter) params.set('stream_id', catalogStreamFilter);
+      params.set('limit', '300');
+      const res = await fetch(`${API_BASE}/api/catalog/items?${params.toString()}`, { headers });
+      if (!res.ok) return;
+      const data: CatalogItem[] = await res.json();
+      setCatalogItems(data);
+      setCatalogSelectedId(prev => (prev && data.some(d => d.id === prev) ? prev : (data[0]?.id ?? null)));
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, [headers, catalogSearch, catalogFacultyFilter, catalogDirectionFilter, catalogStreamFilter]);
+
+  const renameFaculty = async () => {
+    if (!activeFaculty || !renameFacultyName.trim()) return;
+    setRenameProcessing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/faculties/${activeFaculty.id}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: renameFacultyName.trim() }),
+      });
+      if (!res.ok) throw new Error('Не удалось переименовать факультет');
+      await Promise.all([loadLookups(), loadCatalogItems()]);
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } finally {
+      setRenameProcessing(false);
+    }
+  };
+
+  const renameDirection = async () => {
+    if (!activeDirection || !renameDirectionName.trim()) return;
+    setRenameProcessing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/directions/${activeDirection.id}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: renameDirectionName.trim() }),
+      });
+      if (!res.ok) throw new Error('Не удалось переименовать направление');
+      await Promise.all([loadLookups(), loadCatalogItems()]);
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } finally {
+      setRenameProcessing(false);
+    }
+  };
+
+  const renameStream = async () => {
+    if (!activeStream || !renameStreamName.trim()) return;
+    setRenameProcessing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/streams/${activeStream.id}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: renameStreamName.trim() }),
+      });
+      if (!res.ok) throw new Error('Не удалось переименовать поток');
+      await Promise.all([loadLookups(), loadCatalogItems()]);
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } finally {
+      setRenameProcessing(false);
+    }
+  };
+
   const directionsByFaculty = useMemo(() => {
     const map: Record<string, DirectionItem[]> = {};
     directions.forEach(d => {
@@ -203,6 +320,15 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     });
     return map;
   }, [streams]);
+
+  const catalogDirectionOptions = useMemo(
+    () => directions.filter(d => !catalogFacultyFilter || d.faculty_id === catalogFacultyFilter),
+    [directions, catalogFacultyFilter]
+  );
+  const catalogStreamOptions = useMemo(
+    () => streams.filter(s => !catalogDirectionFilter || s.direction_id === catalogDirectionFilter),
+    [streams, catalogDirectionFilter]
+  );
 
   const activeFaculty = faculties.find(f => f.id === activeFacultyId) || null;
   const activeDirection = directions.find(d => d.id === activeDirectionId) || null;
@@ -240,11 +366,29 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     () => materialFiltered.find(r => r.id === materialSelectedId) ?? materialFiltered[0] ?? null,
     [materialFiltered, materialSelectedId]
   );
+  const catalogSelected = useMemo(
+    () => catalogItems.find(item => item.id === catalogSelectedId) ?? catalogItems[0] ?? null,
+    [catalogItems, catalogSelectedId]
+  );
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
   useEffect(() => { loadLookups(); }, [loadLookups]);
   useEffect(() => { loadMaterialRequests(); }, [loadMaterialRequests]);
+  useEffect(() => { loadCatalogItems(); }, [loadCatalogItems]);
   useEffect(() => { setPreviewText(''); }, [selectedId]);
+  useEffect(() => {
+    if (isAdmin) return;
+    if (user?.stream_id) setCatalogStreamFilter(user.stream_id);
+  }, [isAdmin, user?.stream_id]);
+  useEffect(() => {
+    setRenameFacultyName(activeFaculty?.name || '');
+  }, [activeFaculty?.id]);
+  useEffect(() => {
+    setRenameDirectionName(activeDirection?.name || '');
+  }, [activeDirection?.id]);
+  useEffect(() => {
+    setRenameStreamName(activeStream?.name || '');
+  }, [activeStream?.id]);
   useEffect(() => {
     if (!selected) return;
     setLectureTitleText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.lecture_title ?? '' }));
@@ -258,6 +402,22 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     setDirectionIdText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.direction_id ?? '' }));
     setStreamIdText(prev => ({ ...prev, [selected.id]: prev[selected.id] ?? selected.stream_id ?? '' }));
   }, [selected]);
+  useEffect(() => {
+    if (!catalogSelected) return;
+    setCatalogEdit(prev => ({
+      ...prev,
+      [catalogSelected.id]: prev[catalogSelected.id] ?? {
+        lecture_title: catalogSelected.lecture_title || '',
+        discipline: catalogSelected.discipline || '',
+        lecturer_name: catalogSelected.lecturer_name || '',
+        course_text: catalogSelected.course_text || '',
+        semester_text: catalogSelected.semester_text || '',
+        lecture_number_text: catalogSelected.lecture_number_text || '',
+        study_year_text: catalogSelected.study_year_text || '',
+        stream_id: catalogSelected.stream_id || '',
+      },
+    }));
+  }, [catalogSelected]);
 
   useEffect(() => {
     if (!selected) return;
@@ -503,6 +663,77 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       .filter(([, value]) => Number(value) > 0)
       .map(([key, value]) => ({ label: labels[key] || key, value: Number(value) }));
   }, [deleteDialog]);
+
+  const saveCatalogItem = async () => {
+    if (!catalogSelected) return;
+    const edit = catalogEdit[catalogSelected.id];
+    if (!edit) return;
+    const canEditTitle = isAdmin || (user?.is_group_head && catalogSelected.stream_id === user?.stream_id);
+    const payload: Record<string, string | null> = {
+      discipline: edit.discipline.trim() || null,
+      lecturer_name: edit.lecturer_name.trim() || null,
+      course_text: edit.course_text.trim() || null,
+      semester_text: edit.semester_text.trim() || null,
+      lecture_number_text: edit.lecture_number_text.trim() || null,
+      study_year_text: edit.study_year_text.trim() || null,
+      stream_id: edit.stream_id || null,
+    };
+    if (canEditTitle) payload.lecture_title = edit.lecture_title.trim() || null;
+
+    if (!payload.discipline) {
+      alert('Нужно указать дисциплину.');
+      return;
+    }
+    if (!payload.stream_id) {
+      alert('Нужно выбрать поток.');
+      return;
+    }
+    if (canEditTitle && !payload.lecture_title) {
+      alert('Нужно указать название лекции.');
+      return;
+    }
+
+    setCatalogProcessing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/items/${catalogSelected.id}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось сохранить запись');
+      }
+      await loadCatalogItems();
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } catch (e: any) {
+      alert(e.message || 'Не удалось сохранить запись');
+    } finally {
+      setCatalogProcessing(false);
+    }
+  };
+
+  const deleteCatalogItem = async () => {
+    if (!catalogSelected) return;
+    if (!confirm('Удалить лекцию из базы? Лекция останется у владельца.')) return;
+    setCatalogProcessing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/items/${catalogSelected.id}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось удалить запись');
+      }
+      await loadCatalogItems();
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } catch (e: any) {
+      alert(e.message || 'Не удалось удалить запись');
+    } finally {
+      setCatalogProcessing(false);
+    }
+  };
 
   return (
     <div>
@@ -816,6 +1047,10 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
             {activeNodeType === 'faculty' && activeFaculty && user?.role === 'admin' && (
               <div className="space-y-3">
                 <div className="flex gap-2">
+                  <input value={renameFacultyName} onChange={(e) => setRenameFacultyName(e.target.value)} placeholder="Новое название факультета" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                  <button onClick={renameFaculty} disabled={renameProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--hover-bg)', color: 'var(--text-primary)' }}>Сохранить</button>
+                </div>
+                <div className="flex gap-2">
                   <input value={newDirectionName} onChange={(e) => setNewDirectionName(e.target.value)} placeholder={`Новое направление для ${activeFaculty.name}`} className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                   <button onClick={createDirection} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Добавить</button>
                 </div>
@@ -831,6 +1066,10 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
 
             {activeNodeType === 'direction' && activeDirection && user?.role === 'admin' && (
               <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input value={renameDirectionName} onChange={(e) => setRenameDirectionName(e.target.value)} placeholder="Новое название направления" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                  <button onClick={renameDirection} disabled={renameProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--hover-bg)', color: 'var(--text-primary)' }}>Сохранить</button>
+                </div>
                 <input value={newStreamName} onChange={(e) => setNewStreamName(e.target.value)} placeholder={`Новый поток для ${activeDirection.name}`} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                 <div className="flex flex-wrap gap-2">
                   <button onClick={createStream} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Добавить поток</button>
@@ -847,6 +1086,12 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
 
             {activeNodeType === 'stream' && activeStream && (
               <div className="space-y-3">
+                {user?.role === 'admin' && (
+                  <div className="flex gap-2">
+                    <input value={renameStreamName} onChange={(e) => setRenameStreamName(e.target.value)} placeholder="Новое название потока" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                    <button onClick={renameStream} disabled={renameProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--hover-bg)', color: 'var(--text-primary)' }}>Сохранить</button>
+                  </div>
+                )}
                 <div className="p-3 rounded-lg border text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
                   Публикация лекций в базу выполняется в разделе «Лекции» через кнопки «Предложить в базу» и «Добавить в базу».
                 </div>
@@ -862,6 +1107,112 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
               </div>
             )}
           </div>
+        </div>
+      </section>
+
+      <section className="mt-5 border rounded-xl p-4" style={surface}>
+        <h3 className="text-base font-medium mb-2" style={{ color: headingColor }}>Записи каталога</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] gap-4">
+          <section className="border rounded-xl p-3" style={{ ...surface, background: 'var(--bg-primary)' }}>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <select
+                value={catalogFacultyFilter}
+                onChange={(e) => { setCatalogFacultyFilter(e.target.value); setCatalogDirectionFilter(''); setCatalogStreamFilter(''); }}
+                className="px-3 py-2 rounded-lg border text-sm"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              >
+                <option value="">Факультет</option>
+                {faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+              <select
+                value={catalogDirectionFilter}
+                onChange={(e) => { setCatalogDirectionFilter(e.target.value); setCatalogStreamFilter(''); }}
+                className="px-3 py-2 rounded-lg border text-sm"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                disabled={Boolean(catalogFacultyFilter) === false}
+              >
+                <option value="">Направление</option>
+                {catalogDirectionOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+              <select
+                value={catalogStreamFilter}
+                onChange={(e) => setCatalogStreamFilter(e.target.value)}
+                className="px-3 py-2 rounded-lg border text-sm"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                disabled={!isAdmin}
+              >
+                <option value="">Поток</option>
+                {catalogStreamOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <button onClick={loadCatalogItems} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>Обновить</button>
+            </div>
+            {!isAdmin && (
+              <p className="text-xs mb-2" style={{ color: mutedColor }}>Показаны записи только вашего потока.</p>
+            )}
+            <input value={catalogSearch} onChange={(e) => setCatalogSearch(e.target.value)} placeholder="Поиск по каталогу..." className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+            <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
+              {catalogLoading ? <p className="text-sm px-2 py-3" style={{ color: mutedColor }}>Загрузка...</p> : catalogItems.length === 0 ? <p className="text-sm px-2 py-3" style={{ color: mutedColor }}>Записей нет</p> : catalogItems.map(item => (
+                <button key={item.id} onClick={() => setCatalogSelectedId(item.id)} className="w-full text-left border rounded-lg p-3 transition-all" style={{ borderColor: catalogSelected?.id === item.id ? 'var(--text-primary)' : 'var(--border-color)', background: catalogSelected?.id === item.id ? 'rgba(68,41,43,0.08)' : 'var(--bg-primary)' }}>
+                  <p className="text-sm font-medium truncate" style={{ color: headingColor }}>{item.lecture_title}</p>
+                  <p className="text-xs mt-1 truncate" style={{ color: mutedColor }}>{item.stream_name} · {item.discipline}</p>
+                  <p className="text-[11px] mt-0.5 truncate" style={{ color: mutedColor }}>Добавил: {item.published_by_login}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="border rounded-xl p-4" style={{ ...surface, background: 'var(--bg-primary)' }}>
+            {!catalogSelected ? <p className="text-sm" style={{ color: mutedColor }}>Выберите запись слева.</p> : (() => {
+              const edit = catalogEdit[catalogSelected.id];
+              if (!edit) return <p className="text-sm" style={{ color: mutedColor }}>Загрузка данных...</p>;
+              const canEditTitle = isAdmin || (user?.is_group_head && catalogSelected.stream_id === user?.stream_id);
+              return (
+                <>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div>
+                      <p className="text-xs mb-1" style={{ color: mutedColor }}>Название лекции</p>
+                      {canEditTitle ? (
+                        <input value={edit.lecture_title} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, lecture_title: e.target.value } }))} className="w-full md:w-[420px] px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                      ) : (
+                        <p className="text-sm" style={{ color: headingColor }}>{catalogSelected.lecture_title}</p>
+                      )}
+                      <p className="text-xs mt-2" style={{ color: mutedColor }}>{catalogSelected.faculty_name} · {catalogSelected.direction_name} · {catalogSelected.stream_name}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+                    <input value={edit.discipline} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, discipline: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Дисциплина" />
+                    <input value={edit.lecturer_name} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, lecturer_name: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Лектор" />
+                    <input value={edit.course_text} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, course_text: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Курс" />
+                    <input value={edit.semester_text} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, semester_text: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Семестр" />
+                    <input value={edit.lecture_number_text} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, lecture_number_text: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Номер лекции" />
+                    <input value={edit.study_year_text} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, study_year_text: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Год записи" />
+                  </div>
+
+                  <div className="mb-4">
+                    <select
+                      value={edit.stream_id}
+                      onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, stream_id: e.target.value } }))}
+                      className="w-full px-3 py-2 rounded-lg border text-sm"
+                      style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                      disabled={!isAdmin}
+                    >
+                      <option value="">Поток</option>
+                      {streams.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    {!isAdmin && (
+                      <p className="text-xs mt-1" style={{ color: mutedColor }}>Переносить в другой поток может только администратор.</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button disabled={catalogProcessing} onClick={saveCatalogItem} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#22c55e', color: '#fff' }}>Сохранить</button>
+                    <button disabled={catalogProcessing} onClick={deleteCatalogItem} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#ef4444', color: '#fff' }}>Удалить из базы</button>
+                  </div>
+                </>
+              );
+            })()}
+          </section>
         </div>
       </section>
 

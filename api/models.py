@@ -449,6 +449,22 @@ class LectureCatalogItem(Base):
     source_request = relationship("LecturePublicationRequest")
 
 
+class CatalogSemester(Base):
+    __tablename__ = "catalog_semesters"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_text = Column(String(50), nullable=False, index=True)
+    semester_key = Column(String(10), nullable=False, index=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    stream = relationship("Stream")
+
+    __table_args__ = (
+        UniqueConstraint("stream_id", "course_text", "semester_key", name="uq_catalog_semester_stream_course_key"),
+    )
+
+
 class LectureMaterialGenerationRequest(Base):
     __tablename__ = "lecture_material_generation_requests"
 
