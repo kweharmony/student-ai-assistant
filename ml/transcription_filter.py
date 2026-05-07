@@ -210,7 +210,7 @@ class TranscriptionFilter:
         logger.warning(f"⚠️ Чанк {index+1}/{total} не отфильтровался из-за ошибок. Оставляем оригинал.")
         return chunk
 
-    async def filter_text_async(self, transcribed_text: str, max_retries: int = 3, chunk_size: int = 4000) -> str:
+    async def filter_text_async(self, transcribed_text: str, max_retries: int = 3, chunk_size: int = 150000) -> str:
         """
         Асинхронная фильтрация длинного текста с разбиением на чанки.
         Позволяет обрабатывать транскрибацию параллельно, ускоряя процесс в разы.

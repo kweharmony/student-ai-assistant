@@ -496,7 +496,7 @@ DETAILED_NOTES_PROMPT = """Создай расширенный конспект 
 
 ###  [Название формулы]
 
-**Формула:** `[математическая запись]`
+**Формула:** $[математическая запись]$
 
 **Обозначения:**
 - [переменная] = [что означает]
@@ -582,7 +582,7 @@ CHEAT_SHEET_PROMPT = """Составь сжатую, но максимально
 - Исключения/ограничения (если есть)
 
 ## 🔢 Формулы (если были)
-- Название: `формула`
+- Название: $формула$
 - Обозначения: a — ..., b — ...
 - Когда применять: кратко
 
@@ -636,34 +636,34 @@ PROMPTS = {
 # Настройки для разных типов обработки (оптимизировано под DeepSeek с chunking)
 PROCESSING_CONFIGS = {
     "summarize": {
-        "max_tokens": 12000,  # Краткий конспект (с chunking)
+        "max_tokens": 16000,
         "temperature": 0.3,
         "top_p": 0.9,
-        "needs_chunking": True  # Требует multi-step generation
+        "needs_chunking": False
     },
     "extract_terms": {
-        "max_tokens": 6500,  # Извлечение терминов (без chunking)
+        "max_tokens": 10000,
         "temperature": 0.2,
         "top_p": 0.85,
         "needs_chunking": False
     },
     "expand_topic": {
-        "max_tokens": 6500,  # Расширение темы (без chunking)
+        "max_tokens": 10000,
         "temperature": 0.6,
         "top_p": 0.9,
         "needs_chunking": False
     },
     "generate_questions": {
-        "max_tokens": 4000,  # Вопросы для самопроверки (без chunking)
+        "max_tokens": 8000,
         "temperature": 0.7,
         "top_p": 0.9,
         "needs_chunking": False
     },
     "detailed_notes": {
-        "max_tokens": 20000,  # Расширенный конспект (с chunking)
+        "max_tokens": 40000,
         "temperature": 0.4,
         "top_p": 0.9,
-        "needs_chunking": True  # Требует multi-step generation
+        "needs_chunking": False
     },
     "cheat_sheet": {
         "max_tokens": 6500,  # Шпаргалка (без chunking)

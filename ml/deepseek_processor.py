@@ -408,8 +408,8 @@ class DeepSeekProcessor:
             formatted_prompt = PROMPTS['expand_topic'].format(
                 topic=topic,
                 context=context,
-                max_tokens=6500,
-                approx_words=3900
+                max_tokens=PROCESSING_CONFIGS['expand_topic']['max_tokens'],
+                approx_words=int(PROCESSING_CONFIGS['expand_topic']['max_tokens'] * 0.6)
             )
             
             result = await self._make_async_request(

@@ -518,8 +518,8 @@ TRANSCRIPTION_FILTER_PROMPT = """Ты — эксперт по обработке
 
 
 TRANSCRIPTION_FILTER_CONFIG = {
-    "temperature": 0.4,  # Низкая креативность - только исправления
-    "max_tokens": 23000,  # Большой лимит для длинных лекций
+    "temperature": 0.4,
+    "max_tokens": 50000,
     "top_p": 0.9,
 }
 
