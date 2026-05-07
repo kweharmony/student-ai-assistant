@@ -47,6 +47,7 @@ interface LookupItem { id: string; name: string }
 interface DirectionItem extends LookupItem { faculty_id: string }
 interface StreamItem extends LookupItem { direction_id: string; course: number | null; study_year_start: number | null }
 type DeletableNodeType = 'faculty' | 'direction' | 'stream';
+type SemesterKey = 'winter' | 'spring';
 
 interface CatalogItem {
   id: string;
@@ -66,6 +67,20 @@ interface CatalogItem {
   faculty_name: string;
   published_by_login: string;
   created_at: string;
+}
+
+interface CatalogSemesterItem {
+  stream_id: string;
+  course_text: string;
+  semester_key: string;
+}
+
+interface CatalogDisciplineNodeItem {
+  id: string;
+  stream_id: string;
+  course_text: string;
+  semester_key: string;
+  name: string;
 }
 
 interface CatalogEditState {
@@ -114,7 +129,7 @@ const materialModeLabels: Record<string, string> = {
   mindmap: 'Майнд-карта',
   ai_filter: 'ИИ-фильтрация текста',
 };
-type NodeType = 'root' | 'faculty' | 'direction' | 'stream';
+type NodeType = 'root' | 'faculty' | 'direction' | 'stream' | 'course' | 'semester' | 'discipline' | 'lecture';
 const normalizeSemesterForApi = (value: string | null | undefined): 'winter' | 'spring' | null => {
   const lower = (value || '').trim().toLowerCase();
   if (!lower) return null;
@@ -161,10 +176,16 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [streams, setStreams] = useState<StreamItem[]>([]);
   const [expandedFaculties, setExpandedFaculties] = useState<Record<string, boolean>>({});
   const [expandedDirections, setExpandedDirections] = useState<Record<string, boolean>>({});
+  const [expandedStreams, setExpandedStreams] = useState<Record<string, boolean>>({});
+  const [expandedCourses, setExpandedCourses] = useState<Record<string, boolean>>({});
+  const [expandedSemesters, setExpandedSemesters] = useState<Record<string, boolean>>({});
   const [activeNodeType, setActiveNodeType] = useState<NodeType>('root');
   const [activeFacultyId, setActiveFacultyId] = useState('');
   const [activeDirectionId, setActiveDirectionId] = useState('');
   const [activeStreamId, setActiveStreamId] = useState('');
+  const [activeCourseKey, setActiveCourseKey] = useState('');
+  const [activeSemesterKey, setActiveSemesterKey] = useState('');
+  const [activeDisciplineName, setActiveDisciplineName] = useState('');
 
   const [newFacultyName, setNewFacultyName] = useState('');
   const [newDirectionName, setNewDirectionName] = useState('');
@@ -178,14 +199,16 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [renameProcessing, setRenameProcessing] = useState(false);
 
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogSemesters, setCatalogSemesters] = useState<CatalogSemesterItem[]>([]);
+  const [catalogDisciplineNodes, setCatalogDisciplineNodes] = useState<CatalogDisciplineNodeItem[]>([]);
   const [catalogSelectedId, setCatalogSelectedId] = useState<string | null>(null);
-  const [catalogSearch, setCatalogSearch] = useState('');
-  const [catalogFacultyFilter, setCatalogFacultyFilter] = useState('');
-  const [catalogDirectionFilter, setCatalogDirectionFilter] = useState('');
-  const [catalogStreamFilter, setCatalogStreamFilter] = useState('');
   const [catalogEdit, setCatalogEdit] = useState<Record<string, CatalogEditState>>({});
   const [catalogProcessing, setCatalogProcessing] = useState(false);
+
+  const [bulkCourseName, setBulkCourseName] = useState('');
+  const [bulkSemesterKey, setBulkSemesterKey] = useState('winter');
+  const [bulkDisciplineName, setBulkDisciplineName] = useState('');
+  const [newDisciplineName, setNewDisciplineName] = useState('');
 
   const headingColor = isLightTheme ? '#2a1918' : '#fff7ec';
   const mutedColor = isLightTheme ? '#7a5a5c' : '#c6b7a7';
@@ -234,23 +257,21 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   }, [headers, materialStatusFilter]);
 
   const loadCatalogItems = useCallback(async () => {
-    setCatalogLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (catalogSearch.trim()) params.set('search', catalogSearch.trim());
-      if (catalogFacultyFilter) params.set('faculty_id', catalogFacultyFilter);
-      if (catalogDirectionFilter) params.set('direction_id', catalogDirectionFilter);
-      if (catalogStreamFilter) params.set('stream_id', catalogStreamFilter);
-      params.set('limit', '300');
-      const res = await fetch(`${API_BASE}/api/catalog/items?${params.toString()}`, { headers });
+      const res = await fetch(`${API_BASE}/api/catalog/items?limit=300`, { headers });
       if (!res.ok) return;
       const data: CatalogItem[] = await res.json();
       setCatalogItems(data);
       setCatalogSelectedId(prev => (prev && data.some(d => d.id === prev) ? prev : (data[0]?.id ?? null)));
-    } finally {
-      setCatalogLoading(false);
+
+      const [semRes, discRes] = await Promise.all([
+        fetch(`${API_BASE}/api/catalog/semesters`, { headers }),
+        fetch(`${API_BASE}/api/catalog/discipline-nodes`, { headers }),
+      ]);
+      if (semRes.ok) setCatalogSemesters(await semRes.json());
+      if (discRes.ok) setCatalogDisciplineNodes(await discRes.json());
     }
-  }, [headers, catalogSearch, catalogFacultyFilter, catalogDirectionFilter, catalogStreamFilter]);
+  }, [headers]);
 
   const renameFaculty = async () => {
     if (!activeFaculty || !renameFacultyName.trim()) return;
@@ -321,14 +342,46 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     return map;
   }, [streams]);
 
-  const catalogDirectionOptions = useMemo(
-    () => directions.filter(d => !catalogFacultyFilter || d.faculty_id === catalogFacultyFilter),
-    [directions, catalogFacultyFilter]
-  );
-  const catalogStreamOptions = useMemo(
-    () => streams.filter(s => !catalogDirectionFilter || s.direction_id === catalogDirectionFilter),
-    [streams, catalogDirectionFilter]
-  );
+  const coursesByStream = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    catalogSemesters.forEach((row) => {
+      const course = (row.course_text || '').trim();
+      if (!course) return;
+      if (!map[row.stream_id]) map[row.stream_id] = [];
+      if (!map[row.stream_id].includes(course)) map[row.stream_id].push(course);
+    });
+    Object.keys(map).forEach((key) => map[key].sort((a, b) => a.localeCompare(b, 'ru')));
+    return map;
+  }, [catalogSemesters]);
+
+  const semestersByStreamCourse = useMemo(() => {
+    const map: Record<string, SemesterKey[]> = {};
+    catalogSemesters.forEach((row) => {
+      const course = (row.course_text || '').trim();
+      const semester = (row.semester_key || '').trim() as SemesterKey;
+      if (!course || !semester) return;
+      const key = `${row.stream_id}|${course}`;
+      if (!map[key]) map[key] = [];
+      if (!map[key].includes(semester)) map[key].push(semester);
+    });
+    Object.keys(map).forEach((key) => map[key].sort((a, b) => a.localeCompare(b, 'ru')));
+    return map;
+  }, [catalogSemesters]);
+
+  const disciplinesByStreamCourseSemester = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    catalogDisciplineNodes.forEach((row) => {
+      const course = (row.course_text || '').trim();
+      const semester = (row.semester_key || '').trim();
+      const name = (row.name || '').trim();
+      if (!course || !semester || !name) return;
+      const key = `${row.stream_id}|${course}|${semester}`;
+      if (!map[key]) map[key] = [];
+      if (!map[key].includes(name)) map[key].push(name);
+    });
+    Object.keys(map).forEach((key) => map[key].sort((a, b) => a.localeCompare(b, 'ru')));
+    return map;
+  }, [catalogDisciplineNodes]);
 
   const activeFaculty = faculties.find(f => f.id === activeFacultyId) || null;
   const activeDirection = directions.find(d => d.id === activeDirectionId) || null;
@@ -370,16 +423,16 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     () => catalogItems.find(item => item.id === catalogSelectedId) ?? catalogItems[0] ?? null,
     [catalogItems, catalogSelectedId]
   );
+  const activeDisciplineLectures = useMemo(() => {
+    if (!activeStreamId || !activeCourseKey || !activeSemesterKey || !activeDisciplineName) return [];
+    return catalogItems.filter(item => item.stream_id === activeStreamId && item.course_text === activeCourseKey && item.semester_text === activeSemesterKey && item.discipline === activeDisciplineName);
+  }, [catalogItems, activeStreamId, activeCourseKey, activeSemesterKey, activeDisciplineName]);
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
   useEffect(() => { loadLookups(); }, [loadLookups]);
   useEffect(() => { loadMaterialRequests(); }, [loadMaterialRequests]);
   useEffect(() => { loadCatalogItems(); }, [loadCatalogItems]);
   useEffect(() => { setPreviewText(''); }, [selectedId]);
-  useEffect(() => {
-    if (isAdmin) return;
-    if (user?.stream_id) setCatalogStreamFilter(user.stream_id);
-  }, [isAdmin, user?.stream_id]);
   useEffect(() => {
     setRenameFacultyName(activeFaculty?.name || '');
   }, [activeFaculty?.id]);
@@ -418,6 +471,15 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       },
     }));
   }, [catalogSelected]);
+  useEffect(() => {
+    if (activeCourseKey) setBulkCourseName(activeCourseKey);
+  }, [activeCourseKey]);
+  useEffect(() => {
+    if (activeSemesterKey) setBulkSemesterKey(activeSemesterKey);
+  }, [activeSemesterKey]);
+  useEffect(() => {
+    if (activeDisciplineName) setBulkDisciplineName(activeDisciplineName);
+  }, [activeDisciplineName]);
 
   useEffect(() => {
     if (!selected) return;
@@ -438,6 +500,10 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     setActiveFacultyId(facultyId);
     setActiveDirectionId('');
     setActiveStreamId('');
+    setActiveCourseKey('');
+    setActiveSemesterKey('');
+    setActiveDisciplineName('');
+    setCatalogSelectedId(null);
     setExpandedFaculties(prev => ({ ...prev, [facultyId]: true }));
   };
 
@@ -446,6 +512,10 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     setActiveFacultyId(facultyId);
     setActiveDirectionId(directionId);
     setActiveStreamId('');
+    setActiveCourseKey('');
+    setActiveSemesterKey('');
+    setActiveDisciplineName('');
+    setCatalogSelectedId(null);
     setExpandedFaculties(prev => ({ ...prev, [facultyId]: true }));
     setExpandedDirections(prev => ({ ...prev, [directionId]: true }));
   };
@@ -455,8 +525,61 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     setActiveFacultyId(facultyId);
     setActiveDirectionId(directionId);
     setActiveStreamId(streamId);
+    setActiveCourseKey('');
+    setActiveSemesterKey('');
+    setActiveDisciplineName('');
+    setCatalogSelectedId(null);
     setExpandedFaculties(prev => ({ ...prev, [facultyId]: true }));
     setExpandedDirections(prev => ({ ...prev, [directionId]: true }));
+    setExpandedStreams(prev => ({ ...prev, [streamId]: true }));
+  };
+
+  const selectCourseNode = (facultyId: string, directionId: string, streamId: string, courseKey: string) => {
+    setActiveNodeType('course');
+    setActiveFacultyId(facultyId);
+    setActiveDirectionId(directionId);
+    setActiveStreamId(streamId);
+    setActiveCourseKey(courseKey);
+    setActiveSemesterKey('');
+    setActiveDisciplineName('');
+    setCatalogSelectedId(null);
+    setExpandedFaculties(prev => ({ ...prev, [facultyId]: true }));
+    setExpandedDirections(prev => ({ ...prev, [directionId]: true }));
+    setExpandedStreams(prev => ({ ...prev, [streamId]: true }));
+    setExpandedCourses(prev => ({ ...prev, [`${streamId}|${courseKey}`]: true }));
+  };
+
+  const selectSemesterNode = (facultyId: string, directionId: string, streamId: string, courseKey: string, semesterKey: string) => {
+    setActiveNodeType('semester');
+    setActiveFacultyId(facultyId);
+    setActiveDirectionId(directionId);
+    setActiveStreamId(streamId);
+    setActiveCourseKey(courseKey);
+    setActiveSemesterKey(semesterKey);
+    setActiveDisciplineName('');
+    setCatalogSelectedId(null);
+    setExpandedFaculties(prev => ({ ...prev, [facultyId]: true }));
+    setExpandedDirections(prev => ({ ...prev, [directionId]: true }));
+    setExpandedStreams(prev => ({ ...prev, [streamId]: true }));
+    setExpandedCourses(prev => ({ ...prev, [`${streamId}|${courseKey}`]: true }));
+    setExpandedSemesters(prev => ({ ...prev, [`${streamId}|${courseKey}|${semesterKey}`]: true }));
+  };
+
+  const selectDisciplineNode = (facultyId: string, directionId: string, streamId: string, courseKey: string, semesterKey: string, disciplineName: string) => {
+    setActiveNodeType('discipline');
+    setActiveFacultyId(facultyId);
+    setActiveDirectionId(directionId);
+    setActiveStreamId(streamId);
+    setActiveCourseKey(courseKey);
+    setActiveSemesterKey(semesterKey);
+    setActiveDisciplineName(disciplineName);
+    const firstLecture = catalogItems.find(item => item.stream_id === streamId && item.course_text === courseKey && item.semester_text === semesterKey && item.discipline === disciplineName);
+    setCatalogSelectedId(firstLecture?.id ?? null);
+    setExpandedFaculties(prev => ({ ...prev, [facultyId]: true }));
+    setExpandedDirections(prev => ({ ...prev, [directionId]: true }));
+    setExpandedStreams(prev => ({ ...prev, [streamId]: true }));
+    setExpandedCourses(prev => ({ ...prev, [`${streamId}|${courseKey}`]: true }));
+    setExpandedSemesters(prev => ({ ...prev, [`${streamId}|${courseKey}|${semesterKey}`]: true }));
   };
 
   const moderate = async (id: string, action: 'approve' | 'reject') => {
@@ -609,13 +732,25 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
         setActiveFacultyId('');
         setActiveDirectionId('');
         setActiveStreamId('');
+        setActiveCourseKey('');
+        setActiveSemesterKey('');
+        setActiveDisciplineName('');
+        setCatalogSelectedId(null);
       } else if (nodeType === 'direction') {
         setActiveNodeType('faculty');
         setActiveDirectionId('');
         setActiveStreamId('');
+        setActiveCourseKey('');
+        setActiveSemesterKey('');
+        setActiveDisciplineName('');
+        setCatalogSelectedId(null);
       } else {
         setActiveNodeType('direction');
         setActiveStreamId('');
+        setActiveCourseKey('');
+        setActiveSemesterKey('');
+        setActiveDisciplineName('');
+        setCatalogSelectedId(null);
       }
       setDeleteDialog(null);
       await Promise.all([loadLookups(), loadRequests()]);
@@ -730,6 +865,120 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       window.dispatchEvent(new Event('catalog:refresh'));
     } catch (e: any) {
       alert(e.message || 'Не удалось удалить запись');
+    } finally {
+      setCatalogProcessing(false);
+    }
+  };
+
+  const applyBulkUpdate = async (payload: Record<string, string | null>) => {
+    setCatalogProcessing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/bulk-update`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось применить изменения');
+      }
+      await loadCatalogItems();
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } catch (e: any) {
+      alert(e.message || 'Не удалось применить изменения');
+    } finally {
+      setCatalogProcessing(false);
+    }
+  };
+
+  const updateCourseNode = async () => {
+    if (!activeStreamId || !activeCourseKey) return;
+    const next = bulkCourseName.trim();
+    if (!next) return alert('Укажите новое название курса');
+    await applyBulkUpdate({
+      stream_id: activeStreamId,
+      course_text: activeCourseKey,
+      new_course_text: next,
+    });
+  };
+
+  const updateSemesterNode = async () => {
+    if (!activeStreamId || !activeCourseKey || !activeSemesterKey) return;
+    const next = bulkSemesterKey.trim();
+    if (!next) return alert('Укажите новый семестр');
+    await applyBulkUpdate({
+      stream_id: activeStreamId,
+      course_text: activeCourseKey,
+      semester_text: activeSemesterKey,
+      new_semester_text: next,
+    });
+  };
+
+  const updateDisciplineNode = async () => {
+    if (!activeStreamId || !activeCourseKey || !activeSemesterKey || !activeDisciplineName) return;
+    const next = bulkDisciplineName.trim();
+    if (!next) return alert('Укажите новое название дисциплины');
+    await applyBulkUpdate({
+      stream_id: activeStreamId,
+      course_text: activeCourseKey,
+      semester_text: activeSemesterKey,
+      discipline: activeDisciplineName,
+      new_discipline: next,
+    });
+  };
+
+  const createDisciplineNode = async () => {
+    if (!activeStreamId || !activeCourseKey || !activeSemesterKey) return;
+    const name = newDisciplineName.trim();
+    if (!name) return alert('Укажите название дисциплины');
+    setCatalogProcessing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/discipline-nodes`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stream_id: activeStreamId,
+          course_text: activeCourseKey,
+          semester_key: activeSemesterKey,
+          name,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось добавить дисциплину');
+      }
+      setNewDisciplineName('');
+      await loadCatalogItems();
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } catch (e: any) {
+      alert(e.message || 'Не удалось добавить дисциплину');
+    } finally {
+      setCatalogProcessing(false);
+    }
+  };
+
+  const deleteDisciplineNode = async () => {
+    if (!activeStreamId || !activeCourseKey || !activeSemesterKey || !activeDisciplineName) return;
+    const node = catalogDisciplineNodes.find(n => n.stream_id === activeStreamId && n.course_text === activeCourseKey && n.semester_key === activeSemesterKey && n.name === activeDisciplineName);
+    if (!node) return alert('Дисциплина не найдена');
+    if (!confirm('Удалить дисциплину и все лекции внутри?')) return;
+    setCatalogProcessing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/discipline-nodes/${node.id}?force=true`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось удалить дисциплину');
+      }
+      setActiveDisciplineName('');
+      setActiveNodeType('semester');
+      setCatalogSelectedId(null);
+      await loadCatalogItems();
+      window.dispatchEvent(new Event('catalog:refresh'));
+    } catch (e: any) {
+      alert(e.message || 'Не удалось удалить дисциплину');
     } finally {
       setCatalogProcessing(false);
     }
@@ -999,7 +1248,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
         <h3 className="text-base font-medium mb-2" style={{ color: headingColor }}>Структура каталога</h3>
         <div className="grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-4">
           <div className="border rounded-lg p-3 max-h-[560px] overflow-y-auto" style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
-            <button onClick={() => { setActiveNodeType('root'); setActiveFacultyId(''); setActiveDirectionId(''); setActiveStreamId(''); }} className="text-left px-2 py-1 rounded text-sm w-full mb-1" style={{ background: activeNodeType === 'root' ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'root' ? 'var(--bg-primary)' : 'var(--text-primary)' }}>Каталог</button>
+            <button onClick={() => { setActiveNodeType('root'); setActiveFacultyId(''); setActiveDirectionId(''); setActiveStreamId(''); setActiveCourseKey(''); setActiveSemesterKey(''); setActiveDisciplineName(''); }} className="text-left px-2 py-1 rounded text-sm w-full mb-1" style={{ background: activeNodeType === 'root' ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'root' ? 'var(--bg-primary)' : 'var(--text-primary)' }}>Каталог</button>
             {faculties.map(f => (
               <div key={f.id} className="mb-1">
                 <div className="flex items-center gap-1">
@@ -1016,9 +1265,56 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                         </div>
                         {expandedDirections[d.id] && (
                           <div className="ml-6 mt-1">
-                            {(streamsByDirection[d.id] || []).map(s => (
-                              <button key={s.id} onClick={() => selectStreamNode(f.id, d.id, s.id)} className="text-left px-2 py-1 rounded text-sm block w-full mb-1" style={{ background: activeNodeType === 'stream' && activeStreamId === s.id ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'stream' && activeStreamId === s.id ? 'var(--bg-primary)' : 'var(--text-primary)' }}>{s.name}</button>
-                            ))}
+                            {(streamsByDirection[d.id] || []).map(s => {
+                              const streamExpanded = expandedStreams[s.id] ?? false;
+                              return (
+                                <div key={s.id} className="mb-1">
+                                  <div className="flex items-center gap-1">
+                                    <button onClick={() => setExpandedStreams(prev => ({ ...prev, [s.id]: !prev[s.id] }))} className="text-xs w-5">{streamExpanded ? '▾' : '▸'}</button>
+                                    <button onClick={() => selectStreamNode(f.id, d.id, s.id)} className="text-left px-2 py-1 rounded text-sm flex-1" style={{ background: activeNodeType === 'stream' && activeStreamId === s.id ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'stream' && activeStreamId === s.id ? 'var(--bg-primary)' : 'var(--text-primary)' }}>{s.name}</button>
+                                  </div>
+                                  {streamExpanded && (
+                                    <div className="ml-6 mt-1">
+                                      {(coursesByStream[s.id] || []).map(course => {
+                                        const courseKey = `${s.id}|${course}`;
+                                        const courseExpanded = expandedCourses[courseKey] ?? false;
+                                        return (
+                                          <div key={courseKey} className="mb-1">
+                                            <div className="flex items-center gap-1">
+                                              <button onClick={() => setExpandedCourses(prev => ({ ...prev, [courseKey]: !prev[courseKey] }))} className="text-xs w-5">{courseExpanded ? '▾' : '▸'}</button>
+                                              <button onClick={() => selectCourseNode(f.id, d.id, s.id, course)} className="text-left px-2 py-1 rounded text-sm flex-1" style={{ background: activeNodeType === 'course' && activeStreamId === s.id && activeCourseKey === course ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'course' && activeStreamId === s.id && activeCourseKey === course ? 'var(--bg-primary)' : 'var(--text-primary)' }}>{course}</button>
+                                            </div>
+                                            {courseExpanded && (
+                                              <div className="ml-6 mt-1">
+                                                {(semestersByStreamCourse[courseKey] || []).map(semester => {
+                                                  const semKey = `${courseKey}|${semester}`;
+                                                  const semExpanded = expandedSemesters[semKey] ?? false;
+                                                  return (
+                                                    <div key={semKey} className="mb-1">
+                                                      <div className="flex items-center gap-1">
+                                                        <button onClick={() => setExpandedSemesters(prev => ({ ...prev, [semKey]: !prev[semKey] }))} className="text-xs w-5">{semExpanded ? '▾' : '▸'}</button>
+                                                        <button onClick={() => selectSemesterNode(f.id, d.id, s.id, course, semester)} className="text-left px-2 py-1 rounded text-sm flex-1" style={{ background: activeNodeType === 'semester' && activeStreamId === s.id && activeCourseKey === course && activeSemesterKey === semester ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'semester' && activeStreamId === s.id && activeCourseKey === course && activeSemesterKey === semester ? 'var(--bg-primary)' : 'var(--text-primary)' }}>{semester === 'winter' ? 'Зимний семестр' : 'Весенний семестр'}</button>
+                                                      </div>
+                                                      {semExpanded && (
+                                                        <div className="ml-6 mt-1">
+                                                          {(disciplinesByStreamCourseSemester[`${s.id}|${course}|${semester}`] || []).map(discipline => (
+                                                            <button key={`${semKey}|${discipline}`} onClick={() => selectDisciplineNode(f.id, d.id, s.id, course, semester, discipline)} className="text-left px-2 py-1 rounded text-sm block w-full mb-1" style={{ background: activeNodeType === 'discipline' && activeStreamId === s.id && activeCourseKey === course && activeSemesterKey === semester && activeDisciplineName === discipline ? 'var(--text-primary)' : 'transparent', color: activeNodeType === 'discipline' && activeStreamId === s.id && activeCourseKey === course && activeSemesterKey === semester && activeDisciplineName === discipline ? 'var(--bg-primary)' : 'var(--text-primary)' }}>{discipline}</button>
+                                                          ))}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -1035,6 +1331,9 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
               {activeFaculty && <><span>/</span><span>{activeFaculty.name}</span></>}
               {activeDirection && <><span>/</span><span>{activeDirection.name}</span></>}
               {activeStream && <><span>/</span><span>{activeStream.name}</span></>}
+              {activeCourseKey && <><span>/</span><span>{activeCourseKey}</span></>}
+              {activeSemesterKey && <><span>/</span><span>{activeSemesterKey === 'winter' ? 'Зимний семестр' : 'Весенний семестр'}</span></>}
+              {activeDisciplineName && <><span>/</span><span>{activeDisciplineName}</span></>}
             </div>
 
             {activeNodeType === 'root' && user?.role === 'admin' && (
@@ -1106,113 +1405,88 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                 )}
               </div>
             )}
-          </div>
-        </div>
-      </section>
 
-      <section className="mt-5 border rounded-xl p-4" style={surface}>
-        <h3 className="text-base font-medium mb-2" style={{ color: headingColor }}>Записи каталога</h3>
-        <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] gap-4">
-          <section className="border rounded-xl p-3" style={{ ...surface, background: 'var(--bg-primary)' }}>
-            <div className="flex flex-wrap gap-2 mb-2">
-              <select
-                value={catalogFacultyFilter}
-                onChange={(e) => { setCatalogFacultyFilter(e.target.value); setCatalogDirectionFilter(''); setCatalogStreamFilter(''); }}
-                className="px-3 py-2 rounded-lg border text-sm"
-                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-              >
-                <option value="">Факультет</option>
-                {faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
-              <select
-                value={catalogDirectionFilter}
-                onChange={(e) => { setCatalogDirectionFilter(e.target.value); setCatalogStreamFilter(''); }}
-                className="px-3 py-2 rounded-lg border text-sm"
-                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                disabled={Boolean(catalogFacultyFilter) === false}
-              >
-                <option value="">Направление</option>
-                {catalogDirectionOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-              <select
-                value={catalogStreamFilter}
-                onChange={(e) => setCatalogStreamFilter(e.target.value)}
-                className="px-3 py-2 rounded-lg border text-sm"
-                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                disabled={!isAdmin}
-              >
-                <option value="">Поток</option>
-                {catalogStreamOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-              <button onClick={loadCatalogItems} className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>Обновить</button>
-            </div>
-            {!isAdmin && (
-              <p className="text-xs mb-2" style={{ color: mutedColor }}>Показаны записи только вашего потока.</p>
+            {activeNodeType === 'course' && activeStream && (
+              <div className="space-y-3">
+                <div className="text-xs" style={{ color: mutedColor }}>Массовая правка курса для всех лекций потока.</div>
+                <div className="flex gap-2">
+                  <input value={bulkCourseName} onChange={(e) => setBulkCourseName(e.target.value)} placeholder="Новое название курса" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                  <button onClick={updateCourseNode} disabled={catalogProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Применить</button>
+                </div>
+              </div>
             )}
-            <input value={catalogSearch} onChange={(e) => setCatalogSearch(e.target.value)} placeholder="Поиск по каталогу..." className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-            <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
-              {catalogLoading ? <p className="text-sm px-2 py-3" style={{ color: mutedColor }}>Загрузка...</p> : catalogItems.length === 0 ? <p className="text-sm px-2 py-3" style={{ color: mutedColor }}>Записей нет</p> : catalogItems.map(item => (
-                <button key={item.id} onClick={() => setCatalogSelectedId(item.id)} className="w-full text-left border rounded-lg p-3 transition-all" style={{ borderColor: catalogSelected?.id === item.id ? 'var(--text-primary)' : 'var(--border-color)', background: catalogSelected?.id === item.id ? 'rgba(68,41,43,0.08)' : 'var(--bg-primary)' }}>
-                  <p className="text-sm font-medium truncate" style={{ color: headingColor }}>{item.lecture_title}</p>
-                  <p className="text-xs mt-1 truncate" style={{ color: mutedColor }}>{item.stream_name} · {item.discipline}</p>
-                  <p className="text-[11px] mt-0.5 truncate" style={{ color: mutedColor }}>Добавил: {item.published_by_login}</p>
-                </button>
-              ))}
-            </div>
-          </section>
 
-          <section className="border rounded-xl p-4" style={{ ...surface, background: 'var(--bg-primary)' }}>
-            {!catalogSelected ? <p className="text-sm" style={{ color: mutedColor }}>Выберите запись слева.</p> : (() => {
-              const edit = catalogEdit[catalogSelected.id];
-              if (!edit) return <p className="text-sm" style={{ color: mutedColor }}>Загрузка данных...</p>;
-              const canEditTitle = isAdmin || (user?.is_group_head && catalogSelected.stream_id === user?.stream_id);
-              return (
-                <>
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
-                      <p className="text-xs mb-1" style={{ color: mutedColor }}>Название лекции</p>
-                      {canEditTitle ? (
-                        <input value={edit.lecture_title} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, lecture_title: e.target.value } }))} className="w-full md:w-[420px] px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                      ) : (
-                        <p className="text-sm" style={{ color: headingColor }}>{catalogSelected.lecture_title}</p>
-                      )}
-                      <p className="text-xs mt-2" style={{ color: mutedColor }}>{catalogSelected.faculty_name} · {catalogSelected.direction_name} · {catalogSelected.stream_name}</p>
+            {activeNodeType === 'semester' && activeStream && (
+              <div className="space-y-3">
+                <div className="text-xs" style={{ color: mutedColor }}>Массовая правка семестра для всех лекций выбранного курса.</div>
+                <div className="flex gap-2">
+                  <select value={bulkSemesterKey} onChange={(e) => setBulkSemesterKey(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                    <option value="winter">Зимний семестр</option>
+                    <option value="spring">Весенний семестр</option>
+                  </select>
+                  <button onClick={updateSemesterNode} disabled={catalogProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Применить</button>
+                </div>
+                <div className="flex gap-2">
+                  <input value={newDisciplineName} onChange={(e) => setNewDisciplineName(e.target.value)} placeholder="Новая дисциплина" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                  <button onClick={createDisciplineNode} disabled={catalogProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--hover-bg)', color: 'var(--text-primary)' }}>Добавить</button>
+                </div>
+              </div>
+            )}
+
+            {activeNodeType === 'discipline' && activeStream && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="text-xs" style={{ color: mutedColor }}>Массовая правка дисциплины для всех лекций в узле.</div>
+                  <div className="flex gap-2">
+                    <input value={bulkDisciplineName} onChange={(e) => setBulkDisciplineName(e.target.value)} placeholder="Новое название дисциплины" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                    <button onClick={updateDisciplineNode} disabled={catalogProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Применить</button>
+                  </div>
+                  <button onClick={deleteDisciplineNode} disabled={catalogProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,.14)', color: '#ef4444' }}>Удалить дисциплину</button>
+                </div>
+
+                <div>
+                  <p className="text-xs mb-2" style={{ color: mutedColor }}>Лекции в дисциплине</p>
+                  <div className="max-h-[220px] overflow-y-auto space-y-2 pr-1">
+                    {activeDisciplineLectures.length === 0 ? (
+                      <p className="text-sm" style={{ color: mutedColor }}>Лекций нет</p>
+                    ) : activeDisciplineLectures.map(item => (
+                      <button key={item.id} onClick={() => setCatalogSelectedId(item.id)} className="w-full text-left border rounded-lg p-2 transition-all" style={{ borderColor: catalogSelected?.id === item.id ? 'var(--text-primary)' : 'var(--border-color)', background: catalogSelected?.id === item.id ? 'rgba(68,41,43,0.08)' : 'var(--bg-primary)' }}>
+                        <p className="text-sm font-medium truncate" style={{ color: headingColor }}>{item.lecture_title}</p>
+                        <p className="text-xs mt-1 truncate" style={{ color: mutedColor }}>{item.lecturer_name || 'Без лектора'}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {catalogSelected ? (() => {
+                  const edit = catalogEdit[catalogSelected.id];
+                  if (!edit) return <p className="text-sm" style={{ color: mutedColor }}>Загрузка данных...</p>;
+                  const canEditTitle = isAdmin || (user?.is_group_head && catalogSelected.stream_id === user?.stream_id);
+                  return (
+                    <div className="border rounded-lg p-3" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+                      <p className="text-xs mb-2" style={{ color: mutedColor }}>Редактирование лекции</p>
+                      <div className="space-y-2">
+                        {canEditTitle ? (
+                          <input value={edit.lecture_title} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, lecture_title: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Название лекции" />
+                        ) : (
+                          <p className="text-sm" style={{ color: headingColor }}>{catalogSelected.lecture_title}</p>
+                        )}
+                        <input value={edit.lecturer_name} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, lecturer_name: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Лектор" />
+                        <input value={edit.lecture_number_text} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, lecture_number_text: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Номер лекции" />
+                        <input value={edit.study_year_text} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, study_year_text: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Год записи" />
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <button disabled={catalogProcessing} onClick={saveCatalogItem} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#22c55e', color: '#fff' }}>Сохранить</button>
+                        <button disabled={catalogProcessing} onClick={deleteCatalogItem} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#ef4444', color: '#fff' }}>Удалить из базы</button>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
-                    <input value={edit.discipline} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, discipline: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Дисциплина" />
-                    <input value={edit.lecturer_name} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, lecturer_name: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Лектор" />
-                    <input value={edit.course_text} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, course_text: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Курс" />
-                    <input value={edit.semester_text} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, semester_text: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Семестр" />
-                    <input value={edit.lecture_number_text} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, lecture_number_text: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Номер лекции" />
-                    <input value={edit.study_year_text} onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, study_year_text: e.target.value } }))} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="Год записи" />
-                  </div>
-
-                  <div className="mb-4">
-                    <select
-                      value={edit.stream_id}
-                      onChange={(e) => setCatalogEdit(prev => ({ ...prev, [catalogSelected.id]: { ...edit, stream_id: e.target.value } }))}
-                      className="w-full px-3 py-2 rounded-lg border text-sm"
-                      style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                      disabled={!isAdmin}
-                    >
-                      <option value="">Поток</option>
-                      {streams.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                    {!isAdmin && (
-                      <p className="text-xs mt-1" style={{ color: mutedColor }}>Переносить в другой поток может только администратор.</p>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button disabled={catalogProcessing} onClick={saveCatalogItem} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#22c55e', color: '#fff' }}>Сохранить</button>
-                    <button disabled={catalogProcessing} onClick={deleteCatalogItem} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#ef4444', color: '#fff' }}>Удалить из базы</button>
-                  </div>
-                </>
-              );
-            })()}
-          </section>
+                  );
+                })() : (
+                  <p className="text-sm" style={{ color: mutedColor }}>Выберите лекцию в списке.</p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </section>
 

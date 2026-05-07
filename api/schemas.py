@@ -480,6 +480,33 @@ class CatalogSemesterOut(BaseModel):
     semester_key: str
 
 
+class CatalogDisciplineNodeOut(BaseModel):
+    id: UUID
+    stream_id: UUID
+    course_text: str
+    semester_key: str
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class CatalogDisciplineNodeCreateIn(BaseModel):
+    stream_id: UUID
+    course_text: str = Field(..., min_length=1, max_length=50)
+    semester_key: str = Field(..., min_length=1, max_length=10)
+    name: str = Field(..., min_length=1, max_length=150)
+
+
+class CatalogBulkUpdateIn(BaseModel):
+    stream_id: UUID
+    course_text: Optional[str] = Field(None, max_length=50)
+    semester_text: Optional[str] = Field(None, max_length=20)
+    discipline: Optional[str] = Field(None, max_length=150)
+    new_course_text: Optional[str] = Field(None, max_length=50)
+    new_semester_text: Optional[str] = Field(None, max_length=20)
+    new_discipline: Optional[str] = Field(None, max_length=150)
+
+
 class AdminSetGroupHeadIn(BaseModel):
     is_group_head: bool
     stream_id: Optional[UUID] = None

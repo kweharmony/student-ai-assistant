@@ -17,6 +17,7 @@ from ..dependencies import (
 from ..database import async_session
 from ..models import (
     CatalogDisciplineTemplate,
+    CatalogDisciplineNode,
     CatalogLecturerTemplate,
     CatalogSemester,
     Direction,
@@ -40,6 +41,9 @@ from ..schemas import (
     CatalogLecturerTemplateCreateIn,
     CatalogLecturerTemplateOut,
     CatalogItemUpdateIn,
+    CatalogDisciplineNodeCreateIn,
+    CatalogDisciplineNodeOut,
+    CatalogBulkUpdateIn,
     CatalogSemesterOut,
     DirectionCreateIn,
     DirectionOut,
@@ -135,6 +139,7 @@ async def _delete_stream_related_data(db: AsyncSession, stream_ids: list[UUID]) 
     await db.execute(delete(LectureMaterialGenerationRequest).where(LectureMaterialGenerationRequest.stream_id.in_(stream_ids)))
     await db.execute(delete(CatalogLecturerTemplate).where(CatalogLecturerTemplate.stream_id.in_(stream_ids)))
     await db.execute(delete(CatalogSemester).where(CatalogSemester.stream_id.in_(stream_ids)))
+    await db.execute(delete(CatalogDisciplineNode).where(CatalogDisciplineNode.stream_id.in_(stream_ids)))
 
 
 async def _ensure_catalog_semesters(db: AsyncSession, stream_id: UUID, course_text: Optional[str]) -> None:
@@ -144,7 +149,7 @@ async def _ensure_catalog_semesters(db: AsyncSession, stream_id: UUID, course_te
     if not normalized:
         return
 
-    existing_result = await db.execute(
+        existing_result = await db.execute(
         select(CatalogSemester.semester_key).where(
             CatalogSemester.stream_id == stream_id,
             CatalogSemester.course_text == normalized,
@@ -155,6 +160,40 @@ async def _ensure_catalog_semesters(db: AsyncSession, stream_id: UUID, course_te
         if key in existing:
             continue
         db.add(CatalogSemester(stream_id=stream_id, course_text=normalized, semester_key=key))
+
+
+async def _ensure_catalog_discipline_node(
+    db: AsyncSession,
+    stream_id: UUID,
+    course_text: Optional[str],
+    semester_text: Optional[str],
+    discipline: Optional[str],
+) -> None:
+    if not course_text or not semester_text or not discipline:
+        return
+    course = course_text.strip()
+    semester = semester_text.strip()
+    name = discipline.strip()
+    if not course or not semester or not name:
+        return
+    existing = await db.execute(
+        select(CatalogDisciplineNode).where(
+            CatalogDisciplineNode.stream_id == stream_id,
+            CatalogDisciplineNode.course_text == course,
+            CatalogDisciplineNode.semester_key == semester,
+            CatalogDisciplineNode.name == name,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+        db.add(
+        CatalogDisciplineNode(
+            stream_id=stream_id,
+            course_text=course,
+            semester_key=semester,
+            name=name,
+        )
+    )
 
 
 @router.get("/semesters", response_model=List[CatalogSemesterOut])
@@ -177,6 +216,173 @@ async def list_catalog_semesters(
         )
         for row in rows
     ]
+
+
+@router.get("/discipline-nodes", response_model=List[CatalogDisciplineNodeOut])
+async def list_catalog_discipline_nodes(
+    stream_id: Optional[UUID] = Query(None),
+    course_text: Optional[str] = Query(None),
+    semester_key: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    del user
+    stmt = select(CatalogDisciplineNode)
+    if stream_id is not None:
+        stmt = stmt.where(CatalogDisciplineNode.stream_id == stream_id)
+    if course_text is not None:
+        stmt = stmt.where(CatalogDisciplineNode.course_text == course_text)
+    if semester_key is not None:
+        stmt = stmt.where(CatalogDisciplineNode.semester_key == semester_key)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.post("/discipline-nodes", response_model=CatalogDisciplineNodeOut, status_code=status.HTTP_201_CREATED)
+async def create_catalog_discipline_node(
+    body: CatalogDisciplineNodeCreateIn,
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    stream_result = await db.execute(select(Stream).where(Stream.id == body.stream_id))
+    stream = stream_result.scalar_one_or_none()
+    if stream is None:
+        raise HTTPException(status_code=404, detail="Поток не найден")
+    if not _is_catalog_editor(moderator, stream.id):
+        raise HTTPException(status_code=403, detail="Нет прав для этого потока")
+
+    course_text = body.course_text.strip()
+    semester_key = body.semester_key.strip()
+    name = body.name.strip()
+    if not course_text or not semester_key or not name:
+        raise HTTPException(status_code=400, detail="Нужно указать курс, семестр и дисциплину")
+
+    exists = await db.execute(
+        select(CatalogDisciplineNode).where(
+            CatalogDisciplineNode.stream_id == stream.id,
+            CatalogDisciplineNode.course_text == course_text,
+            CatalogDisciplineNode.semester_key == semester_key,
+            CatalogDisciplineNode.name == name,
+        )
+    )
+    if exists.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Дисциплина уже существует")
+
+    node = CatalogDisciplineNode(
+        stream_id=stream.id,
+        course_text=course_text,
+        semester_key=semester_key,
+        name=name,
+    )
+    db.add(node)
+    await _ensure_catalog_semesters(db, stream.id, course_text)
+    await db.commit()
+    await db.refresh(node)
+    return node
+
+
+@router.delete("/discipline-nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_catalog_discipline_node(
+    node_id: UUID,
+    force: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    node_result = await db.execute(select(CatalogDisciplineNode).where(CatalogDisciplineNode.id == node_id))
+    node = node_result.scalar_one_or_none()
+    if node is None:
+        raise HTTPException(status_code=404, detail="Дисциплина не найдена")
+    if not _is_catalog_editor(moderator, node.stream_id):
+        raise HTTPException(status_code=403, detail="Нет прав для этого потока")
+
+    items_count = await db.scalar(
+        select(func.count(LectureCatalogItem.id)).where(
+            LectureCatalogItem.stream_id == node.stream_id,
+            LectureCatalogItem.course_text == node.course_text,
+            LectureCatalogItem.semester_text == node.semester_key,
+            LectureCatalogItem.discipline == node.name,
+        )
+    )
+    counts = {"catalog_items": int(items_count or 0)}
+    if not force and _has_catalog_node_content(counts):
+        _raise_not_empty_error(node.name, counts)
+
+    if counts["catalog_items"] > 0:
+        await db.execute(
+            delete(LectureCatalogItem).where(
+                LectureCatalogItem.stream_id == node.stream_id,
+                LectureCatalogItem.course_text == node.course_text,
+                LectureCatalogItem.semester_text == node.semester_key,
+                LectureCatalogItem.discipline == node.name,
+            )
+        )
+    await db.execute(delete(CatalogDisciplineNode).where(CatalogDisciplineNode.id == node_id))
+    await db.commit()
+
+
+@router.post("/bulk-update", status_code=status.HTTP_200_OK)
+async def bulk_update_catalog_items(
+    body: CatalogBulkUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    moderator: User = Depends(require_catalog_moderator),
+):
+    if not _is_catalog_editor(moderator, body.stream_id):
+        raise HTTPException(status_code=403, detail="Нет прав для этого потока")
+
+    filters = [LectureCatalogItem.stream_id == body.stream_id]
+    if body.course_text is not None:
+        filters.append(LectureCatalogItem.course_text == body.course_text)
+    if body.semester_text is not None:
+        filters.append(LectureCatalogItem.semester_text == body.semester_text)
+    if body.discipline is not None:
+        filters.append(LectureCatalogItem.discipline == body.discipline)
+
+    new_course = body.new_course_text.strip() if body.new_course_text is not None else None
+    new_semester = body.new_semester_text.strip() if body.new_semester_text is not None else None
+    new_discipline = body.new_discipline.strip() if body.new_discipline is not None else None
+
+    updates: dict = {}
+    if body.new_course_text is not None:
+        updates[LectureCatalogItem.course_text] = new_course or None
+    if body.new_semester_text is not None:
+        updates[LectureCatalogItem.semester_text] = new_semester or None
+    if body.new_discipline is not None:
+        updates[LectureCatalogItem.discipline] = new_discipline or None
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="Нет изменений для применения")
+
+    await db.execute(update(LectureCatalogItem).where(and_(*filters)).values(**updates))
+
+    if body.new_course_text is not None or body.new_semester_text is not None or body.new_discipline is not None:
+        course = new_course or body.course_text
+        semester = new_semester or body.semester_text
+        discipline = new_discipline or body.discipline
+        if course:
+            await _ensure_catalog_semesters(db, body.stream_id, course)
+        await _ensure_catalog_discipline_node(db, body.stream_id, course, semester, discipline)
+
+        node_filters = [CatalogDisciplineNode.stream_id == body.stream_id]
+        if body.course_text is not None:
+            node_filters.append(CatalogDisciplineNode.course_text == body.course_text)
+        if body.semester_text is not None:
+            node_filters.append(CatalogDisciplineNode.semester_key == body.semester_text)
+        if body.discipline is not None:
+            node_filters.append(CatalogDisciplineNode.name == body.discipline)
+
+        node_updates: dict = {}
+        if body.new_course_text is not None:
+            node_updates[CatalogDisciplineNode.course_text] = new_course or None
+        if body.new_semester_text is not None:
+            node_updates[CatalogDisciplineNode.semester_key] = new_semester or None
+        if body.new_discipline is not None:
+            node_updates[CatalogDisciplineNode.name] = new_discipline or None
+
+        if node_updates:
+            await db.execute(update(CatalogDisciplineNode).where(and_(*node_filters)).values(**node_updates))
+
+    await db.commit()
+    return {"detail": "Обновлено"}
 
 
 async def _stream_usage_counts(db: AsyncSession, stream_ids: list[UUID]) -> dict[str, int]:
@@ -809,6 +1015,7 @@ async def update_catalog_item(
         item.lecture.title = lecture_title
 
     await _ensure_catalog_semesters(db, item.stream_id, item.course_text)
+    await _ensure_catalog_discipline_node(db, item.stream_id, item.course_text, item.semester_text, item.discipline)
 
     await db.commit()
 
@@ -1491,6 +1698,7 @@ async def _ensure_catalog_item(
         db.add(item)
 
     await _ensure_catalog_semesters(db, stream_id, course_text)
+    await _ensure_catalog_discipline_node(db, stream_id, course_text, semester_text, discipline)
 
     return item
 
