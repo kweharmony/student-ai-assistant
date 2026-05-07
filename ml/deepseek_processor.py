@@ -38,6 +38,15 @@ def _normalize_math_delimiters(text: str) -> str:
             return f'$$\n{inner}\n$$'
         return m.group(0)
     text = re.sub(r'(?m)^\[\s*\n([\s\S]+?)\n\s*\]$', _replace_bare_brackets, text)
+
+    # Backtick-обёрнутый LaTeX → $...$  (LLM иногда пишет `\frac{a}{b}` вместо $\frac{a}{b}$)
+    def _backtick_to_math(m: re.Match) -> str:
+        inner = m.group(1)
+        if re.search(r'[\\^_{}]|\\[a-zA-Z]', inner):
+            return f'${inner}$'
+        return m.group(0)
+    text = re.sub(r'`([^`\n]+)`', _backtick_to_math, text)
+
     return text
 
 

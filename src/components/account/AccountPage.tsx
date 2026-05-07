@@ -330,6 +330,25 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     marked.setOptions({ breaks: true, gfm: true });
     let html = marked(text) as string;
 
+    // Fix <code> spans that LLM wrote with backticks instead of $...$
+    const isLatexLike = (s: string) => /[\\^_{}]|\\[a-zA-Z]/.test(s);
+    const decodeHtmlEntities = (s: string) =>
+      s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+
+    html = html.replace(/<code>([^<]+)<\/code>/g, (original, rawContent) => {
+      const decoded = decodeHtmlEntities(rawContent);
+      if (isLatexLike(decoded)) {
+        return `<span data-type="inline-math" data-latex="${escapeAttr(decoded)}"></span>`;
+      }
+      // **bold** or *italic* wrapped in backticks → render as markup
+      if (/\*\*[^*]+\*\*|\*[^*]+\*/.test(decoded)) {
+        return decoded
+          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      }
+      return original;
+    });
+
     html = html.replace(/MATHHOLDER_(\d+)_END/g, (_, idx) => {
       const { type, latex } = mathStore[Number(idx)];
       return type === 'block'
