@@ -232,15 +232,42 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     cancelProcessing
   } = useMLProcessor();
 
-  // Исправляет сломанные формулы из AI-вывода:
-  // модель иногда пишет $$P_m$\tau$ = \frac{$\lambda\tau$^m}{m!}$$ —
-  // оборачивает всю формулу в $$...$$ и ещё отдельные переменные в $...$
-  // KaTeX не понимает $ внутри math-окружения, поэтому стрипаем внутренние $...$
+  // Исправляет два типа сломанных формул из AI-вывода:
+  // Тип 1: $$P_m$\tau$ = \frac{$x$}{m}$$ — $...$ внутри $$...$$
+  // Тип 2: P_m$\tau$ = \frac{$x$^m}{m!} e^{-x} — нет внешних $$, но внутри есть
+  //         $...$ фрагменты перемешанные с raw LaTeX (\frac, \lambda и т.д.)
   const fixBrokenFormulas = (markdown: string): string => {
-    return markdown.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner) => {
+    // Тип 1: стрипаем $...$ внутри $$...$$
+    let result = markdown.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner) => {
       const fixed = inner.replace(/\$([^$\n]+?)\$/g, '$1');
       return `$$${fixed}$$`;
     });
+
+    // Тип 2: строки с $...$ фрагментами + raw LaTeX снаружи → весь блок в $$...$$
+    // Ключевой тест: после удаления $...$ фрагментов в остатке есть LaTeX-команды (\cmd)
+    // Это отличает сломанную формулу от нормального текста с инлайн-формулой:
+    //   СЛОМАНО: "P_m$\tau$ = \frac{$x$^m}{m!}" → после стрипа: "P_m = \frac{^m}{m!}" → есть \frac
+    //   НОРМАЛЬНО: "Формула $f(x) = \frac{x}{2}$ для x" → после стрипа: "Формула  для x" → нет \cmd
+    result = result.split('\n').map(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('$$') || !trimmed.includes('$')) return line;
+
+      const hasInlineDollar = /\$[^$\n]+\$/.test(trimmed);
+      if (!hasInlineDollar) return line;
+
+      // Что останется после удаления всех $...$ фрагментов
+      const afterStrip = trimmed.replace(/\$([^$\n]+?)\$/g, '$1');
+      const hasLatexOutside = /\\[a-zA-Z]+/.test(afterStrip);
+
+      if (hasLatexOutside) {
+        // Строим исправленную формулу: убираем $...$ делимитеры со всей строки
+        const fixed = trimmed.replace(/\$([^$\n]+?)\$/g, '$1');
+        return `$$${fixed}$$`;
+      }
+      return line;
+    }).join('\n');
+
+    return result;
   };
 
   // Конвертация Markdown в HTML с сохранением форматирования
