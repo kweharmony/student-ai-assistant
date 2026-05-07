@@ -232,6 +232,17 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     cancelProcessing
   } = useMLProcessor();
 
+  // Исправляет сломанные формулы из AI-вывода:
+  // модель иногда пишет $$P_m$\tau$ = \frac{$\lambda\tau$^m}{m!}$$ —
+  // оборачивает всю формулу в $$...$$ и ещё отдельные переменные в $...$
+  // KaTeX не понимает $ внутри math-окружения, поэтому стрипаем внутренние $...$
+  const fixBrokenFormulas = (markdown: string): string => {
+    return markdown.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner) => {
+      const fixed = inner.replace(/\$([^$\n]+?)\$/g, '$1');
+      return `$$${fixed}$$`;
+    });
+  };
+
   // Конвертация Markdown в HTML с сохранением форматирования
   const convertMarkdownToHTML = (markdown: string): string => {
     if (!markdown) return '';
@@ -388,10 +399,12 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
       );
 
       if (processedTextResult) {
-        // Сохраняем исходный Markdown для экспорта
-        setRawMarkdown(processedTextResult);
+        // Чиним сломанные формулы ($var$ внутри $$...$$) до сохранения
+        const fixedMarkdown = fixBrokenFormulas(processedTextResult);
+        // Сохраняем исправленный Markdown для экспорта
+        setRawMarkdown(fixedMarkdown);
         // Конвертируем в HTML для отображения
-        const htmlContent = convertMarkdownToHTML(processedTextResult);
+        const htmlContent = convertMarkdownToHTML(fixedMarkdown);
         setProcessedText(htmlContent);
 
         // Переключаемся на режим обработанного текста
