@@ -438,6 +438,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const [topicInput, setTopicInput]                 = useState('');
   const [pendingTopicMode, setPendingTopicMode]     = useState<{ lectureId: string; mode: string } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [openCatalogDropdown, setOpenCatalogDropdown] = useState<string | null>(null);
   const [suggestModalLecture, setSuggestModalLecture] = useState<LectureItem | null>(null);
   const [catalogPublishMode, setCatalogPublishMode] = useState<CatalogPublishMode>('request');
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
@@ -625,13 +626,17 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as HTMLElement;
+      if (addNoteDropdown && dropdownRef.current && !dropdownRef.current.contains(target)) {
         setAddNoteDropdown(null);
+      }
+      if (openCatalogDropdown && !target.closest('[data-catalog-dropdown]')) {
+        setOpenCatalogDropdown(null);
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [addNoteDropdown, openCatalogDropdown]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -968,6 +973,61 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const btnBg        = isLightTheme ? 'rgba(68,41,43,.08)' : 'rgba(255,255,240,.06)';
   const btnColor     = isLightTheme ? '#44292b' : '#f0e6d8';
   const dropdownBg   = isLightTheme ? '#fff9f1' : '#1f1516';
+
+  const CatalogSelect: React.FC<{
+    id: string;
+    value: string;
+    options: { value: string; label: string }[];
+    placeholder: string;
+    disabled?: boolean;
+    onChange: (value: string) => void;
+  }> = ({ id, value, options, placeholder, disabled, onChange }) => {
+    const isOpen = openCatalogDropdown === id;
+    const selected = options.find(option => option.value === value);
+    return (
+      <div data-catalog-dropdown className="relative">
+        <button
+          type="button"
+          onClick={() => setOpenCatalogDropdown(prev => (prev === id ? null : id))}
+          className="w-full px-3 py-2 rounded-lg border text-sm text-left flex items-center justify-between gap-2"
+          style={{ background: btnBg, color: headingColor, border: cardBorder, opacity: disabled ? 0.6 : 1 }}
+          disabled={disabled}
+        >
+          <span className="truncate">{selected?.label || placeholder}</span>
+          <span className="material-symbols-outlined" style={{ fontSize: 18, color: mutedColor }}>
+            {isOpen ? 'expand_less' : 'expand_more'}
+          </span>
+        </button>
+        {isOpen && !disabled && (
+          <div
+            className="absolute z-50 mt-2 w-full rounded-xl border overflow-hidden"
+            style={{ background: dropdownBg, border: cardBorder, boxShadow: '0 16px 48px rgba(0,0,0,0.35)' }}
+          >
+            <div className="max-h-56 overflow-y-auto">
+              {options.length === 0 ? (
+                <div className="px-3 py-2 text-xs" style={{ color: mutedColor }}>
+                  Нет доступных вариантов
+                </div>
+              ) : options.map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpenCatalogDropdown(null);
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm transition-all"
+                  style={{ color: headingColor, background: option.value === value ? btnBg : 'transparent' }}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -1588,59 +1648,93 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
               Путь: {faculties.find(f => f.id === suggestData.faculty_id)?.name || 'Факультет'} / {directions.find(d => d.id === suggestData.direction_id)?.name || 'Направление'} / {streams.find(s => s.id === suggestData.stream_id)?.name || 'Поток'} / {suggestData.course_text || 'Курс'} / {(suggestData.semester_text === 'winter' ? 'Зимний семестр' : suggestData.semester_text === 'spring' ? 'Весенний семестр' : 'Семестр')} / {suggestData.discipline || 'Дисциплина'}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
-              <select value={suggestData.faculty_id} onChange={(e) => setSuggestData(prev => ({ ...prev, faculty_id: e.target.value, direction_id: '', stream_id: '', course_text: '', semester_text: '', discipline: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
-                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Факультет</option>
-                {modalFacultyOptions.map(f => <option key={f.id} value={f.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{f.name}</option>)}
-              </select>
-              <select value={suggestData.direction_id} onChange={(e) => setSuggestData(prev => ({ ...prev, direction_id: e.target.value, stream_id: '', course_text: '', semester_text: '', discipline: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
-                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Направление</option>
-                {modalDirectionOptions.map(d => <option key={d.id} value={d.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{d.name}</option>)}
-              </select>
-              <select value={suggestData.stream_id} onChange={(e) => setSuggestData(prev => ({ ...prev, stream_id: e.target.value, course_text: '', semester_text: '', discipline: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
-                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Поток</option>
-                {modalStreamOptions.map(s => <option key={s.id} value={s.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{s.name}</option>)}
-              </select>
+              <CatalogSelect
+                id="faculty"
+                value={suggestData.faculty_id}
+                placeholder="Факультет"
+                options={modalFacultyOptions.map(f => ({ value: f.id, label: f.name }))}
+                onChange={(value) => setSuggestData(prev => {
+                  if (!value) {
+                    return { ...prev, faculty_id: '', direction_id: '', stream_id: '', course_text: '', semester_text: '', discipline: '' };
+                  }
+                  const currentDirection = directions.find(d => d.id === prev.direction_id) || null;
+                  const currentStream = streams.find(s => s.id === prev.stream_id) || null;
+                  const streamDirection = currentStream ? directions.find(d => d.id === currentStream.direction_id) : null;
+                  const nextDirectionId = currentDirection && currentDirection.faculty_id === value ? currentDirection.id : '';
+                  const nextStreamId = streamDirection && streamDirection.faculty_id === value ? currentStream?.id || '' : '';
+                  const keepLower = Boolean(nextStreamId);
+                  return {
+                    ...prev,
+                    faculty_id: value,
+                    direction_id: nextDirectionId,
+                    stream_id: nextStreamId,
+                    course_text: keepLower ? prev.course_text : '',
+                    semester_text: keepLower ? prev.semester_text : '',
+                    discipline: keepLower ? prev.discipline : '',
+                  };
+                })}
+              />
+              <CatalogSelect
+                id="direction"
+                value={suggestData.direction_id}
+                placeholder="Направление"
+                options={modalDirectionOptions.map(d => ({ value: d.id, label: d.name }))}
+                onChange={(value) => setSuggestData(prev => {
+                  if (!value) {
+                    return { ...prev, direction_id: '', stream_id: '', course_text: '', semester_text: '', discipline: '' };
+                  }
+                  const currentStream = streams.find(s => s.id === prev.stream_id) || null;
+                  const nextStreamId = currentStream && currentStream.direction_id === value ? currentStream.id : '';
+                  const keepLower = Boolean(nextStreamId);
+                  return {
+                    ...prev,
+                    direction_id: value,
+                    stream_id: nextStreamId,
+                    course_text: keepLower ? prev.course_text : '',
+                    semester_text: keepLower ? prev.semester_text : '',
+                    discipline: keepLower ? prev.discipline : '',
+                  };
+                })}
+                disabled={!suggestData.faculty_id}
+              />
+              <CatalogSelect
+                id="stream"
+                value={suggestData.stream_id}
+                placeholder="Поток"
+                options={modalStreamOptions.map(s => ({ value: s.id, label: s.name }))}
+                onChange={(value) => setSuggestData(prev => ({ ...prev, stream_id: value, course_text: '', semester_text: '', discipline: '' }))}
+                disabled={!suggestData.direction_id}
+              />
 
-              <select
+              <CatalogSelect
+                id="course"
                 value={suggestData.course_text}
-                onChange={(e) => setSuggestData(prev => ({ ...prev, course_text: e.target.value, semester_text: '', discipline: '' }))}
-                className="px-3 py-2 rounded-lg border text-sm"
-                style={{ background: btnBg, color: headingColor, border: cardBorder }}
+                placeholder="Курс"
+                options={modalCourseOptions.map(course => ({ value: course, label: course }))}
+                onChange={(value) => setSuggestData(prev => ({ ...prev, course_text: value, semester_text: '', discipline: '' }))}
                 disabled={!suggestData.stream_id || modalCourseOptions.length === 0}
-              >
-                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Курс</option>
-                {modalCourseOptions.map(course => (
-                  <option key={course} value={course} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{course}</option>
-                ))}
-              </select>
+              />
 
-              <select
+              <CatalogSelect
+                id="semester"
                 value={suggestData.semester_text}
-                onChange={(e) => setSuggestData(prev => ({ ...prev, semester_text: e.target.value, discipline: '' }))}
-                className="px-3 py-2 rounded-lg border text-sm"
-                style={{ background: btnBg, color: headingColor, border: cardBorder }}
+                placeholder="Семестр"
+                options={modalSemesterOptions.map(semester => ({
+                  value: semester,
+                  label: semester === 'winter' ? 'Зимний семестр' : semester === 'spring' ? 'Весенний семестр' : semester,
+                }))}
+                onChange={(value) => setSuggestData(prev => ({ ...prev, semester_text: value, discipline: '' }))}
                 disabled={!suggestData.course_text || modalSemesterOptions.length === 0}
-              >
-                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Семестр</option>
-                {modalSemesterOptions.map(semester => (
-                  <option key={semester} value={semester} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>
-                    {semester === 'winter' ? 'Зимний семестр' : semester === 'spring' ? 'Весенний семестр' : semester}
-                  </option>
-                ))}
-              </select>
+              />
 
-              <select
+              <CatalogSelect
+                id="discipline"
                 value={suggestData.discipline}
-                onChange={(e) => setSuggestData(prev => ({ ...prev, discipline: e.target.value }))}
-                className="px-3 py-2 rounded-lg border text-sm"
-                style={{ background: btnBg, color: headingColor, border: cardBorder }}
+                placeholder="Дисциплина"
+                options={modalDisciplineOptions.map(discipline => ({ value: discipline, label: discipline }))}
+                onChange={(value) => setSuggestData(prev => ({ ...prev, discipline: value }))}
                 disabled={!suggestData.semester_text || modalDisciplineOptions.length === 0}
-              >
-                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Дисциплина</option>
-                {modalDisciplineOptions.map(discipline => (
-                  <option key={discipline} value={discipline} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{discipline}</option>
-                ))}
-              </select>
+              />
 
               {catalogPublishMode === 'direct' && (
                 <input value={suggestData.lecturer_name} onChange={(e) => setSuggestData(prev => ({ ...prev, lecturer_name: e.target.value }))} placeholder="Лектор" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
