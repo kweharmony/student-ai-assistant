@@ -1,5 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import 'katex/dist/katex.min.css';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -174,6 +177,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [processing, setProcessing] = useState(false);
   const [previewText, setPreviewText] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const previewRef = useRef<HTMLDivElement | null>(null);
   const [moderationNotice, setModerationNotice] = useState<CatalogNoticeState | null>(null);
   const [materialRequests, setMaterialRequests] = useState<MaterialReqItem[]>([]);
   const [materialSelectedId, setMaterialSelectedId] = useState<string | null>(null);
@@ -450,6 +454,21 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   useEffect(() => { loadMaterialRequests(); }, [loadMaterialRequests]);
   useEffect(() => { loadCatalogItems(); }, [loadCatalogItems]);
   useEffect(() => { setPreviewText(''); }, [selectedId]);
+  useEffect(() => {
+    if (previewLoading || !previewText || !previewRef.current) return;
+    import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
+      if (!previewRef.current) return;
+      renderMathInElement(previewRef.current, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true },
+        ],
+        throwOnError: false,
+      });
+    });
+  }, [previewLoading, previewText]);
   useEffect(() => {
     setRenameFacultyName(activeFaculty?.name || '');
   }, [activeFaculty?.id]);
@@ -1130,8 +1149,17 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                   <p className="text-xs" style={{ color: mutedColor }}>Предпросмотр текста лекции</p>
                   <button onClick={() => openPreview(selected.lecture_id)} className="text-xs px-2 py-1 rounded-lg border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>Показать</button>
                 </div>
-                <div className="text-sm p-3 rounded-lg border min-h-[86px] max-h-[220px] overflow-y-auto" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
-                  {previewLoading ? 'Загрузка...' : (previewText || 'Нажмите "Показать" для просмотра фрагмента.')}
+                <div className="text-sm p-3 rounded-lg border min-h-[86px] max-h-[220px] overflow-y-auto" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                  {previewLoading ? 'Загрузка...' : previewText ? (
+                    <div
+                      ref={previewRef}
+                      className="prose-modal text-sm leading-relaxed"
+                      style={{ color: 'var(--text-primary)', fontFamily: 'Georgia, serif' }}
+                      dangerouslySetInnerHTML={{ __html: mdParse(previewText) }}
+                    />
+                  ) : (
+                    'Нажмите "Показать" для просмотра фрагмента.'
+                  )}
                 </div>
               </div>
 
