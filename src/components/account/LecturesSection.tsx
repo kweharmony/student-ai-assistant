@@ -522,22 +522,31 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     return h;
   }, [token]);
 
+  const normalizeLatexDelimiters = (text: string): string => {
+    // \[...\] → $$...$$ (display math), skip \\[ (LaTeX line-break-with-spacing)
+    let out = text.replace(/(?<!\\)\\\[([\s\S]+?)\\\]/g, (_m, inner) => `$$${inner}$$`);
+    // \(...\) → $...$ (inline math)
+    out = out.replace(/\\\((.+?)\\\)/g, (_m, inner) => `$${inner}$`);
+    return out;
+  };
+
   const exportNoteContent = useCallback(async (content: string, title: string, format: NoteExportFormat) => {
     const safeTitle = title.replace(/[<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').trim() || 'note';
     const filenameBase = `${safeTitle}`;
+    const normalized = normalizeLatexDelimiters(content);
 
     if (format === 'txt') {
-      const text = mdParse(content).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const text = mdParse(normalized).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
       saveAs(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${filenameBase}.txt`);
       return;
     }
 
     if (format === 'md') {
-      saveAs(new Blob([content], { type: 'text/markdown;charset=utf-8' }), `${filenameBase}.md`);
+      saveAs(new Blob([normalized], { type: 'text/markdown;charset=utf-8' }), `${filenameBase}.md`);
       return;
     }
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title></head><body>${mdParse(content)}</body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title></head><body>${mdParse(normalized)}</body></html>`;
 
     if (format === 'docx') {
       saveAs(htmlDocx.asBlob(html), `${filenameBase}.docx`);
@@ -545,7 +554,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     }
 
     const container = document.createElement('div');
-    container.innerHTML = mdParse(content);
+    container.innerHTML = mdParse(normalized);
     const plainText = (container.textContent || '').replace(/\s+/g, ' ').trim();
     pdfMake.createPdf({
       content: [{ text: plainText || safeTitle, fontSize: 12, lineHeight: 1.5 }],
