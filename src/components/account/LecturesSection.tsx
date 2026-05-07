@@ -4,10 +4,10 @@ import htmlDocx from 'html-docx-js/dist/html-docx';
 import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { useAuth } from '../../contexts/AuthContext';
+import { safeMdParse } from '../../utils/markdownUtils';
 import 'katex/dist/katex.min.css';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
-import { safeMdParse } from '../../utils/markdownUtils';
 
 (pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || {};
 
