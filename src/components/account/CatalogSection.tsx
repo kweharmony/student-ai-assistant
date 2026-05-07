@@ -637,7 +637,11 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
     }
 
     if (format === 'md') {
-      saveAs(new Blob([text], { type: 'text/markdown;charset=utf-8' }), `${baseName}.md`);
+      // Obsidian поддерживает только $...$ и $$...$$, но не \(...\) и \[...\]
+      const mdText = text
+        .replace(/\\\[([\s\S]+?)\\\]/g, (_m, latex) => `$$${latex}$$`)
+        .replace(/\\\(([^)]+?)\\\)/g, (_m, latex) => `$${latex}$`);
+      saveAs(new Blob([mdText], { type: 'text/markdown;charset=utf-8' }), `${baseName}.md`);
       return;
     }
 

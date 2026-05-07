@@ -532,7 +532,10 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     }
 
     if (format === 'md') {
-      saveAs(new Blob([content], { type: 'text/markdown;charset=utf-8' }), `${filenameBase}.md`);
+      const mdText = content
+        .replace(/\\\[([\s\S]+?)\\\]/g, (_m, latex) => `$$${latex}$$`)
+        .replace(/\\\(([^)]+?)\\\)/g, (_m, latex) => `$${latex}$`);
+      saveAs(new Blob([mdText], { type: 'text/markdown;charset=utf-8' }), `${filenameBase}.md`);
       return;
     }
 
