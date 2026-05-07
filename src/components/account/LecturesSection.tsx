@@ -1079,6 +1079,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
             const showAddDropdown = addNoteDropdown === lecture.id;
             const pub = publicationStatuses[lecture.id];
             const inCatalog = Boolean(lecture.catalog_stream_id);
+            const hasPendingRequest = !inCatalog && pub?.latest_request_status === 'pending';
             const effectiveStatus = inCatalog
               ? 'approved'
               : (pub?.latest_request_status === 'approved' ? null : pub?.latest_request_status ?? null);
@@ -1243,14 +1244,21 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                 </div>
 
                 <div className="px-5 pb-4 flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => openCatalogModal(lecture, 'request')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
-                    style={{ background: btnBg, color: btnColor }}
-                  >
-                    <span className="material-symbols-outlined text-base">publish</span>
-                    Предложить в базу
-                  </button>
+                  {!inCatalog && (
+                    <button
+                      onClick={() => !hasPendingRequest && openCatalogModal(lecture, 'request')}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
+                      style={{
+                        background: hasPendingRequest ? 'rgba(59,130,246,.18)' : btnBg,
+                        color: hasPendingRequest ? '#3b82f6' : btnColor,
+                        opacity: hasPendingRequest ? 0.9 : 1,
+                        cursor: hasPendingRequest ? 'default' : 'pointer',
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-base">publish</span>
+                      {hasPendingRequest ? 'На рассмотрении в базу' : 'Предложить в базу'}
+                    </button>
+                  )}
                   {canDirectPublish && (
                     <button
                       onClick={() => openCatalogModal(lecture, 'direct')}
@@ -1261,7 +1269,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                       Добавить в базу
                     </button>
                   )}
-                  {pubLabel && pubColor && (
+                  {pubLabel && pubColor && !hasPendingRequest && (
                     <span className="text-xs px-2 py-1 rounded-full" style={{ background: `${pubColor}22`, color: pubColor }}>
                       {pubLabel}
                     </span>
