@@ -56,6 +56,20 @@ interface StreamItem {
   name: string;
 }
 
+interface CatalogSemesterItem {
+  stream_id: string;
+  course_text: string;
+  semester_key: string;
+}
+
+interface CatalogDisciplineNodeItem {
+  id: string;
+  stream_id: string;
+  course_text: string;
+  semester_key: string;
+  name: string;
+}
+
 type CatalogPublishMode = 'request' | 'direct';
 type NoteExportFormat = 'txt' | 'md' | 'docx' | 'pdf';
 
@@ -429,6 +443,8 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
   const [directions, setDirections] = useState<DirectionItem[]>([]);
   const [streams, setStreams] = useState<StreamItem[]>([]);
+  const [catalogSemesters, setCatalogSemesters] = useState<CatalogSemesterItem[]>([]);
+  const [catalogDisciplineNodes, setCatalogDisciplineNodes] = useState<CatalogDisciplineNodeItem[]>([]);
   const [suggestData, setSuggestData] = useState({
     faculty_id: '',
     direction_id: '',
@@ -436,7 +452,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     discipline: '',
     lecturer_name: '',
     course_text: '',
-    semester_text: 'winter',
+    semester_text: '',
     lecture_number_text: '',
     study_year_text: '',
     comment: '',
@@ -457,7 +473,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
       discipline: '',
       lecturer_name: '',
       course_text: '',
-      semester_text: 'winter',
+      semester_text: '',
       lecture_number_text: '',
       study_year_text: '',
       comment: '',
@@ -491,7 +507,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
       discipline: defaultDiscipline,
       lecturer_name: '',
       course_text: '',
-      semester_text: 'winter',
+      semester_text: '',
       lecture_number_text: '',
       study_year_text: '',
       comment: '',
@@ -583,14 +599,18 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
 
   const fetchCatalogLookups = useCallback(async () => {
     try {
-      const [fRes, dRes, sRes] = await Promise.all([
+      const [fRes, dRes, sRes, semRes, discRes] = await Promise.all([
         fetch(`${API_BASE}/api/catalog/faculties`, { headers: authHeaders() }),
         fetch(`${API_BASE}/api/catalog/directions`, { headers: authHeaders() }),
         fetch(`${API_BASE}/api/catalog/streams`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/api/catalog/semesters`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/api/catalog/discipline-nodes`, { headers: authHeaders() }),
       ]);
       if (fRes.ok) setFaculties(await fRes.json());
       if (dRes.ok) setDirections(await dRes.json());
       if (sRes.ok) setStreams(await sRes.json());
+      if (semRes.ok) setCatalogSemesters(await semRes.json());
+      if (discRes.ok) setCatalogDisciplineNodes(await discRes.json());
     } catch {
       // ignore lookup load errors
     }
@@ -797,16 +817,86 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const allowedFacultyIds = useMemo(() => new Set(allowedDirections.map((d) => d.faculty_id)), [allowedDirections]);
   const allowedFaculties = useMemo(() => faculties.filter((f) => allowedFacultyIds.has(f.id)), [faculties, allowedFacultyIds]);
 
+  const coursesByStream = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    catalogSemesters.forEach((row) => {
+      const course = (row.course_text || '').trim();
+      if (!course) return;
+      if (!map[row.stream_id]) map[row.stream_id] = [];
+      if (!map[row.stream_id].includes(course)) map[row.stream_id].push(course);
+    });
+    Object.keys(map).forEach((key) => map[key].sort((a, b) => a.localeCompare(b, 'ru')));
+    return map;
+  }, [catalogSemesters]);
+
+  const semestersByStreamCourse = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    catalogSemesters.forEach((row) => {
+      const course = (row.course_text || '').trim();
+      const semester = (row.semester_key || '').trim();
+      if (!course || !semester) return;
+      const key = `${row.stream_id}|${course}`;
+      if (!map[key]) map[key] = [];
+      if (!map[key].includes(semester)) map[key].push(semester);
+    });
+    Object.keys(map).forEach((key) => map[key].sort((a, b) => a.localeCompare(b, 'ru')));
+    return map;
+  }, [catalogSemesters]);
+
+  const disciplinesByStreamCourseSemester = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    catalogDisciplineNodes.forEach((row) => {
+      const course = (row.course_text || '').trim();
+      const semester = (row.semester_key || '').trim();
+      const name = (row.name || '').trim();
+      if (!course || !semester || !name) return;
+      const key = `${row.stream_id}|${course}|${semester}`;
+      if (!map[key]) map[key] = [];
+      if (!map[key].includes(name)) map[key].push(name);
+    });
+    Object.keys(map).forEach((key) => map[key].sort((a, b) => a.localeCompare(b, 'ru')));
+    return map;
+  }, [catalogDisciplineNodes]);
+
   const modalFacultyOptions = user?.role === 'admin' ? faculties : allowedFaculties;
   const modalDirectionOptions = (user?.role === 'admin' ? directions : allowedDirections)
     .filter((d) => !suggestData.faculty_id || d.faculty_id === suggestData.faculty_id);
   const modalStreamOptions = allowedStreams
     .filter((s) => !suggestData.direction_id || s.direction_id === suggestData.direction_id);
+  const modalCourseOptions = coursesByStream[suggestData.stream_id] || [];
+  const modalSemesterOptions = semestersByStreamCourse[`${suggestData.stream_id}|${suggestData.course_text}`] || [];
+  const modalDisciplineOptions = disciplinesByStreamCourseSemester[`${suggestData.stream_id}|${suggestData.course_text}|${suggestData.semester_text}`] || [];
+
+  useEffect(() => {
+    if (suggestData.course_text && !modalCourseOptions.includes(suggestData.course_text)) {
+      setSuggestData(prev => ({ ...prev, course_text: '', semester_text: '', discipline: '' }));
+      return;
+    }
+    if (suggestData.semester_text && !modalSemesterOptions.includes(suggestData.semester_text)) {
+      setSuggestData(prev => ({ ...prev, semester_text: '', discipline: '' }));
+      return;
+    }
+    if (suggestData.discipline && !modalDisciplineOptions.includes(suggestData.discipline)) {
+      setSuggestData(prev => ({ ...prev, discipline: '' }));
+    }
+  }, [modalCourseOptions, modalSemesterOptions, modalDisciplineOptions, suggestData.course_text, suggestData.semester_text, suggestData.discipline]);
 
   const submitCatalogAction = useCallback(async () => {
     if (!suggestModalLecture) return;
     if (!suggestData.stream_id) {
       alert('Выберите поток.');
+      return;
+    }
+    if (!suggestData.course_text) {
+      alert('Выберите курс.');
+      return;
+    }
+    if (!suggestData.semester_text) {
+      alert('Выберите семестр.');
+      return;
+    }
+    if (!suggestData.discipline) {
+      alert('Выберите дисциплину.');
       return;
     }
 
@@ -817,6 +907,9 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
         body: JSON.stringify({
           lecture_id: suggestModalLecture.id,
           stream_id: suggestData.stream_id,
+          discipline: suggestData.discipline,
+          course_text: suggestData.course_text,
+          semester_text: suggestData.semester_text,
           lecture_number_text: suggestData.lecture_number_text.trim() || null,
           study_year_text: suggestData.study_year_text.trim() || null,
           comment: suggestData.comment.trim() || null,
@@ -829,21 +922,16 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
         return;
       }
     } else {
-      const discipline = suggestData.discipline.trim();
-      if (!discipline) {
-        alert('Для публикации нужно указать дисциплину.');
-        return;
-      }
       const res = await fetch(`${API_BASE}/api/catalog/publish`, {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lecture_id: suggestModalLecture.id,
           stream_id: suggestData.stream_id,
-          discipline,
+          discipline: suggestData.discipline,
           lecturer_name: suggestData.lecturer_name.trim() || null,
-          course_text: suggestData.course_text.trim() || null,
-          semester_text: suggestData.semester_text || null,
+          course_text: suggestData.course_text,
+          semester_text: suggestData.semester_text,
           lecture_number_text: suggestData.lecture_number_text.trim() || null,
           study_year_text: suggestData.study_year_text.trim() || null,
         }),
@@ -1497,39 +1585,65 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
             </h2>
             <p className="text-xs mb-4" style={{ color: mutedColor }}>{suggestModalLecture.title}</p>
             <p className="text-xs mb-2" style={{ color: mutedColor }}>
-              Путь: {faculties.find(f => f.id === suggestData.faculty_id)?.name || 'Факультет'} / {directions.find(d => d.id === suggestData.direction_id)?.name || 'Направление'} / {streams.find(s => s.id === suggestData.stream_id)?.name || 'Поток'}
+              Путь: {faculties.find(f => f.id === suggestData.faculty_id)?.name || 'Факультет'} / {directions.find(d => d.id === suggestData.direction_id)?.name || 'Направление'} / {streams.find(s => s.id === suggestData.stream_id)?.name || 'Поток'} / {suggestData.course_text || 'Курс'} / {(suggestData.semester_text === 'winter' ? 'Зимний семестр' : suggestData.semester_text === 'spring' ? 'Весенний семестр' : 'Семестр')} / {suggestData.discipline || 'Дисциплина'}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
-              <select value={suggestData.faculty_id} onChange={(e) => setSuggestData(prev => ({ ...prev, faculty_id: e.target.value, direction_id: '', stream_id: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
+              <select value={suggestData.faculty_id} onChange={(e) => setSuggestData(prev => ({ ...prev, faculty_id: e.target.value, direction_id: '', stream_id: '', course_text: '', semester_text: '', discipline: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
                 <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Факультет</option>
                 {modalFacultyOptions.map(f => <option key={f.id} value={f.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{f.name}</option>)}
               </select>
-              <select value={suggestData.direction_id} onChange={(e) => setSuggestData(prev => ({ ...prev, direction_id: e.target.value, stream_id: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
+              <select value={suggestData.direction_id} onChange={(e) => setSuggestData(prev => ({ ...prev, direction_id: e.target.value, stream_id: '', course_text: '', semester_text: '', discipline: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
                 <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Направление</option>
                 {modalDirectionOptions.map(d => <option key={d.id} value={d.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{d.name}</option>)}
               </select>
-              <select value={suggestData.stream_id} onChange={(e) => setSuggestData(prev => ({ ...prev, stream_id: e.target.value }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
+              <select value={suggestData.stream_id} onChange={(e) => setSuggestData(prev => ({ ...prev, stream_id: e.target.value, course_text: '', semester_text: '', discipline: '' }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
                 <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Поток</option>
                 {modalStreamOptions.map(s => <option key={s.id} value={s.id} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{s.name}</option>)}
               </select>
 
-              {catalogPublishMode === 'direct' && (
-                <input value={suggestData.discipline} onChange={(e) => setSuggestData(prev => ({ ...prev, discipline: e.target.value }))} placeholder="Дисциплина" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
-              )}
+              <select
+                value={suggestData.course_text}
+                onChange={(e) => setSuggestData(prev => ({ ...prev, course_text: e.target.value, semester_text: '', discipline: '' }))}
+                className="px-3 py-2 rounded-lg border text-sm"
+                style={{ background: btnBg, color: headingColor, border: cardBorder }}
+                disabled={!suggestData.stream_id || modalCourseOptions.length === 0}
+              >
+                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Курс</option>
+                {modalCourseOptions.map(course => (
+                  <option key={course} value={course} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{course}</option>
+                ))}
+              </select>
+
+              <select
+                value={suggestData.semester_text}
+                onChange={(e) => setSuggestData(prev => ({ ...prev, semester_text: e.target.value, discipline: '' }))}
+                className="px-3 py-2 rounded-lg border text-sm"
+                style={{ background: btnBg, color: headingColor, border: cardBorder }}
+                disabled={!suggestData.course_text || modalSemesterOptions.length === 0}
+              >
+                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Семестр</option>
+                {modalSemesterOptions.map(semester => (
+                  <option key={semester} value={semester} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>
+                    {semester === 'winter' ? 'Зимний семестр' : semester === 'spring' ? 'Весенний семестр' : semester}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={suggestData.discipline}
+                onChange={(e) => setSuggestData(prev => ({ ...prev, discipline: e.target.value }))}
+                className="px-3 py-2 rounded-lg border text-sm"
+                style={{ background: btnBg, color: headingColor, border: cardBorder }}
+                disabled={!suggestData.semester_text || modalDisciplineOptions.length === 0}
+              >
+                <option value="" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Дисциплина</option>
+                {modalDisciplineOptions.map(discipline => (
+                  <option key={discipline} value={discipline} style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>{discipline}</option>
+                ))}
+              </select>
 
               {catalogPublishMode === 'direct' && (
                 <input value={suggestData.lecturer_name} onChange={(e) => setSuggestData(prev => ({ ...prev, lecturer_name: e.target.value }))} placeholder="Лектор" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
-              )}
-
-              {catalogPublishMode === 'direct' && (
-                <input value={suggestData.course_text} onChange={(e) => setSuggestData(prev => ({ ...prev, course_text: e.target.value }))} placeholder="Курс" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />
-              )}
-
-              {catalogPublishMode === 'direct' && (
-                <select value={suggestData.semester_text} onChange={(e) => setSuggestData(prev => ({ ...prev, semester_text: e.target.value }))} className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }}>
-                  <option value="winter" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Зимний семестр</option>
-                  <option value="spring" style={{ color: '#1f1516', backgroundColor: '#fff9f1' }}>Весенний семестр</option>
-                </select>
               )}
 
               <input value={suggestData.lecture_number_text} onChange={(e) => setSuggestData(prev => ({ ...prev, lecture_number_text: e.target.value }))} placeholder="Номер лекции (напр. 4)" className="px-3 py-2 rounded-lg border text-sm" style={{ background: btnBg, color: headingColor, border: cardBorder }} />

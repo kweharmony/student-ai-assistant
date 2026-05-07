@@ -317,6 +317,9 @@ class CatalogLectureOptionOut(BaseModel):
 class PublicationRequestCreateIn(BaseModel):
     lecture_id: UUID
     stream_id: UUID
+    discipline: Optional[str] = Field(None, min_length=1, max_length=150)
+    course_text: Optional[str] = Field(None, max_length=50)
+    semester_text: Optional[str] = Field(None, max_length=20)
     lecture_number_text: Optional[str] = Field(None, max_length=50)
     study_year_text: Optional[str] = Field(None, max_length=50)
     comment: Optional[str] = Field(None, max_length=500)

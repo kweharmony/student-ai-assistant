@@ -1131,14 +1131,18 @@ async def create_publication_request(
     if stream is None:
         raise HTTPException(status_code=400, detail="Поток не найден")
 
+    discipline_value = (body.discipline or "").strip() or (lecture.subject or lecture.title)
+    if not discipline_value:
+        raise HTTPException(status_code=400, detail="Нужно указать дисциплину")
+
     req = LecturePublicationRequest(
         lecture_id=body.lecture_id,
         requested_by=user.id,
         stream_id=body.stream_id,
-        discipline=lecture.subject or lecture.title,
+        discipline=discipline_value,
         lecturer_name=None,
-        course_text=None,
-        semester_text=None,
+        course_text=(body.course_text or "").strip() or None,
+        semester_text=(body.semester_text or "").strip() or None,
         lecture_number_text=(body.lecture_number_text or "").strip() or None,
         study_year_text=(body.study_year_text or "").strip() or None,
         comment=(body.comment or "").strip() or None,

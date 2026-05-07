@@ -103,6 +103,17 @@ interface DeleteDialogState {
   counts: Record<string, number>;
 }
 
+interface ConfirmDialogState {
+  title: string;
+  message: string;
+  onConfirm: () => void;
+}
+
+interface CatalogNoticeState {
+  type: 'error' | 'success';
+  message: string;
+}
+
 interface CatalogModerationSectionProps {
   isLightTheme: boolean;
 }
@@ -163,6 +174,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [processing, setProcessing] = useState(false);
   const [previewText, setPreviewText] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [moderationNotice, setModerationNotice] = useState<CatalogNoticeState | null>(null);
   const [materialRequests, setMaterialRequests] = useState<MaterialReqItem[]>([]);
   const [materialSelectedId, setMaterialSelectedId] = useState<string | null>(null);
   const [materialStatusFilter, setMaterialStatusFilter] = useState<string>('pending');
@@ -170,6 +182,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [materialReviewText, setMaterialReviewText] = useState<Record<string, string>>({});
   const [materialLoading, setMaterialLoading] = useState(false);
   const [materialProcessingById, setMaterialProcessingById] = useState<Record<string, boolean>>({});
+  const [materialNotice, setMaterialNotice] = useState<CatalogNoticeState | null>(null);
 
   const [faculties, setFaculties] = useState<LookupItem[]>([]);
   const [directions, setDirections] = useState<DirectionItem[]>([]);
@@ -204,6 +217,8 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [catalogSelectedId, setCatalogSelectedId] = useState<string | null>(null);
   const [catalogEdit, setCatalogEdit] = useState<Record<string, CatalogEditState>>({});
   const [catalogProcessing, setCatalogProcessing] = useState(false);
+  const [catalogNotice, setCatalogNotice] = useState<CatalogNoticeState | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
 
   const [bulkCourseName, setBulkCourseName] = useState('');
   const [bulkSemesterKey, setBulkSemesterKey] = useState('winter');
@@ -594,9 +609,18 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     const lecture_number_text = (lectureNumberText[id] || '').trim();
     const study_year_text = (studyYearText[id] || '').trim();
     const stream_id = (streamIdText[id] || '').trim();
-    if (action === 'approve' && !discipline) return alert('Для одобрения укажите дисциплину.');
-    if (action === 'approve' && !stream_id) return alert('Для одобрения нужно выбрать поток.');
-    if (action === 'reject' && !review_comment) return alert('Для отклонения нужно указать причину.');
+    if (action === 'approve' && !discipline) {
+      setModerationNotice({ type: 'error', message: 'Для одобрения укажите дисциплину.' });
+      return;
+    }
+    if (action === 'approve' && !stream_id) {
+      setModerationNotice({ type: 'error', message: 'Для одобрения нужно выбрать поток.' });
+      return;
+    }
+    if (action === 'reject' && !review_comment) {
+      setModerationNotice({ type: 'error', message: 'Для отклонения нужно указать причину.' });
+      return;
+    }
     setProcessing(true);
     try {
       const res = await fetch(`${API_BASE}/api/catalog/requests/${id}/${action}`, {
@@ -620,7 +644,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       }
       await loadRequests();
     } catch (e: any) {
-      alert(e.message);
+      setModerationNotice({ type: 'error', message: e.message || 'Ошибка модерации' });
     } finally {
       setProcessing(false);
     }
@@ -628,7 +652,10 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
 
   const moderateMaterialRequest = async (id: string, action: 'approve' | 'reject') => {
     const review_comment = (materialReviewText[id] || '').trim();
-    if (action === 'reject' && !review_comment) return alert('Для отклонения нужно указать причину.');
+    if (action === 'reject' && !review_comment) {
+      setMaterialNotice({ type: 'error', message: 'Для отклонения нужно указать причину.' });
+      return;
+    }
     setMaterialProcessingById(prev => ({ ...prev, [id]: true }));
     try {
       const res = await fetch(`${API_BASE}/api/catalog/material-requests/${id}/${action}`, {
@@ -643,7 +670,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       await loadMaterialRequests();
       window.dispatchEvent(new Event('catalog:refresh'));
     } catch (e: any) {
-      alert(e.message);
+      setMaterialNotice({ type: 'error', message: e.message || 'Ошибка обработки заявки на материал' });
     } finally {
       setMaterialProcessingById(prev => ({ ...prev, [id]: false }));
     }
@@ -773,7 +800,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       });
       return;
     }
-    alert(detail?.message || 'Не удалось удалить раздел каталога.');
+    setCatalogNotice({ type: 'error', message: detail?.message || 'Не удалось удалить раздел каталога.' });
   };
 
   const confirmDeleteFromDialog = async () => {
@@ -818,15 +845,15 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     if (canEditTitle) payload.lecture_title = edit.lecture_title.trim() || null;
 
     if (!payload.discipline) {
-      alert('Нужно указать дисциплину.');
+      setCatalogNotice({ type: 'error', message: 'Нужно указать дисциплину.' });
       return;
     }
     if (!payload.stream_id) {
-      alert('Нужно выбрать поток.');
+      setCatalogNotice({ type: 'error', message: 'Нужно выбрать поток.' });
       return;
     }
     if (canEditTitle && !payload.lecture_title) {
-      alert('Нужно указать название лекции.');
+      setCatalogNotice({ type: 'error', message: 'Нужно указать название лекции.' });
       return;
     }
 
@@ -844,15 +871,14 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       await loadCatalogItems();
       window.dispatchEvent(new Event('catalog:refresh'));
     } catch (e: any) {
-      alert(e.message || 'Не удалось сохранить запись');
+      setCatalogNotice({ type: 'error', message: e.message || 'Не удалось сохранить запись' });
     } finally {
       setCatalogProcessing(false);
     }
   };
 
-  const deleteCatalogItem = async () => {
+  const performDeleteCatalogItem = async () => {
     if (!catalogSelected) return;
-    if (!window.confirm('Удалить лекцию из базы? Лекция останется у владельца.')) return;
     setCatalogProcessing(true);
     try {
       const res = await fetch(`${API_BASE}/api/catalog/items/${catalogSelected.id}`, {
@@ -866,10 +892,22 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       await loadCatalogItems();
       window.dispatchEvent(new Event('catalog:refresh'));
     } catch (e: any) {
-      alert(e.message || 'Не удалось удалить запись');
+      setCatalogNotice({ type: 'error', message: e.message || 'Не удалось удалить запись' });
     } finally {
       setCatalogProcessing(false);
     }
+  };
+
+  const requestDeleteCatalogItem = () => {
+    if (!catalogSelected) return;
+    setConfirmDialog({
+      title: 'Подтвердите удаление',
+      message: 'Удалить лекцию из базы? Лекция останется у владельца.',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        void performDeleteCatalogItem();
+      },
+    });
   };
 
   const applyBulkUpdate = async (payload: Record<string, string | null>) => {
@@ -887,7 +925,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       await loadCatalogItems();
       window.dispatchEvent(new Event('catalog:refresh'));
     } catch (e: any) {
-      alert(e.message || 'Не удалось применить изменения');
+      setCatalogNotice({ type: 'error', message: e.message || 'Не удалось применить изменения' });
     } finally {
       setCatalogProcessing(false);
     }
@@ -896,7 +934,10 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const updateCourseNode = async () => {
     if (!activeStreamId || !activeCourseKey) return;
     const next = bulkCourseName.trim();
-    if (!next) return alert('Укажите новое название курса');
+    if (!next) {
+      setCatalogNotice({ type: 'error', message: 'Укажите новое название курса.' });
+      return;
+    }
     await applyBulkUpdate({
       stream_id: activeStreamId,
       course_text: activeCourseKey,
@@ -907,7 +948,10 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const updateSemesterNode = async () => {
     if (!activeStreamId || !activeCourseKey || !activeSemesterKey) return;
     const next = bulkSemesterKey.trim();
-    if (!next) return alert('Укажите новый семестр');
+    if (!next) {
+      setCatalogNotice({ type: 'error', message: 'Укажите новый семестр.' });
+      return;
+    }
     await applyBulkUpdate({
       stream_id: activeStreamId,
       course_text: activeCourseKey,
@@ -919,7 +963,10 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const updateDisciplineNode = async () => {
     if (!activeStreamId || !activeCourseKey || !activeSemesterKey || !activeDisciplineName) return;
     const next = bulkDisciplineName.trim();
-    if (!next) return alert('Укажите новое название дисциплины');
+    if (!next) {
+      setCatalogNotice({ type: 'error', message: 'Укажите новое название дисциплины.' });
+      return;
+    }
     await applyBulkUpdate({
       stream_id: activeStreamId,
       course_text: activeCourseKey,
@@ -932,7 +979,10 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const createDisciplineNode = async () => {
     if (!activeStreamId || !activeCourseKey || !activeSemesterKey) return;
     const name = newDisciplineName.trim();
-    if (!name) return alert('Укажите название дисциплины');
+    if (!name) {
+      setCatalogNotice({ type: 'error', message: 'Укажите название дисциплины.' });
+      return;
+    }
     setCatalogProcessing(true);
     try {
       const res = await fetch(`${API_BASE}/api/catalog/discipline-nodes`, {
@@ -953,20 +1003,17 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       await loadCatalogItems();
       window.dispatchEvent(new Event('catalog:refresh'));
     } catch (e: any) {
-      alert(e.message || 'Не удалось добавить дисциплину');
+      setCatalogNotice({ type: 'error', message: e.message || 'Не удалось добавить дисциплину' });
     } finally {
       setCatalogProcessing(false);
     }
   };
 
-  const deleteDisciplineNode = async () => {
+  const performDeleteDisciplineNode = async (nodeId: string) => {
     if (!activeStreamId || !activeCourseKey || !activeSemesterKey || !activeDisciplineName) return;
-    const node = catalogDisciplineNodes.find(n => n.stream_id === activeStreamId && n.course_text === activeCourseKey && n.semester_key === activeSemesterKey && n.name === activeDisciplineName);
-    if (!node) return alert('Дисциплина не найдена');
-    if (!window.confirm('Удалить дисциплину и все лекции внутри?')) return;
     setCatalogProcessing(true);
     try {
-      const res = await fetch(`${API_BASE}/api/catalog/discipline-nodes/${node.id}?force=true`, {
+      const res = await fetch(`${API_BASE}/api/catalog/discipline-nodes/${nodeId}?force=true`, {
         method: 'DELETE',
         headers,
       });
@@ -980,10 +1027,27 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       await loadCatalogItems();
       window.dispatchEvent(new Event('catalog:refresh'));
     } catch (e: any) {
-      alert(e.message || 'Не удалось удалить дисциплину');
+      setCatalogNotice({ type: 'error', message: e.message || 'Не удалось удалить дисциплину' });
     } finally {
       setCatalogProcessing(false);
     }
+  };
+
+  const requestDeleteDisciplineNode = () => {
+    if (!activeStreamId || !activeCourseKey || !activeSemesterKey || !activeDisciplineName) return;
+    const node = catalogDisciplineNodes.find(n => n.stream_id === activeStreamId && n.course_text === activeCourseKey && n.semester_key === activeSemesterKey && n.name === activeDisciplineName);
+    if (!node) {
+      setCatalogNotice({ type: 'error', message: 'Дисциплина не найдена.' });
+      return;
+    }
+    setConfirmDialog({
+      title: 'Подтвердите удаление',
+      message: 'Удалить дисциплину и все лекции внутри?',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        void performDeleteDisciplineNode(node.id);
+      },
+    });
   };
 
   return (
@@ -1024,6 +1088,12 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
         <section className="border rounded-xl p-4" style={surface}>
           {!selected ? <p className="text-sm" style={{ color: mutedColor }}>Выберите заявку слева.</p> : (
             <>
+              {moderationNotice && (
+                <div className="mb-3 rounded-lg border px-3 py-2 text-sm flex items-center justify-between gap-2" style={{ borderColor: moderationNotice.type === 'error' ? 'rgba(239,68,68,.5)' : 'rgba(34,197,94,.5)', background: 'var(--hover-bg)', color: headingColor }}>
+                  <span>{moderationNotice.message}</span>
+                  <button onClick={() => setModerationNotice(null)} className="text-xs px-2 py-1 rounded" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>Закрыть</button>
+                </div>
+              )}
               <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
                 <div>
                   <p className="text-xs mb-1" style={{ color: mutedColor }}>Название лекции</p>
@@ -1170,6 +1240,12 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
           <section className="border rounded-xl p-4" style={{ ...surface, background: 'var(--bg-primary)' }}>
             {!materialSelected ? <p className="text-sm" style={{ color: mutedColor }}>Выберите заявку слева.</p> : (
               <>
+                {materialNotice && (
+                  <div className="mb-3 rounded-lg border px-3 py-2 text-sm flex items-center justify-between gap-2" style={{ borderColor: materialNotice.type === 'error' ? 'rgba(239,68,68,.5)' : 'rgba(34,197,94,.5)', background: 'var(--hover-bg)', color: headingColor }}>
+                    <span>{materialNotice.message}</span>
+                    <button onClick={() => setMaterialNotice(null)} className="text-xs px-2 py-1 rounded" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>Закрыть</button>
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div>
                     <p className="text-sm font-medium" style={{ color: headingColor }}>{materialSelected.lecture_title}</p>
@@ -1338,6 +1414,13 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
               {activeDisciplineName && <><span>/</span><span>{activeDisciplineName}</span></>}
             </div>
 
+            {catalogNotice && (
+              <div className="mb-3 rounded-lg border px-3 py-2 text-sm flex items-center justify-between gap-2" style={{ borderColor: catalogNotice.type === 'error' ? 'rgba(239,68,68,.5)' : 'rgba(34,197,94,.5)', background: 'var(--hover-bg)', color: headingColor }}>
+                <span>{catalogNotice.message}</span>
+                <button onClick={() => setCatalogNotice(null)} className="text-xs px-2 py-1 rounded" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>Закрыть</button>
+              </div>
+            )}
+
             {activeNodeType === 'root' && user?.role === 'admin' && (
               <div className="flex gap-2">
                 <input value={newFacultyName} onChange={(e) => setNewFacultyName(e.target.value)} placeholder="Название факультета" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
@@ -1443,7 +1526,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                     <input value={bulkDisciplineName} onChange={(e) => setBulkDisciplineName(e.target.value)} placeholder="Новое название дисциплины" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                     <button onClick={updateDisciplineNode} disabled={catalogProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Применить</button>
                   </div>
-                  <button onClick={deleteDisciplineNode} disabled={catalogProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,.14)', color: '#ef4444' }}>Удалить дисциплину</button>
+                  <button onClick={requestDeleteDisciplineNode} disabled={catalogProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,.14)', color: '#ef4444' }}>Удалить дисциплину</button>
                 </div>
 
                 <div>
@@ -1479,7 +1562,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                       </div>
                       <div className="flex flex-wrap gap-2 mt-3">
                         <button disabled={catalogProcessing} onClick={saveCatalogItem} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#22c55e', color: '#fff' }}>Сохранить</button>
-                        <button disabled={catalogProcessing} onClick={deleteCatalogItem} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#ef4444', color: '#fff' }}>Удалить из базы</button>
+                        <button disabled={catalogProcessing} onClick={requestDeleteCatalogItem} className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60" style={{ background: '#ef4444', color: '#fff' }}>Удалить из базы</button>
                       </div>
                     </div>
                   );
@@ -1527,6 +1610,31 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                 disabled={deleteProcessing}
               >
                 {deleteProcessing ? 'Удаление...' : 'Удалить всё'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }}>
+          <div className="w-full max-w-md rounded-2xl border p-5" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+            <h3 className="text-lg font-medium mb-2" style={{ color: headingColor }}>{confirmDialog.title}</h3>
+            <p className="text-sm mb-4" style={{ color: mutedColor }}>{confirmDialog.message}</p>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="px-4 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--hover-bg)', color: 'var(--text-primary)' }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={confirmDialog.onConfirm}
+                className="px-4 py-2 rounded-lg text-sm"
+                style={{ background: '#ef4444', color: '#fff' }}
+              >
+                Да
               </button>
             </div>
           </div>
