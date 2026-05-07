@@ -4,6 +4,7 @@
 """
 
 import os
+import re
 import logging
 import asyncio
 from typing import Dict, Optional, List
@@ -18,6 +19,26 @@ load_dotenv()
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _normalize_math_delimiters(text: str) -> str:
+    """
+    Приводит все варианты LaTeX-делимитеров к стандарту $...$ / $$...$$,
+    который понимают Obsidian, KaTeX и большинство Markdown-рендереров.
+    """
+    # \[...\] (однострочный и многострочный) → $$...$$
+    text = re.sub(r'\\\[([\s\S]+?)\\\]', lambda m: f'$$\n{m.group(1).strip()}\n$$', text)
+    # \(...\) → $...$
+    text = re.sub(r'\\\((.+?)\\\)', lambda m: f'${m.group(1)}$', text)
+    # Голые [ и ] на отдельных строках вокруг LaTeX-содержимого → $$...$$
+    # Признак LaTeX внутри: есть \frac, ^, _, \cdot и другие команды
+    def _replace_bare_brackets(m: re.Match) -> str:
+        inner = m.group(1).strip()
+        if re.search(r'\\[a-zA-Z]+|[\^_]', inner):
+            return f'$$\n{inner}\n$$'
+        return m.group(0)
+    text = re.sub(r'(?m)^\[\s*\n([\s\S]+?)\n\s*\]$', _replace_bare_brackets, text)
+    return text
 
 
 class DeepSeekProcessor:
@@ -367,7 +388,7 @@ class DeepSeekProcessor:
                 system_prompt=PROMPTS['system'],
                 config=PROCESSING_CONFIGS['expand_topic']
             )
-            return result
+            return _normalize_math_delimiters(result)
         
         # Выбираем стратегию на основе конфига режима
         config = PROCESSING_CONFIGS.get(mode, PROCESSING_CONFIGS['summarize'])
@@ -384,7 +405,8 @@ class DeepSeekProcessor:
         else:
             logger.info(f"⚡ Используем простую генерацию (лимит ≤ 7000)")
             result = await self._simple_generation(text, mode)
-        
+
+        result = _normalize_math_delimiters(result)
         return result
     
     # Удобные методы для каждого режима
