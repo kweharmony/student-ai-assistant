@@ -270,6 +270,8 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       ]);
       if (semRes.ok) setCatalogSemesters(await semRes.json());
       if (discRes.ok) setCatalogDisciplineNodes(await discRes.json());
+    } finally {
+      // no-op
     }
   }, [headers]);
 
