@@ -310,13 +310,34 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     }
   };
 
-  // Открыть текст лекции прямо в редакторе (из раздела "Мои лекции")
   const markdownToHtml = (value: string): string => {
+    const escapeAttr = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Extract math BEFORE marked processes it to prevent <br> injection inside LaTeX
+    const mathStore: Array<{ type: 'block' | 'inline'; latex: string }> = [];
+    let text = value;
+
+    text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, latex) => {
+      mathStore.push({ type: 'block', latex });
+      return `MATHHOLDER_${mathStore.length - 1}_END`;
+    });
+    text = text.replace(/\$([^$]+?)\$/g, (_, latex) => {
+      mathStore.push({ type: 'inline', latex });
+      return `MATHHOLDER_${mathStore.length - 1}_END`;
+    });
+
     marked.setOptions({ breaks: true, gfm: true });
-    const html = marked(value) as string;
-    return html
-      .replace(/\$\$([\s\S]+?)\$\$/g, (_m, latex) => `<div data-type="block-math" data-latex="${latex.replace(/"/g, '&quot;')}"></div>`)
-      .replace(/\$([^$\n]+)\$/g, (_m, latex) => `<span data-type="inline-math" data-latex="${latex.replace(/"/g, '&quot;')}"></span>`);
+    let html = marked(text) as string;
+
+    html = html.replace(/MATHHOLDER_(\d+)_END/g, (_, idx) => {
+      const { type, latex } = mathStore[Number(idx)];
+      return type === 'block'
+        ? `<div data-type="block-math" data-latex="${escapeAttr(latex)}"></div>`
+        : `<span data-type="inline-math" data-latex="${escapeAttr(latex)}"></span>`;
+    });
+
+    return html;
   };
 
   const containsLatex = (value: string): boolean => {
