@@ -27,7 +27,8 @@ def _normalize_math_delimiters(text: str) -> str:
     который понимают Obsidian, KaTeX и большинство Markdown-рендереров.
     """
     # \[...\] (однострочный и многострочный) → $$...$$
-    text = re.sub(r'\\\[([\s\S]+?)\\\]', lambda m: f'$$\n{m.group(1).strip()}\n$$', text)
+    # (?<!\\) — не матчим \\[, это LaTeX-перенос строки с отступом (например \\[4pt])
+    text = re.sub(r'(?<!\\)\\\[([\s\S]+?)\\\]', lambda m: f'$$\n{m.group(1).strip()}\n$$', text)
     # \(...\) → $...$
     text = re.sub(r'\\\((.+?)\\\)', lambda m: f'${m.group(1)}$', text)
     # Голые [ и ] на отдельных строках вокруг LaTeX-содержимого → $$...$$

@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import 'katex/dist/katex.min.css';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
+import { safeMdParse } from '../../utils/markdownUtils';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -1157,7 +1156,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                       ref={previewRef}
                       className="prose-modal text-sm leading-relaxed"
                       style={{ color: 'var(--text-primary)', fontFamily: 'Georgia, serif' }}
-                      dangerouslySetInnerHTML={{ __html: mdParse(previewText) }}
+                      dangerouslySetInnerHTML={{ __html: safeMdParse(previewText) }}
                     />
                   ) : (
                     'Нажмите "Показать" для просмотра фрагмента.'

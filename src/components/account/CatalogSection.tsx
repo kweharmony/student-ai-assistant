@@ -6,8 +6,7 @@ import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { useAuth } from '../../contexts/AuthContext';
 import 'katex/dist/katex.min.css';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
+import { safeMdParse } from '../../utils/markdownUtils';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 type Semester = 'winter' | 'spring';
@@ -1818,7 +1817,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
               ref={noteTextContainerRef}
               className="max-h-[60vh] overflow-y-auto prose-modal text-sm leading-relaxed p-3 rounded-lg border"
               style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-              dangerouslySetInnerHTML={{ __html: mdParse(noteTextContent || '') }}
+              dangerouslySetInnerHTML={{ __html: safeMdParse(noteTextContent || '') }}
             >
             </div>
             <div className="mt-3 flex gap-2">

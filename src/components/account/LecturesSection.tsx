@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import 'katex/dist/katex.min.css';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
+import { safeMdParse } from '../../utils/markdownUtils';
 
 (pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || {};
 
@@ -254,7 +255,7 @@ const TextModal: React.FC<{
               ref={textContainerRef}
               className="prose-modal text-sm leading-relaxed"
               style={{ color: isLightTheme ? '#4b2d2f' : '#f3e7d8', fontFamily: 'Georgia, serif' }}
-              dangerouslySetInnerHTML={{ __html: mdParse(text ?? '') }}
+              dangerouslySetInnerHTML={{ __html: safeMdParse(text ?? '') }}
             />
           )}
         </div>
@@ -398,7 +399,7 @@ const NoteModal: React.FC<{
               ref={contentContainerRef}
               className="prose-modal text-sm leading-relaxed"
               style={{ color: isLightTheme ? '#4b2d2f' : '#f3e7d8', fontFamily: 'Georgia, serif' }}
-              dangerouslySetInnerHTML={{ __html: mdParse(content ?? '') }}
+              dangerouslySetInnerHTML={{ __html: safeMdParse(content ?? '') }}
             />
           )}
         </div>
