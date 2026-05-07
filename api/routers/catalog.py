@@ -149,7 +149,7 @@ async def _ensure_catalog_semesters(db: AsyncSession, stream_id: UUID, course_te
     if not normalized:
         return
 
-        existing_result = await db.execute(
+    existing_result = await db.execute(
         select(CatalogSemester.semester_key).where(
             CatalogSemester.stream_id == stream_id,
             CatalogSemester.course_text == normalized,
@@ -186,7 +186,8 @@ async def _ensure_catalog_discipline_node(
     )
     if existing.scalar_one_or_none() is not None:
         return
-        db.add(
+
+    db.add(
         CatalogDisciplineNode(
             stream_id=stream_id,
             course_text=course,
