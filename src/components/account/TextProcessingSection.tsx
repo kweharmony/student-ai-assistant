@@ -6,6 +6,7 @@ import { useMLProcessor } from '../../hooks/useMLProcessor';
 import { useAuth } from '../../contexts/AuthContext';
 import { MLMode, MLModeInfo } from '../../types/ml';
 import { marked } from 'marked';
+import { fixBrokenFormulas } from '../../utils/markdownUtils';
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse');
 
@@ -232,85 +233,70 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     cancelProcessing
   } = useMLProcessor();
 
-  // Исправляет два типа сломанных формул из AI-вывода:
-  // Тип 1: $$P_m$\tau$ = \frac{$x$}{m}$$ — $...$ внутри $$...$$
-  // Тип 2: P_m$\tau$ = \frac{$x$^m}{m!} e^{-x} — нет внешних $$, но внутри есть
-  //         $...$ фрагменты перемешанные с raw LaTeX (\frac, \lambda и т.д.)
-  const fixBrokenFormulas = (markdown: string): string => {
-    // Тип 1: стрипаем $...$ внутри $$...$$
-    let result = markdown.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner) => {
-      const fixed = inner.replace(/\$([^$\n]+?)\$/g, '$1');
-      return `$$${fixed}$$`;
-    });
-
-    // Тип 2: строки с $...$ фрагментами + raw LaTeX снаружи → весь блок в $$...$$
-    // Ключевой тест: после удаления $...$ фрагментов в остатке есть LaTeX-команды (\cmd)
-    // Это отличает сломанную формулу от нормального текста с инлайн-формулой:
-    //   СЛОМАНО: "P_m$\tau$ = \frac{$x$^m}{m!}" → после стрипа: "P_m = \frac{^m}{m!}" → есть \frac
-    //   НОРМАЛЬНО: "Формула $f(x) = \frac{x}{2}$ для x" → после стрипа: "Формула  для x" → нет \cmd
-    result = result.split('\n').map(line => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('$$') || !trimmed.includes('$')) return line;
-
-      const hasInlineDollar = /\$[^$\n]+\$/.test(trimmed);
-      if (!hasInlineDollar) return line;
-
-      // Что останется после удаления всех $...$ фрагментов
-      const afterStrip = trimmed.replace(/\$([^$\n]+?)\$/g, '$1');
-      const hasLatexOutside = /\\[a-zA-Z]+/.test(afterStrip);
-
-      if (hasLatexOutside) {
-        // Строим исправленную формулу: убираем $...$ делимитеры со всей строки
-        const fixed = trimmed.replace(/\$([^$\n]+?)\$/g, '$1');
-        return `$$${fixed}$$`;
-      }
-      return line;
-    }).join('\n');
-
-    return result;
-  };
-
   // Конвертация Markdown в HTML с сохранением форматирования
   const convertMarkdownToHTML = (markdown: string): string => {
     if (!markdown) return '';
 
-    // Шаг 1: Вырезаем блочные формулы $$...$$ до того, как marked их увидит.
-    // Это предотвращает конфликт $ с парсингом таблиц и параграфов.
     const blockFormulas: string[] = [];
-    const withPlaceholders = markdown.replace(/\$\$([\s\S]+?)\$\$/g, (_, latex) => {
+    const inlineFormulas: string[] = [];
+
+    // Шаг 1: Вырезаем блочные $$...$$ формулы — плейсхолдеры без подчёркиваний,
+    // чтобы marked не интерпретировал их как курсив.
+    let text = markdown.replace(/\$\$([\s\S]+?)\$\$/g, (_, latex) => {
       const idx = blockFormulas.length;
       blockFormulas.push(latex.trim());
-      return `\n\nBLOCKMATH_${idx}_END\n\n`;
+      return `\n\nBLOCKMATHPH${idx}END\n\n`;
     });
 
-    // Шаг 2: Конвертируем Markdown в HTML.
-    // marked(src, options) — прямой вызов функции, совместим со всеми версиями.
-    const html = marked(withPlaceholders, { breaks: true }) as string;
+    // Шаг 2: Вырезаем инлайн $...$ формулы — это ключевое исправление: без этого
+    // marked может испортить LaTeX-содержимое (звёздочки, подчёркивания и т.д.).
+    text = text.replace(/\$([^$\n]+?)\$/g, (_, latex) => {
+      const idx = inlineFormulas.length;
+      inlineFormulas.push(latex);
+      return `INLINEMATHPH${idx}END`;
+    });
 
-    // Шаг 3: Восстанавливаем блочные формулы как data-latex элементы.
+    // Шаг 3: Конвертируем Markdown в HTML.
+    let html = marked(text, { breaks: true }) as string;
+
+    // Шаг 4: Восстанавливаем блочные формулы как data-latex элементы.
     // useEffect в RichTextEditor находит [data-type="block-math"] и рендерит через KaTeX.
-    return html.replace(/BLOCKMATH_(\d+)_END/g, (_, idxStr) => {
+    html = html.replace(/BLOCKMATHPH(\d+)END/g, (_, idxStr) => {
       const latex = blockFormulas[parseInt(idxStr)].replace(/"/g, '&quot;');
       return `<div data-type="block-math" data-latex="${latex}" class="math-block"></div>`;
     });
+
+    // Шаг 5: Восстанавливаем инлайн формулы как data-latex span-элементы.
+    // TipTap парсит их через InlineMath.parseHTML, preview рендерит через KaTeX useEffect.
+    html = html.replace(/INLINEMATHPH(\d+)END/g, (_, idxStr) => {
+      const latex = inlineFormulas[parseInt(idxStr)].replace(/"/g, '&quot;');
+      return `<span data-type="inline-math" data-latex="${latex}"></span>`;
+    });
+
+    return html;
   };
 
   // Умная обработка текста - определяет, содержит ли текст Markdown синтаксис
   const processTextContent = (text: string, filename: string): string => {
+    // Сначала исправляем сломанные формулы из AI-вывода (типы 1 и 2)
+    const fixed = fixBrokenFormulas(text);
+
     // Если это MD файл, всегда конвертируем как Markdown
     if (filename.toLowerCase().endsWith('.md')) {
-      return convertMarkdownToHTML(text);
+      return convertMarkdownToHTML(fixed);
     }
 
-    // Проверяем, содержит ли текст Markdown синтаксис
-    const hasMarkdownSyntax = /^#{1,6}\s|^\*\*|^\*[^*]|^- |^\d+\. |^```|^> |^\|/.test(text.split('\n').join('\n'));
+    // Проверяем, содержит ли текст Markdown синтаксис.
+    // Флаг /m необходим: без него ^ совпадает только с началом ВСЕЙ строки,
+    // а не с началом каждой строки — текст без заголовка в первой строке
+    // ошибочно определялся как plain text и формулы не рендерились.
+    // Также проверяем $$ — после fixBrokenFormulas в тексте могут появиться формулы.
+    const hasMarkdownSyntax = /^#{1,6}\s|^\*\*|^\*[^*]|^- |^\d+\. |^```|^> |^\||\$\$/m.test(fixed);
 
     if (hasMarkdownSyntax) {
-      // Если содержит Markdown синтаксис, конвертируем как Markdown
-      return convertMarkdownToHTML(text);
+      return convertMarkdownToHTML(fixed);
     } else {
-      // Иначе обрабатываем как обычный текст
-      return text
+      return fixed
         .split('\n')
         .map(line => line.trim() === '' ? '<br>' : `<p>${line}</p>`)
         .join('');
