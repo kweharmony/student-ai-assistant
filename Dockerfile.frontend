@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Копируем package.json и lock-файл для кэширования npm ci
 COPY package.json package-lock.json* ./
-RUN npm install --silent
+RUN npm install --silent --legacy-peer-deps
 
 # Копируем исходники и собираем
 COPY public/ ./public/
