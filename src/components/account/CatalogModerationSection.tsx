@@ -852,7 +852,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
 
   const deleteCatalogItem = async () => {
     if (!catalogSelected) return;
-    if (!confirm('Удалить лекцию из базы? Лекция останется у владельца.')) return;
+    if (!window.confirm('Удалить лекцию из базы? Лекция останется у владельца.')) return;
     setCatalogProcessing(true);
     try {
       const res = await fetch(`${API_BASE}/api/catalog/items/${catalogSelected.id}`, {
@@ -963,7 +963,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     if (!activeStreamId || !activeCourseKey || !activeSemesterKey || !activeDisciplineName) return;
     const node = catalogDisciplineNodes.find(n => n.stream_id === activeStreamId && n.course_text === activeCourseKey && n.semester_key === activeSemesterKey && n.name === activeDisciplineName);
     if (!node) return alert('Дисциплина не найдена');
-    if (!confirm('Удалить дисциплину и все лекции внутри?')) return;
+    if (!window.confirm('Удалить дисциплину и все лекции внутри?')) return;
     setCatalogProcessing(true);
     try {
       const res = await fetch(`${API_BASE}/api/catalog/discipline-nodes/${node.id}?force=true`, {
