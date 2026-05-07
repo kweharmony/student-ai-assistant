@@ -42,6 +42,8 @@ interface MaterialReqItem {
   status: 'pending' | 'processing' | 'approved' | 'rejected' | 'failed';
   review_comment: string | null;
   generation_error?: string | null;
+  is_regeneration?: boolean;
+  regeneration_reason?: string | null;
   requested_by_login: string;
   created_at: string;
 }
@@ -1251,11 +1253,16 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                     <p className="text-sm font-medium truncate" style={{ color: headingColor }}>{req.lecture_title}</p>
                     <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: `${statusColor[req.status]}22`, color: statusColor[req.status] }}>{statusLabel[req.status]}</span>
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <p className="text-xs truncate" style={{ color: mutedColor }}>{materialModeLabels[req.mode] || req.mode}</p>
                     {req.mode === 'ai_filter' && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(59,130,246,0.14)', color: '#3b82f6' }}>
                         AI
+                      </span>
+                    )}
+                    {req.is_regeneration && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.16)', color: '#d97706' }}>
+                        Перегенерация
                       </span>
                     )}
                   </div>
@@ -1287,6 +1294,18 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                       <p className="text-xs mt-1" style={{ color: '#3b82f6' }}>
                         Это заявка на ИИ-фильтрацию текста лекции.
                       </p>
+                    )}
+                    {materialSelected.is_regeneration && (
+                      <div className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: 'rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.07)' }}>
+                        <p className="text-xs font-medium mb-0.5" style={{ color: '#d97706' }}>Заявка на перегенерацию</p>
+                        {materialSelected.regeneration_reason ? (
+                          <p className="text-xs" style={{ color: 'var(--text-primary)' }}>
+                            Причина: {materialSelected.regeneration_reason}
+                          </p>
+                        ) : (
+                          <p className="text-xs" style={{ color: mutedColor }}>Причина не указана.</p>
+                        )}
+                      </div>
                     )}
                     <p className="text-xs mt-1" style={{ color: mutedColor }}>
                       Автор заявки: {materialSelected.requested_by_login}

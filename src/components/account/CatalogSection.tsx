@@ -70,6 +70,8 @@ interface MaterialRequestInfo {
   status: 'pending' | 'processing' | 'approved' | 'rejected' | 'failed';
   review_comment: string | null;
   generation_error?: string | null;
+  is_regeneration?: boolean;
+  regeneration_reason?: string | null;
   created_at: string;
 }
 interface LectureDetail {
@@ -209,6 +211,10 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
   const [requestModal, setRequestModal] = useState<{ lecture: CatalogItem; modeId: string; modeLabel: string } | null>(null);
   const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [requestModalError, setRequestModalError] = useState('');
+  const [regenModal, setRegenModal] = useState<{ lecture: CatalogItem; modeId: string; modeLabel: string } | null>(null);
+  const [regenReason, setRegenReason] = useState('');
+  const [regenSubmitting, setRegenSubmitting] = useState(false);
+  const [regenModalError, setRegenModalError] = useState('');
   const [showAiFilterHelp, setShowAiFilterHelp] = useState(false);
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const [downloadingFormat, setDownloadingFormat] = useState<ExportFormatId | null>(null);
@@ -777,6 +783,43 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
       window.dispatchEvent(new Event('catalog:refresh'));
     } finally {
       setRequestSubmitting(false);
+    }
+  };
+
+  const submitRegenRequest = async () => {
+    if (!regenModal) return;
+    if (!regenReason.trim()) {
+      setRegenModalError('Укажите причину перегенерации.');
+      return;
+    }
+    setRegenSubmitting(true);
+    setRegenModalError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/catalog/material-requests`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lecture_id: regenModal.lecture.lecture_id,
+          stream_id: regenModal.lecture.stream_id,
+          mode: regenModal.modeId,
+          regenerate: true,
+          regeneration_reason: regenReason.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setRegenModalError(parseApiErrorMessage(err));
+        return;
+      }
+      const reqRes = await fetch(`${API_BASE}/api/catalog/material-requests/lecture?lecture_id=${regenModal.lecture.lecture_id}`, { headers });
+      if (reqRes.ok) {
+        const reqs = await reqRes.json();
+        setMaterialRequestsByLecture((prev) => ({ ...prev, [regenModal.lecture.lecture_id]: reqs }));
+      }
+      setRegenModal(null);
+      setRegenReason('');
+    } finally {
+      setRegenSubmitting(false);
     }
   };
 
@@ -1581,6 +1624,60 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
         </div>
       )}
 
+      {regenModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          onClick={() => setRegenModal(null)}
+        >
+          <div
+            className="rounded-2xl p-5 w-full max-w-lg"
+            style={{ background: isLightTheme ? 'rgba(255,255,240,.98)' : 'rgba(33,24,25,.97)', border: cardBorder }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 className="text-base font-medium mb-2" style={{ color: headingColor }}>
+              Заявка на перегенерацию
+            </h4>
+            <p className="text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
+              Режим: <span style={{ color: headingColor }}>«{regenModal.modeLabel}»</span>
+            </p>
+            <p className="text-sm mb-3" style={{ color: mutedColor }}>
+              Лекция: «{regenModal.lecture.lecture_title}»
+            </p>
+            <textarea
+              value={regenReason}
+              onChange={(e) => setRegenReason(e.target.value)}
+              placeholder="Укажите причину перегенерации (обязательно)"
+              className="w-full px-3 py-2 rounded-lg border text-sm mb-3"
+              style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', resize: 'vertical' }}
+              rows={4}
+              maxLength={500}
+            />
+            {regenModalError && (
+              <p className="text-sm mb-3" style={{ color: '#ef4444' }}>{regenModalError}</p>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setRegenModal(null)}
+                className="px-3 py-2 rounded-lg text-sm border"
+                style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                disabled={regenSubmitting}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={submitRegenRequest}
+                className="px-3 py-2 rounded-lg text-sm"
+                style={{ background: '#d97706', color: '#fff' }}
+                disabled={regenSubmitting || !regenReason.trim()}
+              >
+                {regenSubmitting ? 'Отправка...' : 'Отправить заявку'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {noteActionMenu && (
         <div
           className="fixed inset-0 z-50"
@@ -1637,6 +1734,28 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
                   <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
                   Скачать
                 </button>
+                {selectedLecture && (() => {
+                  const modeObj = NOTE_MODES.find((m) => m.label === noteActionMenu.title);
+                  if (!modeObj) return null;
+                  const latestReq = selectedLectureModeState?.requestMap.get(modeObj.id);
+                  const hasPendingRegen = latestReq?.is_regeneration && (latestReq.status === 'pending' || latestReq.status === 'processing');
+                  return (
+                    <button
+                      onClick={() => {
+                        setNoteActionMenu(null);
+                        setRegenReason('');
+                        setRegenModalError('');
+                        setRegenModal({ lecture: selectedLecture, modeId: modeObj.id, modeLabel: modeObj.label });
+                      }}
+                      disabled={hasPendingRegen}
+                      className="w-full px-3 py-2 rounded-lg border text-left flex items-center gap-2 text-sm disabled:opacity-50"
+                      style={{ borderColor: 'rgba(245,158,11,0.4)', color: '#d97706', background: 'rgba(245,158,11,0.06)' }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>refresh</span>
+                      {hasPendingRegen ? 'Заявка на перегенерацию отправлена' : 'Перегенерировать'}
+                    </button>
+                  );
+                })()}
               </div>
             ) : (
               <div>

@@ -386,6 +386,7 @@ class MaterialGenerationRequestCreateIn(BaseModel):
     stream_id: UUID
     mode: str = Field(..., min_length=1, max_length=50)
     regenerate: bool = False
+    regeneration_reason: Optional[str] = Field(None, max_length=500)
 
 
 class MaterialGenerationRequestModerateIn(BaseModel):
@@ -411,6 +412,8 @@ class MaterialGenerationRequestOut(BaseModel):
     reviewed_by: Optional[UUID] = None
     reviewed_by_login: Optional[str] = None
     reviewed_at: Optional[datetime] = None
+    is_regeneration: bool = False
+    regeneration_reason: Optional[str] = None
     created_at: datetime
 
 

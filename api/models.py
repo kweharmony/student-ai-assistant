@@ -501,6 +501,8 @@ class LectureMaterialGenerationRequest(Base):
     generation_error = Column(String(500), nullable=True)
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
+    is_regeneration = Column(Boolean, nullable=False, default=False)
+    regeneration_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=_now, nullable=False)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
 

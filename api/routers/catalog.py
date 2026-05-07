@@ -1336,6 +1336,8 @@ async def _material_request_out(db: AsyncSession, req: LectureMaterialGeneration
         reviewed_by=req.reviewed_by,
         reviewed_by_login=reviewer_login,
         reviewed_at=req.reviewed_at,
+        is_regeneration=bool(req.is_regeneration),
+        regeneration_reason=req.regeneration_reason,
         created_at=req.created_at,
     )
 
@@ -1454,6 +1456,8 @@ async def create_material_generation_request(
         status=MaterialGenerationRequestStatus.pending,
         generation_status="idle",
         generation_error=None,
+        is_regeneration=body.regenerate,
+        regeneration_reason=body.regeneration_reason if body.regenerate else None,
     )
     db.add(req)
     await db.commit()
