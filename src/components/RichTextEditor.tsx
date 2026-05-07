@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { Node, mergeAttributes, nodeInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import HardBreak from '@tiptap/extension-hard-break';
 import CodeBlock from '@tiptap/extension-code-block';
+import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import './RichTextEditor.css';
 
@@ -42,6 +44,110 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     codeBlock: false,
   });
 
+  const [showProcessedPreview, setShowProcessedPreview] = useState(true);
+  const katexRef = useRef<HTMLDivElement>(null);
+
+  const InlineMath = Node.create({
+    name: 'inlineMath',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    addAttributes() {
+      return {
+        latex: {
+          default: '',
+          parseHTML: (element) => element.getAttribute('data-latex') || '',
+        },
+      };
+    },
+    parseHTML() {
+      return [{ tag: 'span[data-type="inline-math"]' }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return [
+        'span',
+        mergeAttributes(HTMLAttributes, {
+          'data-type': 'inline-math',
+          'data-latex': HTMLAttributes.latex || '',
+        }),
+        `\\(${HTMLAttributes.latex || ''}\\)`
+      ];
+    },
+    addNodeView() {
+      return ({ node }) => {
+        const dom = document.createElement('span');
+        dom.setAttribute('data-type', 'inline-math');
+        dom.setAttribute('data-latex', node.attrs.latex || '');
+        try {
+          katex.render(node.attrs.latex || '', dom, { throwOnError: false });
+        } catch {
+          dom.textContent = `\\(${node.attrs.latex || ''}\\)`;
+        }
+        return { dom };
+      };
+    },
+    addInputRules() {
+      return [
+        nodeInputRule({
+          find: /\$([^$\n]+)\$/,
+          type: this.type,
+          getAttributes: match => ({ latex: match[1] }),
+        }),
+      ];
+    },
+  });
+
+  const BlockMath = Node.create({
+    name: 'blockMath',
+    group: 'block',
+    atom: true,
+    isolating: true,
+    addAttributes() {
+      return {
+        latex: {
+          default: '',
+          parseHTML: (element) => element.getAttribute('data-latex') || '',
+        },
+      };
+    },
+    parseHTML() {
+      return [{ tag: 'div[data-type="block-math"]' }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return [
+        'div',
+        mergeAttributes(HTMLAttributes, {
+          'data-type': 'block-math',
+          'data-latex': HTMLAttributes.latex || '',
+        }),
+        `\\[${HTMLAttributes.latex || ''}\\]`
+      ];
+    },
+    addNodeView() {
+      return ({ node }) => {
+        const dom = document.createElement('div');
+        dom.setAttribute('data-type', 'block-math');
+        dom.setAttribute('data-latex', node.attrs.latex || '');
+        dom.className = 'math-block';
+        try {
+          katex.render(node.attrs.latex || '', dom, { throwOnError: false, displayMode: true });
+        } catch {
+          dom.textContent = `\\[${node.attrs.latex || ''}\\]`;
+        }
+        return { dom };
+      };
+    },
+    addInputRules() {
+      return [
+        nodeInputRule({
+          find: /\$\$([\s\S]+?)\$\$/,
+          type: this.type,
+          getAttributes: match => ({ latex: match[1] }),
+        }),
+      ];
+    },
+  });
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -58,6 +164,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       }),
       HardBreak,
       CodeBlock,
+      InlineMath,
+      BlockMath,
     ],
     content: initialContent,
     editorProps: {
@@ -72,21 +180,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       
       // Обновляем активные форматы при изменении контента
       updateActiveFormats(editor);
-
-      if (currentMode === 'processed' && editor?.view?.dom) {
-        import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
-          if (!editor?.view?.dom) return;
-          renderMathInElement(editor.view.dom, {
-            delimiters: [
-              { left: '$$', right: '$$', display: true },
-              { left: '$', right: '$', display: false },
-              { left: '\\[', right: '\\]', display: true },
-              { left: '\\(', right: '\\)', display: false },
-            ],
-            throwOnError: false,
-          });
-        });
-      }
     },
     onSelectionUpdate: ({ editor }) => {
       // Обновляем активные форматы при изменении позиции курсора
@@ -99,12 +192,25 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     },
   });
 
-  // Рендеринг LaTeX-формул прямо в редакторе (в обработанном режиме)
+  // Рендеринг LaTeX-формул в режиме просмотра обработанного текста
   useEffect(() => {
-    if (currentMode !== 'processed' || !editor?.view?.dom) return;
+    if (currentMode !== 'processed' || !showProcessedPreview || !katexRef.current) return;
+    const container = katexRef.current;
+
+    // Render data-type spans/divs produced by markdownToHtml
+    container.querySelectorAll<HTMLElement>('[data-type="inline-math"]').forEach((el) => {
+      const latex = el.getAttribute('data-latex') || '';
+      try { katex.render(latex, el, { throwOnError: false }); } catch {}
+    });
+    container.querySelectorAll<HTMLElement>('[data-type="block-math"]').forEach((el) => {
+      const latex = el.getAttribute('data-latex') || '';
+      try { katex.render(latex, el, { throwOnError: false, displayMode: true }); } catch {}
+    });
+
+    // Also handle raw $...$ / \(...\) delimiters present in plain text
     import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
-      if (!editor?.view?.dom) return;
-      renderMathInElement(editor.view.dom, {
+      if (!katexRef.current) return;
+      renderMathInElement(katexRef.current, {
         delimiters: [
           { left: '$$', right: '$$', display: true },
           { left: '$', right: '$', display: false },
@@ -114,7 +220,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         throwOnError: false,
       });
     });
-  }, [currentMode, editor, processedText]);
+  }, [currentMode, processedText, showProcessedPreview]);
 
   // Функция для обновления активных форматов
   const updateActiveFormats = (editor: any) => {
@@ -220,6 +326,19 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           >
             {isProcessing ? 'Обрабатывается...' : 'Обработанный текст'}
           </button>
+          {currentMode === 'processed' && (
+            <button
+              onClick={() => setShowProcessedPreview(prev => !prev)}
+              className="px-4 py-2 rounded-lg border-2 font-medium transition-all duration-200 hover:-translate-y-1"
+              style={{
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-primary)',
+                background: 'var(--hover-bg)'
+              }}
+            >
+              {showProcessedPreview ? 'Редактировать' : 'Просмотр формул'}
+            </button>
+          )}
         </div>
       )}
 
@@ -236,18 +355,33 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
               maxHeight: '100%'
             }}
           >
-            <EditorContent
-              editor={editor}
-              style={{
-                color: 'var(--text-primary)',
-                lineHeight: '1.4',
-                fontFamily: 'Georgia, Times New Roman, serif',
-                outline: 'none',
-                whiteSpace: 'pre-wrap',
-                fontSize: '16px',
-                width: '100%'
-              }}
-            />
+            {currentMode === 'processed' && showProcessedPreview ? (
+              <div
+                ref={katexRef}
+                className="prose max-w-none"
+                style={{
+                  color: 'var(--text-primary)',
+                  lineHeight: '1.6',
+                  fontFamily: 'Georgia, Times New Roman, serif',
+                  fontSize: '16px',
+                  width: '100%'
+                }}
+                dangerouslySetInnerHTML={{ __html: processedText || '' }}
+              />
+            ) : (
+              <EditorContent
+                editor={editor}
+                style={{
+                  color: 'var(--text-primary)',
+                  lineHeight: '1.4',
+                  fontFamily: 'Georgia, Times New Roman, serif',
+                  outline: 'none',
+                  whiteSpace: 'pre-wrap',
+                  fontSize: '16px',
+                  width: '100%'
+                }}
+              />
+            )}
           </div>
         </div>
 

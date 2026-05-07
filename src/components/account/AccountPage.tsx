@@ -313,7 +313,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   // Открыть текст лекции прямо в редакторе (из раздела "Мои лекции")
   const markdownToHtml = (value: string): string => {
     marked.setOptions({ breaks: true, gfm: true });
-    return marked(value) as string;
+    const html = marked(value) as string;
+    return html
+      .replace(/\$\$([\s\S]+?)\$\$/g, (_m, latex) => `<div data-type="block-math" data-latex="${latex.replace(/"/g, '&quot;')}"></div>`)
+      .replace(/\$([^$\n]+)\$/g, (_m, latex) => `<span data-type="inline-math" data-latex="${latex.replace(/"/g, '&quot;')}"></span>`);
   };
 
   const containsLatex = (value: string): boolean => {
@@ -329,22 +332,15 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const handleOpenInEditor = (text: string, lectureId: string, lectureTitle?: string) => {
     setCurrentLectureId(lectureId);
     setCurrentLectureTitle(lectureTitle || null);
-    const normalized = normalizeEditorText(text);
-    const openAsProcessed = containsLatex(normalized);
-    const isHtml = /<[^>]+>/.test(text);
-    const html = openAsProcessed ? (isHtml ? text : markdownToHtml(text)) : text;
+    const isHtml = /<[a-zA-Z][^>]*>/.test(text);
+    const html = isHtml ? text : markdownToHtml(text);
     if (editorInstance) {
       editorInstance.commands.setContent(html);
     }
     setEditorContent(html);
-    if (openAsProcessed) {
-      setProcessedText(html);
-      setOriginalText('');
-      setEditorMode('processed');
-    } else {
-      setOriginalText(html);
-      setEditorMode('original');
-    }
+    setOriginalText(html);
+    setProcessedText('');
+    setEditorMode('original');
     setActiveSection('text-processing');
     setShowTextEditor(true);
   };

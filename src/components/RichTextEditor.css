@@ -200,6 +200,12 @@
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
+/* Math nodes */
+.math-block {
+  margin: 12px 0;
+  padding: 6px 0;
+}
+
 /* Blockquotes */
 .ProseMirror blockquote {
   border-left: 4px solid #dfe2e5;
