@@ -29,25 +29,22 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   onModeChange,
   isProcessing = false
 }) => {
-  // Состояние для отслеживания активных форматов
-  const katexRef = useRef<HTMLDivElement>(null);
-
-  // Рендеринг LaTeX-формул в режиме обработанного текста
+  // Рендеринг LaTeX-формул прямо в редакторе (в обработанном режиме)
   useEffect(() => {
-    if (currentMode === 'processed' && katexRef.current) {
-      import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
-        renderMathInElement(katexRef.current!, {
-          delimiters: [
-            { left: '$$', right: '$$', display: true },
-            { left: '$', right: '$', display: false },
-            { left: '\\[', right: '\\]', display: true },
-            { left: '\\(', right: '\\)', display: false },
-          ],
-          throwOnError: false,
-        });
+    if (currentMode !== 'processed' || !editor?.view?.dom) return;
+    import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
+      if (!editor?.view?.dom) return;
+      renderMathInElement(editor.view.dom, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\[', right: '\\]', display: true },
+          { left: '\\(', right: '\\)', display: false },
+        ],
+        throwOnError: false,
       });
-    }
-  }, [currentMode, processedText]);
+    });
+  }, [currentMode, editor, processedText]);
 
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
@@ -92,6 +89,21 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       
       // Обновляем активные форматы при изменении контента
       updateActiveFormats(editor);
+
+      if (currentMode === 'processed' && editor?.view?.dom) {
+        import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
+          if (!editor?.view?.dom) return;
+          renderMathInElement(editor.view.dom, {
+            delimiters: [
+              { left: '$$', right: '$$', display: true },
+              { left: '$', right: '$', display: false },
+              { left: '\\[', right: '\\]', display: true },
+              { left: '\\(', right: '\\)', display: false },
+            ],
+            throwOnError: false,
+          });
+        });
+      }
     },
     onSelectionUpdate: ({ editor }) => {
       // Обновляем активные форматы при изменении позиции курсора
@@ -224,34 +236,18 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
               maxHeight: '100%'
             }}
           >
-            {showModeSwitcher && currentMode === 'processed' ? (
-              /* Режим обработанного текста: read-only div с KaTeX-рендерингом */
-              <div
-                ref={katexRef}
-                className="prose max-w-none"
-                style={{
-                  color: 'var(--text-primary)',
-                  lineHeight: '1.6',
-                  fontFamily: 'Georgia, Times New Roman, serif',
-                  fontSize: '16px',
-                  width: '100%',
-                }}
-                dangerouslySetInnerHTML={{ __html: processedText || '' }}
-              />
-            ) : (
-              <EditorContent
-                editor={editor}
-                style={{
-                  color: 'var(--text-primary)',
-                  lineHeight: '1.4',
-                  fontFamily: 'Georgia, Times New Roman, serif',
-                  outline: 'none',
-                  whiteSpace: 'pre-wrap',
-                  fontSize: '16px',
-                  width: '100%'
-                }}
-              />
-            )}
+            <EditorContent
+              editor={editor}
+              style={{
+                color: 'var(--text-primary)',
+                lineHeight: '1.4',
+                fontFamily: 'Georgia, Times New Roman, serif',
+                outline: 'none',
+                whiteSpace: 'pre-wrap',
+                fontSize: '16px',
+                width: '100%'
+              }}
+            />
           </div>
         </div>
 

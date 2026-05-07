@@ -357,7 +357,7 @@ const NoteModal: React.FC<{
         {/* Actions */}
         <div className="flex flex-wrap gap-2 px-5 pt-4 shrink-0">
           <button
-            onClick={() => content && onOpenInEditor(mdParse(content))}
+            onClick={() => content && onOpenInEditor(content)}
             disabled={!content}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
             style={{ background: btnBg, color: btnColor }}
@@ -1502,7 +1502,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                 </button>
                 <button
                   onClick={() => {
-                    onOpenInEditor(mdParse(noteActionMenu.content), noteActionMenu.lecture.id, noteActionMenu.lecture.title);
+                    onOpenInEditor(noteActionMenu.content, noteActionMenu.lecture.id, noteActionMenu.lecture.title);
                     closeNoteActionMenu();
                   }}
                   className="w-full px-3 py-2 rounded-lg border text-left flex items-center gap-2 text-sm"
