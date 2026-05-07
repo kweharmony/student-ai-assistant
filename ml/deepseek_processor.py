@@ -31,14 +31,33 @@ def _normalize_math_delimiters(text: str) -> str:
     text = re.sub(r'(?<!\\)\\\[([\s\S]+?)\\\]', lambda m: f'$$\n{m.group(1).strip()}\n$$', text)
     # \(...\) → $...$
     text = re.sub(r'\\\((.+?)\\\)', lambda m: f'${m.group(1)}$', text)
-    # Голые [ и ] на отдельных строках вокруг LaTeX-содержимого → $$...$$
-    # Признак LaTeX внутри: есть \frac, ^, _, \cdot и другие команды
-    def _replace_bare_brackets(m: re.Match) -> str:
+
+    _has_latex = re.compile(r'\\[a-zA-Z]+|[\^_]')
+
+    # Голые [ ] на отдельных строках → $$...$$ (многострочный блок)
+    def _replace_bare_brackets_multi(m: re.Match) -> str:
         inner = m.group(1).strip()
-        if re.search(r'\\[a-zA-Z]+|[\^_]', inner):
+        if _has_latex.search(inner):
             return f'$$\n{inner}\n$$'
         return m.group(0)
-    text = re.sub(r'(?m)^\[\s*\n([\s\S]+?)\n\s*\]$', _replace_bare_brackets, text)
+    text = re.sub(r'(?m)^\[\s*\n([\s\S]+?)\n\s*\]$', _replace_bare_brackets_multi, text)
+
+    # [формула] на одной строке → $$формула$$ (LLM иногда пишет [P(X) = \frac{...}{...}])
+    def _replace_bare_brackets_inline(m: re.Match) -> str:
+        inner = m.group(1).strip()
+        if _has_latex.search(inner):
+            return f'$$\n{inner}\n$$'
+        return m.group(0)
+    text = re.sub(r'(?m)^\[([^\[\]\n]+)\]$', _replace_bare_brackets_inline, text)
+
+    # (формула) → $формула$ когда внутри есть LaTeX-команды
+    # Паттерн допускает один уровень вложенных скобок: (M(X) = \frac{a}{b})
+    def _replace_bare_parens(m: re.Match) -> str:
+        inner = m.group(1)
+        if _has_latex.search(inner):
+            return f'${inner}$'
+        return m.group(0)
+    text = re.sub(r'\(([^()\n$]*(?:\([^()\n$]*\)[^()\n$]*)*)\)', _replace_bare_parens, text)
 
     # Backtick-обёрнутый LaTeX → $...$  (LLM иногда пишет `\frac{a}{b}` вместо $\frac{a}{b}$)
     def _backtick_to_math(m: re.Match) -> str:
