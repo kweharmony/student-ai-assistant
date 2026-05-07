@@ -320,11 +320,19 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     return /\$\$[\s\S]+?\$\$|\$[^$\n]+\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/.test(value);
   };
 
+  const normalizeEditorText = (value: string): string => {
+    const container = document.createElement('div');
+    container.innerHTML = value;
+    return container.textContent || '';
+  };
+
   const handleOpenInEditor = (text: string, lectureId: string, lectureTitle?: string) => {
     setCurrentLectureId(lectureId);
     setCurrentLectureTitle(lectureTitle || null);
-    const openAsProcessed = containsLatex(text);
-    const html = openAsProcessed ? markdownToHtml(text) : text;
+    const normalized = normalizeEditorText(text);
+    const openAsProcessed = containsLatex(normalized);
+    const isHtml = /<[^>]+>/.test(text);
+    const html = openAsProcessed ? (isHtml ? text : markdownToHtml(text)) : text;
     if (editorInstance) {
       editorInstance.commands.setContent(html);
     }
