@@ -29,23 +29,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   onModeChange,
   isProcessing = false
 }) => {
-  // Рендеринг LaTeX-формул прямо в редакторе (в обработанном режиме)
-  useEffect(() => {
-    if (currentMode !== 'processed' || !editor?.view?.dom) return;
-    import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
-      if (!editor?.view?.dom) return;
-      renderMathInElement(editor.view.dom, {
-        delimiters: [
-          { left: '$$', right: '$$', display: true },
-          { left: '$', right: '$', display: false },
-          { left: '\\[', right: '\\]', display: true },
-          { left: '\\(', right: '\\)', display: false },
-        ],
-        throwOnError: false,
-      });
-    });
-  }, [currentMode, editor, processedText]);
-
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
     italic: false,
@@ -115,6 +98,23 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       updateActiveFormats(editor);
     },
   });
+
+  // Рендеринг LaTeX-формул прямо в редакторе (в обработанном режиме)
+  useEffect(() => {
+    if (currentMode !== 'processed' || !editor?.view?.dom) return;
+    import('katex/contrib/auto-render').then(({ default: renderMathInElement }) => {
+      if (!editor?.view?.dom) return;
+      renderMathInElement(editor.view.dom, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\[', right: '\\]', display: true },
+          { left: '\\(', right: '\\)', display: false },
+        ],
+        throwOnError: false,
+      });
+    });
+  }, [currentMode, editor, processedText]);
 
   // Функция для обновления активных форматов
   const updateActiveFormats = (editor: any) => {
