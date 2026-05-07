@@ -523,10 +523,19 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   }, [token]);
 
   const normalizeLatexDelimiters = (text: string): string => {
+    const hasLatex = /\\[a-zA-Z]+|[\^_]/.test.bind(/\\[a-zA-Z]+|[\^_]/);
     // \[...\] → $$...$$ (display math), skip \\[ (LaTeX line-break-with-spacing)
     let out = text.replace(/(?<!\\)\\\[([\s\S]+?)\\\]/g, (_m, inner) => `$$${inner}$$`);
     // \(...\) → $...$ (inline math)
     out = out.replace(/\\\((.+?)\\\)/g, (_m, inner) => `$${inner}$`);
+    // [formula] on its own line → $$formula$$
+    out = out.replace(/^(\[([^\[\]\n]+)\])$/mg, (_m, _full, inner) =>
+      hasLatex(inner) ? `$$\n${inner.trim()}\n$$` : _m
+    );
+    // (formula with LaTeX) → $formula$, allows one level of nested parens like (M(X) = \frac{a}{b})
+    out = out.replace(/\(([^()\n$]*(?:\([^()\n$]*\)[^()\n$]*)*)\)/g, (_m, inner) =>
+      hasLatex(inner) ? `$${inner}$` : _m
+    );
     return out;
   };
 
