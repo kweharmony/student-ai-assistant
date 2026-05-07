@@ -246,8 +246,8 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     });
 
     // Шаг 2: Конвертируем Markdown в HTML.
-    // marked v9+: используем marked.parse() с inline-опциями вместо deprecated setOptions.
-    const html = marked.parse(withPlaceholders, { breaks: true }) as string;
+    // marked(src, options) — прямой вызов функции, совместим со всеми версиями.
+    const html = marked(withPlaceholders, { breaks: true }) as string;
 
     // Шаг 3: Восстанавливаем блочные формулы как data-latex элементы.
     // useEffect в RichTextEditor находит [data-type="block-math"] и рендерит через KaTeX.

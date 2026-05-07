@@ -73,10 +73,10 @@ export const useExport = (editor: Editor | null): UseExportReturn => {
       // Таблицы: <table> → Markdown table
       result = result.replace(/<table[\s\S]*?<\/table>/gi, (tableHtml) => {
         const rows: string[][] = [];
-        const rowMatches = tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
+        const rowMatches = Array.from(tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi));
         for (const rowMatch of rowMatches) {
           const cells: string[] = [];
-          const cellMatches = rowMatch[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi);
+          const cellMatches = Array.from(rowMatch[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi));
           for (const cell of cellMatches) {
             cells.push(cell[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim());
           }
