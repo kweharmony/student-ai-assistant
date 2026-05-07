@@ -61,29 +61,57 @@ export const useExport = (editor: Editor | null): UseExportReturn => {
 
     const html = editor.getHTML();
     const filename = options.filename || `document_${new Date().toISOString().split('T')[0]}.md`;
-    
-    // Простая конвертация HTML в Markdown
+
     const convertHtmlToMarkdown = (html: string): string => {
-      return html
-        .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n')
-        .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n')
-        .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n')
-        .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n')
-        .replace(/<h5[^>]*>(.*?)<\/h5>/gi, '##### $1\n')
-        .replace(/<h6[^>]*>(.*?)<\/h6>/gi, '###### $1\n')
+      // Сначала восстанавливаем блочные формулы из data-latex атрибутов
+      let result = html
+        .replace(/<div[^>]*data-type="block-math"[^>]*data-latex="([^"]*)"[^>]*>[\s\S]*?<\/div>/gi,
+          (_m, latex) => `\n\n$$${latex.replace(/&quot;/g, '"')}$$\n\n`)
+        .replace(/<span[^>]*data-type="inline-math"[^>]*data-latex="([^"]*)"[^>]*>[\s\S]*?<\/span>/gi,
+          (_m, latex) => `$${latex.replace(/&quot;/g, '"')}$`);
+
+      // Таблицы: <table> → Markdown table
+      result = result.replace(/<table[\s\S]*?<\/table>/gi, (tableHtml) => {
+        const rows: string[][] = [];
+        const rowMatches = tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
+        for (const rowMatch of rowMatches) {
+          const cells: string[] = [];
+          const cellMatches = rowMatch[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi);
+          for (const cell of cellMatches) {
+            cells.push(cell[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim());
+          }
+          if (cells.length) rows.push(cells);
+        }
+        if (!rows.length) return '';
+        const header = `| ${rows[0].join(' | ')} |`;
+        const separator = `| ${rows[0].map(() => '---').join(' | ')} |`;
+        const body = rows.slice(1).map(row => `| ${row.join(' | ')} |`).join('\n');
+        return `\n\n${header}\n${separator}\n${body}\n\n`;
+      });
+
+      return result
+        .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n# $1\n')
+        .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n## $1\n')
+        .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '\n### $1\n')
+        .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '\n#### $1\n')
+        .replace(/<h5[^>]*>(.*?)<\/h5>/gi, '\n##### $1\n')
+        .replace(/<h6[^>]*>(.*?)<\/h6>/gi, '\n###### $1\n')
         .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
         .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
         .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
         .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
-        .replace(/<ul[^>]*>(.*?)<\/ul>/gi, (match: string, content: string) => {
-          return content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n');
+        .replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
+        .replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, '\n```\n$1\n```\n')
+        .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_m, content) =>
+          content.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n'))
+        .replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_m, content) => {
+          let i = 1;
+          return content.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m: string, item: string) => `${i++}. ${item}\n`);
         })
-        .replace(/<ol[^>]*>(.*?)<\/ol>/gi, (match: string, content: string) => {
-          return content.replace(/<li[^>]*>(.*?)<\/li>/gi, (match: string, item: string, index: number) => `${index + 1}. ${item}\n`);
-        })
+        .replace(/<hr[^>]*>/gi, '\n---\n')
         .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
-        .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1\n')
+        .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '$1\n\n')
+        .replace(/<div[^>]*>([\s\S]*?)<\/div>/gi, '$1\n')
         .replace(/<[^>]*>/g, '')
         .replace(/&nbsp;/gi, ' ')
         .replace(/&gt;/gi, '>')
@@ -91,10 +119,10 @@ export const useExport = (editor: Editor | null): UseExportReturn => {
         .replace(/&amp;/gi, '&')
         .replace(/&quot;/gi, '"')
         .replace(/&#39;/gi, "'")
-        .replace(/\n\s*\n\s*\n/g, '\n\n')
+        .replace(/\n{3,}/g, '\n\n')
         .trim();
     };
-    
+
     const markdown = convertHtmlToMarkdown(html);
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
     downloadFile(blob, filename);

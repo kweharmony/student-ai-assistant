@@ -222,27 +222,34 @@
   margin-bottom: 0;
 }
 
-/* Tables */
-.ProseMirror table {
+/* Tables — применяется и в TipTap-редакторе, и в preview-контейнере */
+.ProseMirror table,
+.editor-container table {
   border-collapse: collapse;
   width: 100%;
   margin: 0 0 16px 0;
+  display: table;
 }
 
 .ProseMirror th,
-.ProseMirror td {
-  border: 1px solid #d1d5da;
+.ProseMirror td,
+.editor-container th,
+.editor-container td {
+  border: 1px solid rgba(153, 181, 234, 0.3);
   padding: 6px 13px;
   text-align: left;
+  vertical-align: top;
 }
 
-.ProseMirror th {
-  background-color: #f6f8fa;
+.ProseMirror th,
+.editor-container th {
+  background-color: rgba(153, 181, 234, 0.08);
   font-weight: 600;
 }
 
-.ProseMirror tr:nth-child(even) {
-  background-color: #f6f8fa;
+.ProseMirror tr:nth-child(even),
+.editor-container tr:nth-child(even) {
+  background-color: rgba(153, 181, 234, 0.04);
 }
 
 /* Horizontal rules */

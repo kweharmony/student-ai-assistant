@@ -4,6 +4,10 @@ import { Node, mergeAttributes, nodeInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import HardBreak from '@tiptap/extension-hard-break';
 import CodeBlock from '@tiptap/extension-code-block';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableHeader from '@tiptap/extension-table-header';
+import TableCell from '@tiptap/extension-table-cell';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import './RichTextEditor.css';
@@ -164,6 +168,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       }),
       HardBreak,
       CodeBlock,
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
       InlineMath,
       BlockMath,
     ],

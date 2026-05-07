@@ -5,6 +5,10 @@
   "dependencies": {
     "@excalidraw/excalidraw": "^0.17.6",
     "@tiptap/core": "3.7.2",
+    "@tiptap/extension-table": "^3.22.5",
+    "@tiptap/extension-table-cell": "^3.22.5",
+    "@tiptap/extension-table-header": "^3.22.5",
+    "@tiptap/extension-table-row": "^3.22.5",
     "@tiptap/pm": "3.7.2",
     "@tiptap/react": "3.7.2",
     "@tiptap/starter-kit": "3.7.2",

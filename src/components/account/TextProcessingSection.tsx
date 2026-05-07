@@ -236,13 +236,25 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   const convertMarkdownToHTML = (markdown: string): string => {
     if (!markdown) return '';
 
-    // Настройка marked для корректного отображения
-    marked.setOptions({
-      breaks: true, // Преобразовать переносы строк в <br>
-      gfm: true, // GitHub Flavored Markdown
+    // Шаг 1: Вырезаем блочные формулы $$...$$ до того, как marked их увидит.
+    // Это предотвращает конфликт $ с парсингом таблиц и параграфов.
+    const blockFormulas: string[] = [];
+    const withPlaceholders = markdown.replace(/\$\$([\s\S]+?)\$\$/g, (_, latex) => {
+      const idx = blockFormulas.length;
+      blockFormulas.push(latex.trim());
+      return `\n\nBLOCKMATH_${idx}_END\n\n`;
     });
 
-    return marked(markdown) as string;
+    // Шаг 2: Конвертируем Markdown в HTML.
+    // marked v9+: используем marked.parse() с inline-опциями вместо deprecated setOptions.
+    const html = marked.parse(withPlaceholders, { breaks: true }) as string;
+
+    // Шаг 3: Восстанавливаем блочные формулы как data-latex элементы.
+    // useEffect в RichTextEditor находит [data-type="block-math"] и рендерит через KaTeX.
+    return html.replace(/BLOCKMATH_(\d+)_END/g, (_, idxStr) => {
+      const latex = blockFormulas[parseInt(idxStr)].replace(/"/g, '&quot;');
+      return `<div data-type="block-math" data-latex="${latex}" class="math-block"></div>`;
+    });
   };
 
   // Умная обработка текста - определяет, содержит ли текст Markdown синтаксис
