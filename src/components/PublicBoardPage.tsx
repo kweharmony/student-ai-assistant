@@ -81,24 +81,41 @@ const PublicBoardPage: React.FC = () => {
     })();
   }, [shareToken, authLoading, isAuthenticated, authHeaders, navigate]);
 
+  const persistBoardData = useCallback(async (data: string) => {
+    if (!boardDetail?.id || !authToken) return;
+    try {
+      await fetch(`${API_BASE}/api/boards/${boardDetail.id}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data }),
+      });
+    } catch {
+      // ignore
+    }
+  }, [boardDetail?.id, authToken]);
+
   // ── real-time send (throttle 100ms) ─────────────────────────────────────────
   const handleChange = useCallback(() => {
     if (!boardDetail?.can_edit || !excalidrawAPI.current) return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
       const api = excalidrawAPI.current;
-      if (!api || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      if (!api) return;
       const data = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'local');
       if (lastSentData.current === data) return;
       lastSentData.current = data;
-      wsRef.current.send(JSON.stringify({
-        type: 'update',
-        elements: api.getSceneElements(),
-        appState: api.getAppState(),
-        data,
-      }));
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'update',
+          elements: api.getSceneElements(),
+          appState: api.getAppState(),
+          data,
+        }));
+      } else {
+        persistBoardData(data);
+      }
     }, 100);
-  }, [boardDetail]);
+  }, [boardDetail, persistBoardData]);
 
   // ── manual save (persists to DB + send real-time) ───────────────────────────
   const handleManualSave = async () => {

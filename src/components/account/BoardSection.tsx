@@ -246,13 +246,26 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   const WS_BASE = API_BASE.replace(/^http/, 'ws');
 
+  const persistBoardData = useCallback(async (data: string) => {
+    if (!activeBoardId) return;
+    try {
+      await fetch(`${API_BASE}/api/boards/${activeBoardId}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ data }),
+      });
+    } catch {
+      // ignore
+    }
+  }, [activeBoardId, authHeaders]);
+
   // ── auto-save (real-time via WebSocket) ─────────────────────────────────────
   const handleChange = useCallback(() => {
     if (!activeBoardId || !boardCanEdit || !excalidrawAPI.current) return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
       const api = excalidrawAPI.current;
-      if (!api || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      if (!api) return;
       const data = serializeAsJSON(
         api.getSceneElements(),
         api.getAppState(),
@@ -261,14 +274,18 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       );
       if (lastSentData.current === data) return;
       lastSentData.current = data;
-      wsRef.current.send(JSON.stringify({
-        type: 'update',
-        elements: api.getSceneElements(),
-        appState: api.getAppState(),
-        data,
-      }));
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'update',
+          elements: api.getSceneElements(),
+          appState: api.getAppState(),
+          data,
+        }));
+      } else {
+        persistBoardData(data);
+      }
     }, 100);
-  }, [activeBoardId, boardCanEdit]);
+  }, [activeBoardId, boardCanEdit, persistBoardData]);
 
   // ── save to profile (manual: persists title to DB) ───────────────────────────
   const saveToProfile = async () => {
@@ -289,7 +306,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const res = await fetch(`${API_BASE}/api/boards/${activeBoardId}`, {
       method: 'PUT',
       headers: authHeaders(),
-      body: JSON.stringify({ title: boardTitle }),
+      body: JSON.stringify({ title: boardTitle, data }),
     });
     setSaving(false);
     if (res.ok) {
