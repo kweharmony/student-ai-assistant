@@ -100,6 +100,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [boardCanEdit, setBoardCanEdit] = useState(false);
   const excalidrawAPI = useRef<ExcalidrawImperativeAPI | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clientId = useRef(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const isExternalUpdate = useRef(false);
+  const sseRef = useRef<EventSource | null>(null);
 
   // ── save panel ───────────────────────────────────────────────────────────────
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
@@ -244,6 +247,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   // ── auto-save on change ──────────────────────────────────────────────────────
   const handleChange = useCallback(() => {
+    if (isExternalUpdate.current) {
+      isExternalUpdate.current = false;
+      return;
+    }
     if (!activeBoardId || !boardCanEdit || !excalidrawAPI.current) return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
@@ -258,7 +265,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       await fetch(`${API_BASE}/api/boards/${activeBoardId}`, {
         method: 'PUT',
         headers: authHeaders(),
-        body: JSON.stringify({ data }),
+        body: JSON.stringify({ data, client_id: clientId.current }),
       });
     }, 2000);
   }, [activeBoardId, authHeaders, boardCanEdit]);
@@ -277,7 +284,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const res = await fetch(`${API_BASE}/api/boards/${activeBoardId}`, {
       method: 'PUT',
       headers: authHeaders(),
-      body: JSON.stringify({ data, title: boardTitle }),
+      body: JSON.stringify({ data, title: boardTitle, client_id: clientId.current }),
     });
     setSaving(false);
     if (res.ok) {
@@ -285,6 +292,33 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       setTimeout(() => setSaveMsg(''), 2000);
     }
   };
+
+  // ── SSE real-time subscription ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!activeBoardId || !boardCanEdit) return;
+    const es = new EventSource(
+      `${API_BASE}/api/boards/${activeBoardId}/stream?client_id=${clientId.current}`
+    );
+    sseRef.current = es;
+
+    es.addEventListener('board.update', (e: MessageEvent) => {
+      try {
+        const raw = JSON.parse(e.data);
+        const parsed = JSON.parse(raw);
+        isExternalUpdate.current = true;
+        excalidrawAPI.current?.updateScene({ elements: parsed.elements, appState: parsed.appState });
+      } catch {
+        // ignore invalid SSE data
+      }
+    });
+
+    es.onerror = () => {};
+
+    return () => {
+      es.close();
+      sseRef.current = null;
+    };
+  }, [activeBoardId, boardCanEdit]);
 
   // ── export ───────────────────────────────────────────────────────────────────
   const exportPNG = async () => {

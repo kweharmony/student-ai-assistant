@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,8 +18,49 @@ from ..dependencies import get_current_user
 from ..dependencies import get_current_user_optional
 from ..models import Board, BoardVisit, User
 from ..schemas import BoardCreate, BoardDetailOut, BoardOut, BoardRecentOut, BoardShareRequest, BoardUpdate
+from sse_starlette.sse import EventSourceResponse
+import asyncio
+from collections import defaultdict
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
+
+# ── SSE broadcast manager ────────────────────────────────────────────────────
+# board_id (UUID str) -> list of client queues (asyncio.Queue)
+_board_listeners: dict[str, list[asyncio.Queue]] = defaultdict(list)
+
+
+async def _broadcast_board_update(board_id: str, data: str, exclude_client_id: str | None = None):
+    """Broadcast data JSON to all listeners of a specific board, excluding the sender."""
+    listeners = _board_listeners.get(board_id, [])
+    dead = []
+    for queue in listeners:
+        try:
+            # каждая очередь хранит кортеж (client_id, data)
+            queue.put_nowait((exclude_client_id, data))
+        except asyncio.QueueFull:
+            dead.append(queue)
+    for d in dead:
+        listeners.remove(d)
+
+
+async def _listen_sse(board_id: str, client_id: str):
+    """Async generator for SSE event source."""
+    queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+    _board_listeners[board_id].append(queue)
+    try:
+        while True:
+            exclude_id, data = await queue.get()
+            if exclude_id == client_id:
+                continue
+            yield {"event": "board.update", "data": data}
+    except asyncio.CancelledError:
+        pass
+    finally:
+        listeners = _board_listeners.get(board_id, [])
+        if queue in listeners:
+            listeners.remove(queue)
+        if not listeners:
+            _board_listeners.pop(board_id, None)
 
 
 # ── список полотен текущего пользователя ──────────────────────────────────────
@@ -123,7 +164,24 @@ async def update_board(
         board.is_public = body.is_public
     await db.commit()
     await db.refresh(board)
+    # broadcast to other connected clients
+    await _broadcast_board_update(
+        str(board_id),
+        board.data or "",
+        exclude_client_id=body.client_id or None,
+    )
     return board
+
+
+# ── SSE stream for real-time board updates ────────────────────────────────────
+@router.get("/{board_id}/stream")
+async def board_stream(
+    board_id: UUID,
+    request: Request,
+    client_id: str = "default",
+):
+    """Server-Sent Events stream to receive live updates from other clients."""
+    return EventSourceResponse(_listen_sse(str(board_id), client_id))
 
 
 # ── удалить полотно ────────────────────────────────────────────────────────────

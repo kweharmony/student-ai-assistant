@@ -600,6 +600,8 @@ class BoardUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=255)
     data: Optional[str] = None
     is_public: Optional[bool] = None
+    client_id: Optional[str] = None  # идентификатор клиента для SSE broadcast
+    client_id: Optional[str] = None  # идентификатор клиента для SSE broadcast
 
 
 class BoardShareRequest(BaseModel):

@@ -37,6 +37,9 @@ const PublicBoardPage: React.FC = () => {
   const excalidrawAPI = useRef<ExcalidrawImperativeAPI | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saveMsg, setSaveMsg] = useState('');
+  const clientId = useRef(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const isExternalUpdate = useRef(false);
+  const sseRef = useRef<EventSource | null>(null);
 
   const authHeaders = useCallback(
     (): Record<string, string> | undefined => {
@@ -79,50 +82,32 @@ const PublicBoardPage: React.FC = () => {
     })();
   }, [shareToken, authLoading, isAuthenticated, authHeaders, navigate]);
 
-  // ── auto-save for edit mode ─────────────────────────────────────────────────
-  const handleChange = useCallback(() => {
-    if (!boardDetail?.can_edit || !excalidrawAPI.current) return;
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
-      const api = excalidrawAPI.current;
-      if (!api || !boardDetail) return;
-      const data = serializeAsJSON(
-        api.getSceneElements(),
-        api.getAppState(),
-        api.getFiles(),
-        'local',
-      );
-      const res = await fetch(`${API_BASE}/api/boards/${boardDetail.id}`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data }),
-      });
-      if (res.ok) {
-        setSaveMsg('Сохранено');
-        setTimeout(() => setSaveMsg(''), 2000);
-      }
-    }, 2000);
-  }, [boardDetail, authToken]);
+  // ── SSE real-time subscription ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!boardDetail?.can_edit) return;
+    const es = new EventSource(
+      `${API_BASE}/api/boards/${boardDetail.id}/stream?client_id=${clientId.current}`
+    );
+    sseRef.current = es;
 
-  // ── manual save ─────────────────────────────────────────────────────────────
-  const handleManualSave = async () => {
-    if (!boardDetail?.can_edit || !excalidrawAPI.current) return;
-    const api = excalidrawAPI.current;
-    const data = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'local');
-    setSaveMsg('Сохранение…');
-    const res = await fetch(`${API_BASE}/api/boards/${boardDetail.id}`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data }),
+    es.addEventListener('board.update', (e: MessageEvent) => {
+      try {
+        const raw = JSON.parse(e.data);
+        const parsed = JSON.parse(raw);
+        isExternalUpdate.current = true;
+        excalidrawAPI.current?.updateScene({ elements: parsed.elements, appState: parsed.appState });
+      } catch {
+        // ignore invalid SSE data
+      }
     });
-    if (res.ok) {
-      setSaveMsg('Сохранено');
-      setTimeout(() => setSaveMsg(''), 2000);
-    } else {
-      setSaveMsg('Ошибка сохранения');
-      setTimeout(() => setSaveMsg(''), 2000);
-    }
-  };
+
+    es.onerror = () => {};
+
+    return () => {
+      es.close();
+      sseRef.current = null;
+    };
+  }, [boardDetail?.id]);
 
   if (loading || authLoading) return (
     <div style={{
