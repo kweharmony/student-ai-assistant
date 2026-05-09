@@ -317,7 +317,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   // ── WebSocket real-time subscription ────────────────────────────────────────
   useEffect(() => {
-    if (!activeBoardId || !boardCanEdit) return;
+    if (!activeBoardId || !token) return;
     const ws = new WebSocket(`${WS_BASE}/api/boards/${activeBoardId}/ws?token=${token}`);
     wsRef.current = ws;
 
@@ -339,7 +339,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       ws.close();
       wsRef.current = null;
     };
-  }, [activeBoardId, boardCanEdit, token]);
+  }, [activeBoardId, token]);
 
   // ── export ───────────────────────────────────────────────────────────────────
   const exportPNG = async () => {

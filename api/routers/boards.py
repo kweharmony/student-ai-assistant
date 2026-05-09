@@ -196,17 +196,17 @@ async def board_ws(
     await websocket.accept()
 
     token = websocket.query_params.get("token")
+    can_edit = False
     async with async_session() as db:
-        user = await _authenticate_ws_token(token, db)
-        if user is None:
-            await websocket.close(code=4401, reason="Unauthorized")
-            return
-
         board = await db.get(Board, board_id)
         if not board:
             await websocket.close(code=4404, reason="Board not found")
             return
-        if not _can_edit_board(board, user):
+
+        user = await _authenticate_ws_token(token, db)
+        if user is not None and _can_edit_board(board, user):
+            can_edit = True
+        elif not board.is_public:
             await websocket.close(code=4403, reason="Forbidden")
             return
 
@@ -217,6 +217,8 @@ async def board_ws(
         while True:
             msg = await websocket.receive_json()
             if msg.get("type") == "update":
+                if not can_edit:
+                    continue
                 elements = msg.get("elements", [])
                 app_state = msg.get("appState", {})
                 # reconstruct full Excalidraw JSON string for DB snapshot

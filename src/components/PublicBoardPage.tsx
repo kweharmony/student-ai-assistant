@@ -144,8 +144,9 @@ const PublicBoardPage: React.FC = () => {
 
   // ── WebSocket subscription ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!boardDetail?.can_edit) return;
-    const ws = new WebSocket(`${WS_BASE}/api/boards/${boardDetail.id}/ws?token=${authToken}`);
+    if (!boardDetail?.id) return;
+    const tokenQuery = authToken ? `?token=${authToken}` : '';
+    const ws = new WebSocket(`${WS_BASE}/api/boards/${boardDetail.id}/ws${tokenQuery}`);
     wsRef.current = ws;
 
     ws.onopen = () => {};
@@ -166,7 +167,7 @@ const PublicBoardPage: React.FC = () => {
       ws.close();
       wsRef.current = null;
     };
-  }, [boardDetail?.can_edit, boardDetail?.id, authToken]);
+  }, [boardDetail?.id, authToken]);
 
   if (loading || authLoading) return (
     <div style={{
