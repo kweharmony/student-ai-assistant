@@ -143,7 +143,7 @@ const PublicBoardPage: React.FC = () => {
       try {
         const parsed = JSON.parse(e.data);
         isExternalUpdate.current = true;
-        excalidrawAPI.current?.updateScene({ elements: parsed.elements, appState: parsed.appState });
+        excalidrawAPI.current?.updateScene({ elements: parsed.elements });
       } catch {
         // ignore invalid SSE data
       }
