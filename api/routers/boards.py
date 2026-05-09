@@ -25,43 +25,21 @@ from ..schemas import BoardCreate, BoardDetailOut, BoardOut, BoardRecentOut, Boa
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
 
-# ── WebSocket rooms & in-memory state ─────────────────────────────────────────
-# board_id (str) -> list of connected WebSocket clients
+# ── WebSocket rooms ───────────────────────────────────────────────────────────
 _ws_rooms: dict[str, list[WebSocket]] = defaultdict(list)
-# latest data JSON snapshot per board (for periodic flush to DB)
-_board_snapshots: dict[str, str] = {}
 
 
-async def _periodic_flush_boards():
-    """Save in-memory board snapshots to PostgreSQL every 5 seconds."""
-    while True:
-        await asyncio.sleep(5)
-        if not _board_snapshots:
-            continue
-        try:
-            async with async_session() as db:
-                for bid, data in list(_board_snapshots.items()):
-                    try:
-                        board = await db.get(Board, UUID(bid))
-                        if board and board.data != data:
-                            board.data = data
-                        if len(_ws_rooms.get(bid, [])) == 0:
-                            # nobody connected — clean up snapshot
-                            _board_snapshots.pop(bid, None)
-                    except Exception:
-                        continue
+async def _save_board_data(board_id: str, data: str):
+    """Persist board data to PostgreSQL (fire-and-forget from websocket handler)."""
+    try:
+        async with async_session() as db:
+            board = await db.get(Board, UUID(board_id))
+            if board and board.data != data:
+                board.data = data
                 await db.commit()
-        except Exception:
-            # DB may be temporarily unavailable; retry next cycle
-            pass
-
-
-# start background flusher
-try:
-    asyncio.get_running_loop().create_task(_periodic_flush_boards())
-except RuntimeError:
-    # no running loop at import time; will be started on first request
-    pass
+    except Exception:
+        # DB may be temporarily unavailable; next update will retry
+        pass
 
 
 async def _authenticate_ws_token(token: str | None, db: AsyncSession) -> User | None:
@@ -244,7 +222,7 @@ async def board_ws(
                 # reconstruct full Excalidraw JSON string for DB snapshot
                 full_data = msg.get("data", "")
                 if full_data:
-                    _board_snapshots[bid] = full_data
+                    asyncio.create_task(_save_board_data(bid, full_data))
                 payload = {"type": "update", "elements": elements, "appState": app_state}
                 await _broadcast_to_room(bid, websocket, payload)
     except WebSocketDisconnect:
