@@ -8,7 +8,7 @@ import excalidrawStyles from './excalidrawStyles';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http(s?):\/\//, (_, secure) => (secure ? 'wss://' : 'ws://'));
-const SEND_DEBOUNCE_MS = 250;
+const SEND_DEBOUNCE_MS = 150;
 
 interface BoardPublicDetail {
   id: string;

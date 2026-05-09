@@ -13,12 +13,18 @@ import excalidrawStyles from '../excalidrawStyles';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
+type LectureSource = 'my' | 'catalog';
+
 interface LectureMeta {
   id: string;
   title: string;
   subject: string | null;
-  has_text: boolean;
+  has_text?: boolean;
   created_at: string;
+  source: LectureSource;
+  lectureId?: string;
+  discipline?: string | null;
+  streamName?: string | null;
 }
 
 interface LectureFull {
@@ -132,6 +138,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [selectedLecture, setSelectedLecture] = useState<LectureFull | null>(null);
   const [lectureDetailLoading, setLectureDetailLoading] = useState(false);
   const [insertText, setInsertText] = useState('');
+  const [lectureSource, setLectureSource] = useState<LectureSource>('my');
 
   // ── mobile detection ─────────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
@@ -246,7 +253,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   const WS_BASE = API_BASE.replace(/^http(s?):\/\//, (_, secure) => (secure ? 'wss://' : 'ws://'));
 
-  const SEND_DEBOUNCE_MS = 250;
+  const SEND_DEBOUNCE_MS = 150;
 
   const persistBoardData = useCallback(async (data: string) => {
     if (!activeBoardId) return;
@@ -510,24 +517,67 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   };
 
   // ── lecture insert ───────────────────────────────────────────────────────────
-  const openLecturePicker = async () => {
-    if (!boardCanEdit) return;
-    setLecturePickerOpen(true);
-    setSelectedLecture(null);
-    setInsertText('');
+  const loadLectures = async (source: LectureSource) => {
     setLecturesLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/lectures/my`, { headers: authHeaders() });
-      if (res.ok) setLectures((await res.json()).filter((l: LectureMeta) => l.has_text));
+      if (source === 'my') {
+        const res = await fetch(`${API_BASE}/api/lectures/my`, { headers: authHeaders() });
+        if (res.ok) {
+          const data = (await res.json()) as Array<any>;
+          setLectures(
+            data
+              .filter((l) => l.has_text)
+              .map((l) => ({
+                id: l.id,
+                title: l.title,
+                subject: l.subject ?? null,
+                created_at: l.created_at,
+                source: 'my',
+              }))
+          );
+        } else {
+          setLectures([]);
+        }
+      } else {
+        const res = await fetch(`${API_BASE}/api/catalog/items?limit=200`, { headers: authHeaders() });
+        if (res.ok) {
+          const data = (await res.json()) as Array<any>;
+          setLectures(
+            data.map((item) => ({
+              id: item.id,
+              lectureId: item.lecture_id,
+              title: item.lecture_title,
+              subject: item.lecture_subject ?? null,
+              discipline: item.discipline ?? null,
+              streamName: item.stream_name ?? null,
+              created_at: item.created_at,
+              source: 'catalog',
+            }))
+          );
+        } else {
+          setLectures([]);
+        }
+      }
     } finally {
       setLecturesLoading(false);
     }
   };
 
-  const selectLecture = async (id: string) => {
+  const openLecturePicker = async () => {
+    if (!boardCanEdit) return;
+    setLecturePickerOpen(true);
+    setSelectedLecture(null);
+    setInsertText('');
+    setLectureSource('my');
+    await loadLectures('my');
+  };
+
+  const selectLecture = async (item: LectureMeta) => {
     setLectureDetailLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/lectures/${id}`, { headers: authHeaders() });
+      const lectureId = item.source === 'catalog' ? item.lectureId : item.id;
+      if (!lectureId) return;
+      const res = await fetch(`${API_BASE}/api/lectures/${lectureId}`, { headers: authHeaders() });
       if (!res.ok) return;
       const data: LectureFull = await res.json();
       setSelectedLecture(data);
@@ -1269,6 +1319,41 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 </button>
               </div>
 
+              {!selectedLecture && (
+                <div style={{ padding: '0 24px 12px' }}>
+                  <div style={{ display: 'inline-flex', borderRadius: 999, border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+                    <button
+                      onClick={() => { setLectureSource('my'); loadLectures('my'); }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: lectureSource === 'my' ? 'var(--text-primary)' : 'transparent',
+                        color: lectureSource === 'my' ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                        fontFamily: 'Georgia, serif',
+                      }}
+                    >
+                      Мои лекции
+                    </button>
+                    <button
+                      onClick={() => { setLectureSource('catalog'); loadLectures('catalog'); }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: lectureSource === 'catalog' ? 'var(--text-primary)' : 'transparent',
+                        color: lectureSource === 'catalog' ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                        fontFamily: 'Georgia, serif',
+                      }}
+                    >
+                      База лекций
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Body */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px' }}>
                 {!selectedLecture ? (
@@ -1284,7 +1369,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {lectures.map(l => (
-                        <button key={l.id} onClick={() => selectLecture(l.id)}
+                        <button key={l.id} onClick={() => selectLecture(l)}
                           style={{
                             display: 'flex', alignItems: 'center', gap: 12,
                             background: 'none', border: '1px solid var(--border-color)',
@@ -1302,7 +1387,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                               {l.title}
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                              {l.subject ? `${l.subject} · ` : ''}{new Date(l.created_at).toLocaleDateString('ru-RU')}
+                              {l.subject ? `${l.subject} · ` : ''}
+                              {l.discipline ? `${l.discipline} · ` : ''}
+                              {l.streamName ? `${l.streamName} · ` : ''}
+                              {new Date(l.created_at).toLocaleDateString('ru-RU')}
                             </div>
                           </div>
                           <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-secondary)', flexShrink: 0 }}>chevron_right</span>
