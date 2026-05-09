@@ -551,7 +551,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // ────────────────────────────────────────────────────────────────────────────
   if (mode === 'canvas') {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#fff' }}>
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 200,
+          background: isLightTheme ? '#fffff0' : '#1f1516',
+        }}
+        data-ext-ui-theme={isLightTheme ? 'light' : 'dark'}
+      >
         <style>{excalidrawStyles}</style>
         {/* Excalidraw fills entire viewport */}
         {initialData !== null && (
@@ -560,7 +568,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             initialData={initialData}
             onChange={handleChange}
             viewModeEnabled={!boardCanEdit}
-            theme={isLightTheme ? 'light' : 'dark'}
+            theme="light"
             langCode="ru-RU"
             renderTopRightUI={(isMobile) => (
               boardCanEdit ? (

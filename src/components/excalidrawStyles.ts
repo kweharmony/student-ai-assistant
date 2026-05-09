@@ -13,8 +13,8 @@ const excalidrawStyles = `
     font-family: Georgia, "Times New Roman", serif !important;
   }
 
-  /* ── Light theme ── */
-  .excalidraw.theme--light {
+  /* ── Light theme (UI) ── */
+  [data-ext-ui-theme="light"] .excalidraw.theme--light {
     --color-surface-primary: #fffff0;
     --color-surface-secondary: #f5f3e8;
     --color-surface-tertiary: #ede9d8;
@@ -29,8 +29,8 @@ const excalidrawStyles = `
     background: #fffff0;
   }
 
-  /* ── Dark theme ── */
-  .excalidraw.theme--dark {
+  /* ── Dark theme (UI) ── */
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light {
     --color-surface-primary: #1f1516;
     --color-surface-secondary: #2a1d1e;
     --color-surface-tertiary: #352426;
@@ -52,13 +52,13 @@ const excalidrawStyles = `
     box-shadow: var(--island-shadow) !important;
     font-family: Georgia, serif !important;
   }
-  .excalidraw.theme--light .App-toolbar,
-  .excalidraw.theme--light .Island {
+  [data-ext-ui-theme="light"] .excalidraw.theme--light .App-toolbar,
+  [data-ext-ui-theme="light"] .excalidraw.theme--light .Island {
     background: #fffff0 !important;
     border: 1px solid rgba(68,41,43,0.12) !important;
   }
-  .excalidraw.theme--dark .App-toolbar,
-  .excalidraw.theme--dark .Island {
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light .App-toolbar,
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light .Island {
     background: #2a1d1e !important;
     border: 1px solid rgba(255,255,240,0.08) !important;
   }
@@ -70,14 +70,14 @@ const excalidrawStyles = `
     font-family: Georgia, serif !important;
     transition: background 0.15s !important;
   }
-  .excalidraw.theme--light .ToolIcon_type_button:hover,
-  .excalidraw.theme--light .ToolIcon_type_button.active,
-  .excalidraw.theme--light .ToolIcon_type_button--selected {
+  [data-ext-ui-theme="light"] .excalidraw.theme--light .ToolIcon_type_button:hover,
+  [data-ext-ui-theme="light"] .excalidraw.theme--light .ToolIcon_type_button.active,
+  [data-ext-ui-theme="light"] .excalidraw.theme--light .ToolIcon_type_button--selected {
     background: rgba(68,41,43,0.07) !important;
   }
-  .excalidraw.theme--dark .ToolIcon_type_button:hover,
-  .excalidraw.theme--dark .ToolIcon_type_button.active,
-  .excalidraw.theme--dark .ToolIcon_type_button--selected {
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light .ToolIcon_type_button:hover,
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light .ToolIcon_type_button.active,
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light .ToolIcon_type_button--selected {
     background: rgba(255,255,240,0.07) !important;
   }
 
@@ -88,14 +88,14 @@ const excalidrawStyles = `
     font-family: Georgia, serif !important;
     font-size: 13px !important;
   }
-  .excalidraw.theme--light .context-menu,
-  .excalidraw.theme--light .popover {
+  [data-ext-ui-theme="light"] .excalidraw.theme--light .context-menu,
+  [data-ext-ui-theme="light"] .excalidraw.theme--light .popover {
     background: #fffff0 !important;
     border: 1px solid rgba(68,41,43,0.12) !important;
     box-shadow: 0 8px 24px rgba(68,41,43,0.12) !important;
   }
-  .excalidraw.theme--dark .context-menu,
-  .excalidraw.theme--dark .popover {
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light .context-menu,
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light .popover {
     background: #2a1d1e !important;
     border: 1px solid rgba(255,255,240,0.08) !important;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
@@ -103,11 +103,11 @@ const excalidrawStyles = `
 
   /* ── Modals ── */
   .excalidraw .Modal__background { border-radius: 16px !important; }
-  .excalidraw.theme--light .Modal__background {
+  [data-ext-ui-theme="light"] .excalidraw.theme--light .Modal__background {
     background: #fffff0 !important;
     border: 1px solid rgba(68,41,43,0.12) !important;
   }
-  .excalidraw.theme--dark .Modal__background {
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light .Modal__background {
     background: #1f1516 !important;
     border: 1px solid rgba(255,255,240,0.08) !important;
   }
@@ -118,12 +118,14 @@ const excalidrawStyles = `
     font-family: Georgia, serif !important;
     font-size: 13px !important;
   }
-  .excalidraw.theme--light input, .excalidraw.theme--light textarea {
+  [data-ext-ui-theme="light"] .excalidraw.theme--light input,
+  [data-ext-ui-theme="light"] .excalidraw.theme--light textarea {
     background: #f5f3e8 !important;
     border-color: rgba(68,41,43,0.2) !important;
     color: #44292b !important;
   }
-  .excalidraw.theme--dark input, .excalidraw.theme--dark textarea {
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light input,
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light textarea {
     background: #2a1d1e !important;
     border-color: rgba(255,255,240,0.1) !important;
     color: #fffff0 !important;
@@ -131,8 +133,8 @@ const excalidrawStyles = `
 
   /* ── Scrollbars ── */
   .excalidraw ::-webkit-scrollbar { width: 6px; height: 6px; }
-  .excalidraw.theme--light ::-webkit-scrollbar-thumb { background: rgba(68,41,43,0.2); border-radius: 3px; }
-  .excalidraw.theme--dark ::-webkit-scrollbar-thumb { background: rgba(255,255,240,0.15); border-radius: 3px; }
+  [data-ext-ui-theme="light"] .excalidraw.theme--light ::-webkit-scrollbar-thumb { background: rgba(68,41,43,0.2); border-radius: 3px; }
+  [data-ext-ui-theme="dark"] .excalidraw.theme--light ::-webkit-scrollbar-thumb { background: rgba(255,255,240,0.15); border-radius: 3px; }
 
   /* ── Mobile ── */
   @media (max-width: 640px) {

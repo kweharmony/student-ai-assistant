@@ -63,13 +63,16 @@ const PublicBoardPage: React.FC = () => {
   );
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: isLightTheme ? '#fffff0' : '#1f1516' }}>
+    <div
+      style={{ position: 'fixed', inset: 0, background: isLightTheme ? '#fffff0' : '#1f1516' }}
+      data-ext-ui-theme={isLightTheme ? 'light' : 'dark'}
+    >
       <style>{excalidrawStyles}</style>
       {initialData !== null && (
         <Excalidraw
           initialData={initialData}
           viewModeEnabled
-          theme={isLightTheme ? 'light' : 'dark'}
+          theme="light"
           langCode="ru-RU"
           UIOptions={{ canvasActions: { saveToActiveFile: false, loadScene: false, export: false, toggleTheme: false } }}
         />
