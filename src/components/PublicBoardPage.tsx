@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import excalidrawStyles from './excalidrawStyles';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const WS_BASE = API_BASE.replace(/^http/, 'ws');
 
 interface BoardPublicDetail {
   id: string;
@@ -36,10 +37,9 @@ const PublicBoardPage: React.FC = () => {
   // ── canvas state ────────────────────────────────────────────────────────────
   const excalidrawAPI = useRef<ExcalidrawImperativeAPI | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const lastSentData = useRef<string | null>(null);
   const [saveMsg, setSaveMsg] = useState('');
-  const clientId = useRef(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const isExternalUpdate = useRef(false);
-  const sseRef = useRef<EventSource | null>(null);
 
   const authHeaders = useCallback(
     (): Record<string, string> | undefined => {
@@ -64,7 +64,6 @@ const PublicBoardPage: React.FC = () => {
         if (!res.ok) { setError('Полотно не найдено или ссылка недействительна'); return; }
         const detail: BoardPublicDetail = await res.json();
 
-        // If edit-mode but not authenticated — redirect to login with return URL
         if (detail.share_mode === 'edit' && !isAuthenticated) {
           navigate(`/auth?redirectTo=/board/${shareToken}`);
           return;
@@ -82,45 +81,40 @@ const PublicBoardPage: React.FC = () => {
     })();
   }, [shareToken, authLoading, isAuthenticated, authHeaders, navigate]);
 
-  // ── auto-save for edit mode ─────────────────────────────────────────────────
+  // ── real-time send (throttle 100ms) ─────────────────────────────────────────
   const handleChange = useCallback(() => {
-    if (isExternalUpdate.current) {
-      isExternalUpdate.current = false;
-      return;
-    }
     if (!boardDetail?.can_edit || !excalidrawAPI.current) return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
+    autoSaveTimer.current = setTimeout(() => {
       const api = excalidrawAPI.current;
-      if (!api || !boardDetail) return;
-      const data = serializeAsJSON(
-        api.getSceneElements(),
-        api.getAppState(),
-        api.getFiles(),
-        'local',
-      );
-      const res = await fetch(`${API_BASE}/api/boards/${boardDetail.id}`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data, client_id: clientId.current }),
-      });
-      if (res.ok) {
-        setSaveMsg('Сохранено');
-        setTimeout(() => setSaveMsg(''), 2000);
-      }
-    }, 500);
-  }, [boardDetail, authToken]);
+      if (!api || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      const data = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'local');
+      if (lastSentData.current === data) return;
+      lastSentData.current = data;
+      wsRef.current.send(JSON.stringify({
+        type: 'update',
+        elements: api.getSceneElements(),
+        appState: api.getAppState(),
+        data,
+      }));
+    }, 100);
+  }, [boardDetail]);
 
-  // ── manual save ─────────────────────────────────────────────────────────────
+  // ── manual save (persists to DB + send real-time) ───────────────────────────
   const handleManualSave = async () => {
     if (!boardDetail?.can_edit || !excalidrawAPI.current) return;
     const api = excalidrawAPI.current;
     const data = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'local');
     setSaveMsg('Сохранение…');
+    // real-time push
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'update', elements: api.getSceneElements(), appState: api.getAppState(), data }));
+    }
+    // persist to DB
     const res = await fetch(`${API_BASE}/api/boards/${boardDetail.id}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data, client_id: clientId.current }),
+      body: JSON.stringify({ data }),
     });
     if (res.ok) {
       setSaveMsg('Сохранено');
@@ -131,31 +125,31 @@ const PublicBoardPage: React.FC = () => {
     }
   };
 
-  // ── SSE real-time subscription ──────────────────────────────────────────────
+  // ── WebSocket subscription ──────────────────────────────────────────────────
   useEffect(() => {
     if (!boardDetail?.can_edit) return;
-    const es = new EventSource(
-      `${API_BASE}/api/boards/${boardDetail.id}/stream?client_id=${clientId.current}`
-    );
-    sseRef.current = es;
+    const ws = new WebSocket(`${WS_BASE}/api/boards/${boardDetail.id}/ws?token=${authToken}`);
+    wsRef.current = ws;
 
-    es.addEventListener('board.update', (e: MessageEvent) => {
+    ws.onopen = () => {};
+    ws.onmessage = (event) => {
       try {
-        const parsed = JSON.parse(e.data);
-        isExternalUpdate.current = true;
-        excalidrawAPI.current?.updateScene({ elements: parsed.elements });
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'update' && excalidrawAPI.current) {
+          excalidrawAPI.current.updateScene({ elements: msg.elements });
+        }
       } catch {
-        // ignore invalid SSE data
+        // ignore
       }
-    });
-
-    es.onerror = () => {};
+    };
+    ws.onerror = () => {};
+    ws.onclose = () => { wsRef.current = null; };
 
     return () => {
-      es.close();
-      sseRef.current = null;
+      ws.close();
+      wsRef.current = null;
     };
-  }, [boardDetail?.id]);
+  }, [boardDetail?.can_edit, boardDetail?.id, authToken]);
 
   if (loading || authLoading) return (
     <div style={{

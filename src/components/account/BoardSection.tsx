@@ -100,9 +100,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [boardCanEdit, setBoardCanEdit] = useState(false);
   const excalidrawAPI = useRef<ExcalidrawImperativeAPI | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clientId = useRef(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const isExternalUpdate = useRef(false);
-  const sseRef = useRef<EventSource | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const lastSentData = useRef<string | null>(null);
 
   // ── save panel ───────────────────────────────────────────────────────────────
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
@@ -245,32 +244,33 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     await openBoard(board.id);
   };
 
-  // ── auto-save on change ──────────────────────────────────────────────────────
+  const WS_BASE = API_BASE.replace(/^http/, 'ws');
+
+  // ── auto-save (real-time via WebSocket) ─────────────────────────────────────
   const handleChange = useCallback(() => {
-    if (isExternalUpdate.current) {
-      isExternalUpdate.current = false;
-      return;
-    }
     if (!activeBoardId || !boardCanEdit || !excalidrawAPI.current) return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
+    autoSaveTimer.current = setTimeout(() => {
       const api = excalidrawAPI.current;
-      if (!api) return;
+      if (!api || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
       const data = serializeAsJSON(
         api.getSceneElements(),
         api.getAppState(),
         api.getFiles(),
         'local',
       );
-      await fetch(`${API_BASE}/api/boards/${activeBoardId}`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify({ data, client_id: clientId.current }),
-      });
-    }, 500);
-  }, [activeBoardId, authHeaders, boardCanEdit]);
+      if (lastSentData.current === data) return;
+      lastSentData.current = data;
+      wsRef.current.send(JSON.stringify({
+        type: 'update',
+        elements: api.getSceneElements(),
+        appState: api.getAppState(),
+        data,
+      }));
+    }, 100);
+  }, [activeBoardId, boardCanEdit]);
 
-  // ── save to profile (manual) ─────────────────────────────────────────────────
+  // ── save to profile (manual: persists title to DB) ───────────────────────────
   const saveToProfile = async () => {
     if (!activeBoardId || !boardCanEdit || !excalidrawAPI.current) return;
     setSaving(true);
@@ -281,10 +281,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       api.getFiles(),
       'local',
     );
+    // send real-time update immediately
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'update', elements: api.getSceneElements(), appState: api.getAppState(), data }));
+    }
+    // persist title
     const res = await fetch(`${API_BASE}/api/boards/${activeBoardId}`, {
       method: 'PUT',
       headers: authHeaders(),
-      body: JSON.stringify({ data, title: boardTitle, client_id: clientId.current }),
+      body: JSON.stringify({ title: boardTitle }),
     });
     setSaving(false);
     if (res.ok) {
@@ -293,31 +298,31 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     }
   };
 
-  // ── SSE real-time subscription ──────────────────────────────────────────────
+  // ── WebSocket real-time subscription ────────────────────────────────────────
   useEffect(() => {
     if (!activeBoardId || !boardCanEdit) return;
-    const es = new EventSource(
-      `${API_BASE}/api/boards/${activeBoardId}/stream?client_id=${clientId.current}`
-    );
-    sseRef.current = es;
+    const ws = new WebSocket(`${WS_BASE}/api/boards/${activeBoardId}/ws?token=${token}`);
+    wsRef.current = ws;
 
-    es.addEventListener('board.update', (e: MessageEvent) => {
+    ws.onopen = () => {};
+    ws.onmessage = (event) => {
       try {
-        const parsed = JSON.parse(e.data);
-        isExternalUpdate.current = true;
-        excalidrawAPI.current?.updateScene({ elements: parsed.elements });
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'update' && excalidrawAPI.current) {
+          excalidrawAPI.current.updateScene({ elements: msg.elements });
+        }
       } catch {
-        // ignore invalid SSE data
+        // ignore
       }
-    });
-
-    es.onerror = () => {};
+    };
+    ws.onerror = () => {};
+    ws.onclose = () => { wsRef.current = null; };
 
     return () => {
-      es.close();
-      sseRef.current = null;
+      ws.close();
+      wsRef.current = null;
     };
-  }, [activeBoardId, boardCanEdit]);
+  }, [activeBoardId, boardCanEdit, token]);
 
   // ── export ───────────────────────────────────────────────────────────────────
   const exportPNG = async () => {
@@ -554,6 +559,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const confirmExit = async (saveFirst: boolean) => {
     if (saveFirst && boardCanEdit) await saveToProfile();
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     setExitPrompt(false);
     setMode('modal');
     setActiveBoardId(null);

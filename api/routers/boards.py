@@ -1,66 +1,104 @@
 """
 Роутер для досок (Excalidraw-полотна).
-Эндпоинты: CRUD + публичный доступ по share_token.
+Эндпоинты: CRUD + публичный доступ по share_token + WebSocket real-time collaboration.
 """
 
+import asyncio
 import secrets
+from collections import defaultdict
 from datetime import datetime
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..database import async_session
 from ..dependencies import get_db
 from ..dependencies import get_current_user
 from ..dependencies import get_current_user_optional
+from ..auth import decode_access_token
 from ..models import Board, BoardVisit, User
 from ..schemas import BoardCreate, BoardDetailOut, BoardOut, BoardRecentOut, BoardShareRequest, BoardUpdate
-from sse_starlette.sse import EventSourceResponse
-import asyncio
-from collections import defaultdict
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
 
-# ── SSE broadcast manager ────────────────────────────────────────────────────
-# board_id (UUID str) -> list of client queues (asyncio.Queue)
-_board_listeners: dict[str, list[asyncio.Queue]] = defaultdict(list)
+# ── WebSocket rooms & in-memory state ─────────────────────────────────────────
+# board_id (str) -> list of connected WebSocket clients
+_ws_rooms: dict[str, list[WebSocket]] = defaultdict(list)
+# latest data JSON snapshot per board (for periodic flush to DB)
+_board_snapshots: dict[str, str] = {}
 
 
-async def _broadcast_board_update(board_id: str, data: str, exclude_client_id: str | None = None):
-    """Broadcast data JSON to all listeners of a specific board, excluding the sender."""
-    listeners = _board_listeners.get(board_id, [])
-    dead = []
-    for queue in listeners:
+async def _periodic_flush_boards():
+    """Save in-memory board snapshots to PostgreSQL every 5 seconds."""
+    while True:
+        await asyncio.sleep(5)
+        if not _board_snapshots:
+            continue
         try:
-            # каждая очередь хранит кортеж (client_id, data)
-            queue.put_nowait((exclude_client_id, data))
-        except asyncio.QueueFull:
-            dead.append(queue)
+            async with async_session() as db:
+                for bid, data in list(_board_snapshots.items()):
+                    try:
+                        board = await db.get(Board, UUID(bid))
+                        if board and board.data != data:
+                            board.data = data
+                        if len(_ws_rooms.get(bid, [])) == 0:
+                            # nobody connected — clean up snapshot
+                            _board_snapshots.pop(bid, None)
+                    except Exception:
+                        continue
+                await db.commit()
+        except Exception:
+            # DB may be temporarily unavailable; retry next cycle
+            pass
+
+
+# start background flusher
+try:
+    asyncio.get_running_loop().create_task(_periodic_flush_boards())
+except RuntimeError:
+    # no running loop at import time; will be started on first request
+    pass
+
+
+async def _authenticate_ws_token(token: str | None, db: AsyncSession) -> User | None:
+    """Decode JWT from WebSocket query param and return user or None."""
+    if not token:
+        return None
+    payload = decode_access_token(token)
+    if payload is None:
+        return None
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.student_profile), selectinload(User.teacher_profile), selectinload(User.stream))
+        .where(User.id == UUID(user_id), User.is_deleted == False)
+    )
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        return None
+    return user
+
+
+async def _broadcast_to_room(board_id: str, sender: WebSocket, payload: dict):
+    """Send JSON payload to every socket in the room except sender."""
+    listeners = _ws_rooms.get(board_id, [])
+    dead = []
+    for ws in listeners:
+        if ws is sender:
+            continue
+        try:
+            await ws.send_json(payload)
+        except Exception:
+            dead.append(ws)
     for d in dead:
-        listeners.remove(d)
-
-
-async def _listen_sse(board_id: str, client_id: str):
-    """Async generator for SSE event source."""
-    queue: asyncio.Queue = asyncio.Queue(maxsize=10)
-    _board_listeners[board_id].append(queue)
-    try:
-        while True:
-            exclude_id, data = await queue.get()
-            if exclude_id == client_id:
-                continue
-            yield {"event": "board.update", "data": data}
-    except asyncio.CancelledError:
-        pass
-    finally:
-        listeners = _board_listeners.get(board_id, [])
-        if queue in listeners:
-            listeners.remove(queue)
-        if not listeners:
-            _board_listeners.pop(board_id, None)
+        if d in listeners:
+            listeners.remove(d)
 
 
 # ── список полотен текущего пользователя ──────────────────────────────────────
@@ -143,7 +181,7 @@ async def get_board(
     return _serialize_board_detail(board, current_user)
 
 
-# ── сохранить данные полотна ───────────────────────────────────────────────────
+# ── сохранить данные полотна (manual / fallback) ───────────────────────────────
 @router.put("/{board_id}", response_model=BoardOut)
 async def update_board(
     board_id: UUID,
@@ -164,24 +202,59 @@ async def update_board(
         board.is_public = body.is_public
     await db.commit()
     await db.refresh(board)
-    # broadcast to other connected clients
-    await _broadcast_board_update(
-        str(board_id),
-        board.data or "",
-        exclude_client_id=body.client_id or None,
-    )
     return board
 
 
-# ── SSE stream for real-time board updates ────────────────────────────────────
-@router.get("/{board_id}/stream")
-async def board_stream(
+# ── WebSocket real-time collaboration ─────────────────────────────────────────
+@router.websocket("/{board_id}/ws")
+async def board_ws(
     board_id: UUID,
-    request: Request,
-    client_id: str = "default",
+    websocket: WebSocket,
 ):
-    """Server-Sent Events stream to receive live updates from other clients."""
-    return EventSourceResponse(_listen_sse(str(board_id), client_id))
+    """
+    WebSocket endpoint for collaborative real-time board editing.
+    Client must provide ?token=<jwt> query param.
+    """
+    await websocket.accept()
+
+    token = websocket.query_params.get("token")
+    async with async_session() as db:
+        user = await _authenticate_ws_token(token, db)
+        if user is None:
+            await websocket.close(code=4401, reason="Unauthorized")
+            return
+
+        board = await db.get(Board, board_id)
+        if not board:
+            await websocket.close(code=4404, reason="Board not found")
+            return
+        if not _can_edit_board(board, user):
+            await websocket.close(code=4403, reason="Forbidden")
+            return
+
+    bid = str(board_id)
+    _ws_rooms[bid].append(websocket)
+
+    try:
+        while True:
+            msg = await websocket.receive_json()
+            if msg.get("type") == "update":
+                elements = msg.get("elements", [])
+                app_state = msg.get("appState", {})
+                # reconstruct full Excalidraw JSON string for DB snapshot
+                full_data = msg.get("data", "")
+                if full_data:
+                    _board_snapshots[bid] = full_data
+                payload = {"type": "update", "elements": elements, "appState": app_state}
+                await _broadcast_to_room(bid, websocket, payload)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        listeners = _ws_rooms.get(bid, [])
+        if websocket in listeners:
+            listeners.remove(websocket)
+        if not listeners:
+            _ws_rooms.pop(bid, None)
 
 
 # ── удалить полотно ────────────────────────────────────────────────────────────
