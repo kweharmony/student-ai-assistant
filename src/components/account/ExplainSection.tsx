@@ -197,14 +197,20 @@ const ExplainSection: React.FC<ExplainSectionProps> = ({ isLightTheme }) => {
     }
   };
 
-  const items = source === 'my' ? myLectures : catalogItems;
-  const filtered = items.filter((item: any) => {
-    const query = search.trim().toLowerCase();
+  const query = search.trim().toLowerCase();
+  const filteredMyLectures = myLectures.filter((item) => {
     if (!query) return true;
-    const title = source === 'my' ? item.title : item.lecture_title;
-    const subject = source === 'my' ? item.subject : item.discipline;
+    const title = item.title;
+    const subject = item.subject;
     return `${title} ${subject || ''}`.toLowerCase().includes(query);
   });
+  const filteredCatalogItems = catalogItems.filter((item) => {
+    if (!query) return true;
+    const title = item.lecture_title;
+    const subject = item.discipline;
+    return `${title} ${subject || ''}`.toLowerCase().includes(query);
+  });
+  const filtered = source === 'my' ? filteredMyLectures : filteredCatalogItems;
 
   return (
     <section className="space-y-6">

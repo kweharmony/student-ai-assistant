@@ -37,7 +37,7 @@ polza_client: Optional[OpenAI] = None
 
 POLZA_BASE_URL = os.getenv('POLZA_BASE_URL', 'https://polza.ai/api/v1')
 POLZA_API_KEY = os.getenv('POLZA_API_KEY')
-POLZA_MODEL = os.getenv('POLZA_MODEL', 'ibm-granite/granite-4.1-8b')
+POLZA_MODEL = os.getenv('POLZA_MODEL', 'deepseek/deepseek-v4-flash')
 
 EXPLAIN_SYSTEM_PROMPT = (
     "Ты — учебный ассистент. Объясняй фрагменты лекций простым, понятным языком. "
