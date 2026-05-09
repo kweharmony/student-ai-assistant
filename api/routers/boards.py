@@ -4,7 +4,10 @@
 """
 
 import asyncio
+import json
+import os
 import secrets
+import uuid
 from collections import defaultdict
 from datetime import datetime
 from typing import List
@@ -23,10 +26,44 @@ from ..auth import decode_access_token
 from ..models import Board, BoardVisit, User
 from ..schemas import BoardCreate, BoardDetailOut, BoardOut, BoardRecentOut, BoardShareRequest, BoardUpdate
 
+try:
+    import redis.asyncio as redis
+except Exception:  # pragma: no cover - optional dependency
+    redis = None
+
 router = APIRouter(prefix="/api/boards", tags=["boards"])
 
 # ── WebSocket rooms ───────────────────────────────────────────────────────────
 _ws_rooms: dict[str, list[WebSocket]] = defaultdict(list)
+_redis_client = None
+
+
+async def _get_redis_client():
+    global _redis_client
+    if redis is None:
+        return None
+    redis_url = os.getenv("REDIS_URL")
+    if not redis_url:
+        return None
+    if _redis_client is None:
+        _redis_client = redis.from_url(redis_url, decode_responses=True)
+    return _redis_client
+
+
+async def _redis_listener(pubsub, websocket: WebSocket, client_id: str):
+    try:
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            try:
+                payload = json.loads(message.get("data", "{}"))
+            except Exception:
+                continue
+            if payload.get("sender_id") == client_id:
+                continue
+            await websocket.send_json(payload)
+    except Exception:
+        pass
 
 
 async def _save_board_data(board_id: str, data: str):
@@ -212,6 +249,14 @@ async def board_ws(
 
     bid = str(board_id)
     _ws_rooms[bid].append(websocket)
+    client_id = str(uuid.uuid4())
+    redis_client = await _get_redis_client()
+    pubsub = None
+    redis_task = None
+    if redis_client is not None:
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe(f"boards:{bid}")
+        redis_task = asyncio.create_task(_redis_listener(pubsub, websocket, client_id))
 
     try:
         while True:
@@ -225,11 +270,31 @@ async def board_ws(
                 full_data = msg.get("data", "")
                 if full_data:
                     asyncio.create_task(_save_board_data(bid, full_data))
-                payload = {"type": "update", "elements": elements, "appState": app_state, "data": full_data}
-                await _broadcast_to_room(bid, websocket, payload)
+                payload = {
+                    "type": "update",
+                    "elements": elements,
+                    "appState": app_state,
+                    "data": full_data,
+                    "sender_id": client_id,
+                }
+                if redis_client is not None:
+                    try:
+                        await redis_client.publish(f"boards:{bid}", json.dumps(payload))
+                    except Exception:
+                        pass
+                else:
+                    await _broadcast_to_room(bid, websocket, payload)
     except WebSocketDisconnect:
         pass
     finally:
+        if redis_task is not None:
+            redis_task.cancel()
+        if pubsub is not None:
+            try:
+                await pubsub.unsubscribe()
+                await pubsub.close()
+            except Exception:
+                pass
         listeners = _ws_rooms.get(bid, [])
         if websocket in listeners:
             listeners.remove(websocket)

@@ -24,5 +24,8 @@ python-jose[cryptography]==3.3.0
 # Утилиты
 aiofiles==24.1.0
 
+# Redis pub/sub for multi-worker WebSocket sync
+redis==5.0.7
+
 # HTTP-клиент для обращения к pdf-service
 httpx>=0.27.0
