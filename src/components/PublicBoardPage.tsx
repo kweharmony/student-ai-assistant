@@ -108,7 +108,7 @@ const PublicBoardPage: React.FC = () => {
         setSaveMsg('Сохранено');
         setTimeout(() => setSaveMsg(''), 2000);
       }
-    }, 2000);
+    }, 500);
   }, [boardDetail, authToken]);
 
   // ── manual save ─────────────────────────────────────────────────────────────

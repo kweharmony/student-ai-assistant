@@ -267,7 +267,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         headers: authHeaders(),
         body: JSON.stringify({ data, client_id: clientId.current }),
       });
-    }, 2000);
+    }, 500);
   }, [activeBoardId, authHeaders, boardCanEdit]);
 
   // ── save to profile (manual) ─────────────────────────────────────────────────
