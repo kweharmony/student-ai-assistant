@@ -170,8 +170,10 @@ const PublicBoardPage: React.FC = () => {
           excalidrawAPI.current.updateScene({
             elements: nextElements,
             appState: nextAppState,
-            files: nextFiles,
           });
+          if (nextFiles && excalidrawAPI.current.addFiles) {
+            excalidrawAPI.current.addFiles(nextFiles);
+          }
         }
       } catch {
         // ignore
