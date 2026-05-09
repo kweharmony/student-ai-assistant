@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Excalidraw,
   convertToExcalidrawElements,
@@ -8,6 +8,7 @@ import {
 } from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 import excalidrawStyles from '../excalidrawStyles';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -78,6 +79,7 @@ const BG_PALETTE = [
 
 const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode, onToggleTheme }) => {
   const { token, user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // ── modal state ──────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<Mode>('modal');
@@ -108,7 +110,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [activeBoard, setActiveBoard] = useState<BoardDetail | null>(null);
   const [shareModeDraft, setShareModeDraft] = useState<'view' | 'edit'>('view');
-  const boardIsOwner = !!activeBoard?.owner && activeBoard.owner.id === user?.id;
+  const [boardIsOwner, setBoardIsOwner] = useState(false);
 
   // ── exit prompt ──────────────────────────────────────────────────────────────
   const [exitPrompt, setExitPrompt] = useState(false);
@@ -168,6 +170,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     fetchRecentBoards();
   }, [fetchBoards, fetchRecentBoards]);
 
+  // ── restore canvas from URL query param ─────────────────────────────────────
+  useEffect(() => {
+    const boardId = searchParams.get('board');
+    if (boardId && mode === 'modal' && activeBoardId !== boardId) {
+      openBoard(boardId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   // ── open board ───────────────────────────────────────────────────────────────
   const openBoard = async (id: string) => {
     const res = await fetch(`${API_BASE}/api/boards/${id}`, { headers: authHeaders() });
@@ -182,10 +193,12 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setBoardTitle(detail.title);
     setActiveBoard(detail);
     setBoardCanEdit(detail.can_edit);
+    setBoardIsOwner(!!detail.owner && detail.owner.id === user?.id);
     setShareModeDraft(detail.share_mode);
     setCanvasBg(parsed?.appState?.viewBackgroundColor || 'transparent');
     setMode('canvas');
     onCanvasMode?.(true);
+    setSearchParams({ board: id });
   };
 
   // ── open board by share link ─────────────────────────────────────────────────
@@ -206,9 +219,11 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setBoardTitle(detail.can_edit ? detail.title : `${detail.title} (только просмотр)`);
     setActiveBoard(detail);
     setBoardCanEdit(detail.can_edit);
+    setBoardIsOwner(!!detail.owner && detail.owner.id === user?.id);
     setShareModeDraft(detail.share_mode);
     setMode('canvas');
     onCanvasMode?.(true);
+    setSearchParams({ board: detail.id });
     fetchRecentBoards();
   };
 
@@ -512,7 +527,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setInitialData(null);
     setActiveBoard(null);
     setBoardCanEdit(false);
+    setBoardIsOwner(false);
     onCanvasMode?.(false);
+    setSearchParams({});
     fetchBoards();
     fetchRecentBoards();
   };
@@ -1093,9 +1110,11 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                     Сохранить и выйти
                   </button>
                 )}
-                <button style={{ ...btnSecondary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(false)}>
-                  {boardCanEdit ? 'Выйти без сохранения' : 'Выйти'}
-                </button>
+                {activeBoardId && !boardCanEdit && (
+                  <button style={{ ...btnSecondary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(false)}>
+                    Выйти
+                  </button>
+                )}
                 <button style={{ ...btnSecondary, width: '100%', textAlign: 'center', opacity: 0.7 }} onClick={() => setExitPrompt(false)}>
                   Отмена
                 </button>

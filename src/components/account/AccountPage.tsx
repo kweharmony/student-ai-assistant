@@ -29,7 +29,20 @@ const ALLOWED_SECTIONS: ActiveSection[] = [
   'board',
 ];
 
+const getSectionFromUrl = (): ActiveSection | null => {
+  try {
+    if (new URLSearchParams(window.location.search).get('board')) {
+      return 'board';
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+};
+
 const getInitialActiveSection = (): ActiveSection => {
+  const fromUrl = getSectionFromUrl();
+  if (fromUrl) return fromUrl;
   try {
     const saved = localStorage.getItem(ACCOUNT_ACTIVE_SECTION_KEY);
     if (saved && ALLOWED_SECTIONS.includes(saved as ActiveSection)) {
