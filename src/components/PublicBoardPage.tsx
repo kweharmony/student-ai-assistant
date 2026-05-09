@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import excalidrawStyles from './excalidrawStyles';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const WS_BASE = API_BASE.replace(/^http/, 'ws');
+const WS_BASE = API_BASE.replace(/^http(s?):\/\//, (_, secure) => (secure ? 'wss://' : 'ws://'));
 
 interface BoardPublicDetail {
   id: string;

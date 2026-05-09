@@ -244,7 +244,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     await openBoard(board.id);
   };
 
-  const WS_BASE = API_BASE.replace(/^http/, 'ws');
+  const WS_BASE = API_BASE.replace(/^http(s?):\/\//, (_, secure) => (secure ? 'wss://' : 'ws://'));
 
   const persistBoardData = useCallback(async (data: string) => {
     if (!activeBoardId) return;
