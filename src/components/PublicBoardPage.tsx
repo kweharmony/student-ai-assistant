@@ -8,6 +8,7 @@ import excalidrawStyles from './excalidrawStyles';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http(s?):\/\//, (_, secure) => (secure ? 'wss://' : 'ws://'));
+const SEND_DEBOUNCE_MS = 250;
 
 interface BoardPublicDetail {
   id: string;
@@ -114,8 +115,41 @@ const PublicBoardPage: React.FC = () => {
       } else {
         persistBoardData(data);
       }
-    }, 100);
+    }, SEND_DEBOUNCE_MS);
   }, [boardDetail, persistBoardData]);
+
+  const pendingRemoteUpdate = useRef<any | null>(null);
+
+  const isUserInteracting = useCallback(() => {
+    const api = excalidrawAPI.current;
+    if (!api) return false;
+    const state = api.getAppState();
+    return Boolean(state.draggingElement || state.editingElement || state.isResizing || state.isRotating);
+  }, []);
+
+  const applyRemoteUpdate = useCallback((msg: any) => {
+    if (!excalidrawAPI.current) return;
+    let nextElements = msg.elements;
+    let nextAppState = msg.appState;
+    let nextFiles = undefined;
+    if (msg.data) {
+      try {
+        const parsed = JSON.parse(msg.data);
+        nextElements = parsed.elements ?? nextElements;
+        nextAppState = parsed.appState ?? nextAppState;
+        nextFiles = parsed.files;
+      } catch {
+        // ignore
+      }
+    }
+    excalidrawAPI.current.updateScene({
+      elements: nextElements,
+      appState: nextAppState,
+    });
+    if (nextFiles && excalidrawAPI.current.addFiles) {
+      excalidrawAPI.current.addFiles(nextFiles);
+    }
+  }, []);
 
   // ── manual save (persists to DB + send real-time) ───────────────────────────
   const handleManualSave = async () => {
@@ -154,26 +188,11 @@ const PublicBoardPage: React.FC = () => {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'update' && excalidrawAPI.current) {
-          let nextElements = msg.elements;
-          let nextAppState = msg.appState;
-          let nextFiles = undefined;
-          if (msg.data) {
-            try {
-              const parsed = JSON.parse(msg.data);
-              nextElements = parsed.elements ?? nextElements;
-              nextAppState = parsed.appState ?? nextAppState;
-              nextFiles = parsed.files;
-            } catch {
-              // ignore
-            }
+          if (isUserInteracting()) {
+            pendingRemoteUpdate.current = msg;
+            return;
           }
-          excalidrawAPI.current.updateScene({
-            elements: nextElements,
-            appState: nextAppState,
-          });
-          if (nextFiles && excalidrawAPI.current.addFiles) {
-            excalidrawAPI.current.addFiles(nextFiles);
-          }
+          applyRemoteUpdate(msg);
         }
       } catch {
         // ignore
@@ -186,7 +205,18 @@ const PublicBoardPage: React.FC = () => {
       ws.close();
       wsRef.current = null;
     };
-  }, [boardDetail?.id, authToken]);
+  }, [boardDetail?.id, authToken, applyRemoteUpdate, isUserInteracting]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!pendingRemoteUpdate.current) return;
+      if (isUserInteracting()) return;
+      const msg = pendingRemoteUpdate.current;
+      pendingRemoteUpdate.current = null;
+      applyRemoteUpdate(msg);
+    }, 150);
+    return () => clearInterval(timer);
+  }, [applyRemoteUpdate, isUserInteracting]);
 
   if (loading || authLoading) return (
     <div style={{

@@ -246,6 +246,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   const WS_BASE = API_BASE.replace(/^http(s?):\/\//, (_, secure) => (secure ? 'wss://' : 'ws://'));
 
+  const SEND_DEBOUNCE_MS = 250;
+
   const persistBoardData = useCallback(async (data: string) => {
     if (!activeBoardId) return;
     try {
@@ -284,8 +286,41 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       } else {
         persistBoardData(data);
       }
-    }, 100);
+    }, SEND_DEBOUNCE_MS);
   }, [activeBoardId, boardCanEdit, persistBoardData]);
+
+  const pendingRemoteUpdate = useRef<any | null>(null);
+
+  const isUserInteracting = useCallback(() => {
+    const api = excalidrawAPI.current;
+    if (!api) return false;
+    const state = api.getAppState();
+    return Boolean(state.draggingElement || state.editingElement || state.isResizing || state.isRotating);
+  }, []);
+
+  const applyRemoteUpdate = useCallback((msg: any) => {
+    if (!excalidrawAPI.current) return;
+    let nextElements = msg.elements;
+    let nextAppState = msg.appState;
+    let nextFiles = undefined;
+    if (msg.data) {
+      try {
+        const parsed = JSON.parse(msg.data);
+        nextElements = parsed.elements ?? nextElements;
+        nextAppState = parsed.appState ?? nextAppState;
+        nextFiles = parsed.files;
+      } catch {
+        // ignore
+      }
+    }
+    excalidrawAPI.current.updateScene({
+      elements: nextElements,
+      appState: nextAppState,
+    });
+    if (nextFiles && excalidrawAPI.current.addFiles) {
+      excalidrawAPI.current.addFiles(nextFiles);
+    }
+  }, []);
 
   // ── save to profile (manual: persists title to DB) ───────────────────────────
   const saveToProfile = async () => {
@@ -326,26 +361,11 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'update' && excalidrawAPI.current) {
-          let nextElements = msg.elements;
-          let nextAppState = msg.appState;
-          let nextFiles = undefined;
-          if (msg.data) {
-            try {
-              const parsed = JSON.parse(msg.data);
-              nextElements = parsed.elements ?? nextElements;
-              nextAppState = parsed.appState ?? nextAppState;
-              nextFiles = parsed.files;
-            } catch {
-              // ignore
-            }
+          if (isUserInteracting()) {
+            pendingRemoteUpdate.current = msg;
+            return;
           }
-          excalidrawAPI.current.updateScene({
-            elements: nextElements,
-            appState: nextAppState,
-          });
-          if (nextFiles && excalidrawAPI.current.addFiles) {
-            excalidrawAPI.current.addFiles(nextFiles);
-          }
+          applyRemoteUpdate(msg);
         }
       } catch {
         // ignore
@@ -358,7 +378,18 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       ws.close();
       wsRef.current = null;
     };
-  }, [activeBoardId, token]);
+  }, [activeBoardId, token, applyRemoteUpdate, isUserInteracting]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!pendingRemoteUpdate.current) return;
+      if (isUserInteracting()) return;
+      const msg = pendingRemoteUpdate.current;
+      pendingRemoteUpdate.current = null;
+      applyRemoteUpdate(msg);
+    }, 150);
+    return () => clearInterval(timer);
+  }, [applyRemoteUpdate, isUserInteracting]);
 
   // ── export ───────────────────────────────────────────────────────────────────
   const exportPNG = async () => {
