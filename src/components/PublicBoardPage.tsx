@@ -82,6 +82,55 @@ const PublicBoardPage: React.FC = () => {
     })();
   }, [shareToken, authLoading, isAuthenticated, authHeaders, navigate]);
 
+  // ── auto-save for edit mode ─────────────────────────────────────────────────
+  const handleChange = useCallback(() => {
+    if (isExternalUpdate.current) {
+      isExternalUpdate.current = false;
+      return;
+    }
+    if (!boardDetail?.can_edit || !excalidrawAPI.current) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(async () => {
+      const api = excalidrawAPI.current;
+      if (!api || !boardDetail) return;
+      const data = serializeAsJSON(
+        api.getSceneElements(),
+        api.getAppState(),
+        api.getFiles(),
+        'local',
+      );
+      const res = await fetch(`${API_BASE}/api/boards/${boardDetail.id}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data, client_id: clientId.current }),
+      });
+      if (res.ok) {
+        setSaveMsg('Сохранено');
+        setTimeout(() => setSaveMsg(''), 2000);
+      }
+    }, 2000);
+  }, [boardDetail, authToken]);
+
+  // ── manual save ─────────────────────────────────────────────────────────────
+  const handleManualSave = async () => {
+    if (!boardDetail?.can_edit || !excalidrawAPI.current) return;
+    const api = excalidrawAPI.current;
+    const data = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'local');
+    setSaveMsg('Сохранение…');
+    const res = await fetch(`${API_BASE}/api/boards/${boardDetail.id}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, client_id: clientId.current }),
+    });
+    if (res.ok) {
+      setSaveMsg('Сохранено');
+      setTimeout(() => setSaveMsg(''), 2000);
+    } else {
+      setSaveMsg('Ошибка сохранения');
+      setTimeout(() => setSaveMsg(''), 2000);
+    }
+  };
+
   // ── SSE real-time subscription ──────────────────────────────────────────────
   useEffect(() => {
     if (!boardDetail?.can_edit) return;
