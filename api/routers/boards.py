@@ -225,7 +225,7 @@ async def board_ws(
                 full_data = msg.get("data", "")
                 if full_data:
                     asyncio.create_task(_save_board_data(bid, full_data))
-                payload = {"type": "update", "elements": elements, "appState": app_state}
+                payload = {"type": "update", "elements": elements, "appState": app_state, "data": full_data}
                 await _broadcast_to_room(bid, websocket, payload)
     except WebSocketDisconnect:
         pass

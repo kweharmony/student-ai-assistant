@@ -154,7 +154,24 @@ const PublicBoardPage: React.FC = () => {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'update' && excalidrawAPI.current) {
-          excalidrawAPI.current.updateScene({ elements: msg.elements });
+          let nextElements = msg.elements;
+          let nextAppState = msg.appState;
+          let nextFiles = undefined;
+          if (msg.data) {
+            try {
+              const parsed = JSON.parse(msg.data);
+              nextElements = parsed.elements ?? nextElements;
+              nextAppState = parsed.appState ?? nextAppState;
+              nextFiles = parsed.files;
+            } catch {
+              // ignore
+            }
+          }
+          excalidrawAPI.current.updateScene({
+            elements: nextElements,
+            appState: nextAppState,
+            files: nextFiles,
+          });
         }
       } catch {
         // ignore
