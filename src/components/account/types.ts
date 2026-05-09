@@ -3,27 +3,9 @@ export interface AccountPageProps {
   isLightTheme: boolean;
 }
 
-export interface Record {
-  id: string;
-  title: string;
-  originalText: string;
-  processedText: string;
-  date: string;
-}
-
-export interface ScheduleItem {
-  id: string;
-  subject: string;
-  time: string;
-  room: string;
-  teacher: string;
-  type: 'lecture' | 'seminar' | 'lab';
-  date: string;
-}
-
 export type ActiveSection =
   | 'profile'
-  | 'calendar'
+  | 'explain'
   | 'transcriber'
   | 'text-processing'
   | 'lectures'

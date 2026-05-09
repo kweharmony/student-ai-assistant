@@ -59,18 +59,6 @@ const Header: React.FC<HeaderProps> = ({ onToggleTheme, isLightTheme }) => {
               style={{ background: 'var(--text-secondary)' }}
             />
           </Link>
-          <Link
-            to="/pricing"
-            className={linkClass}
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            <span className="relative z-10">Подписки</span>
-            <div
-              className="absolute -bottom-1 left-0 w-0 h-0.5 transition-all duration-300 group-hover:w-full"
-              style={{ background: 'var(--text-secondary)' }}
-            />
-          </Link>
-
           {/* Auth link: "Войти" or user display name */}
           {!isAuthPage && (
             <Link

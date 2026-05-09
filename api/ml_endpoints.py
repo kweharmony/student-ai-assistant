@@ -10,6 +10,9 @@ from typing import List, Optional, Dict
 import logging
 import asyncio
 from datetime import datetime
+import os
+from openai import OpenAI
+from dotenv import load_dotenv
 
 # Импортируем DeepSeek процессор
 try:
@@ -23,11 +26,25 @@ except ImportError:
 # Настройка логирования
 logger = logging.getLogger(__name__)
 
+load_dotenv()
+
 # Создаем роутер
 router = APIRouter(prefix="/api/ml", tags=["ML Text Processing"])
 
 # Глобальный экземпляр процессора (stateless, безопасен для параллельных запросов)
 processor = None
+polza_client: Optional[OpenAI] = None
+
+POLZA_BASE_URL = os.getenv('POLZA_BASE_URL', 'https://polza.ai/api/v1')
+POLZA_API_KEY = os.getenv('POLZA_API_KEY')
+POLZA_MODEL = os.getenv('POLZA_MODEL', 'ibm-granite/granite-4.1-8b')
+
+EXPLAIN_SYSTEM_PROMPT = (
+    "Ты — учебный ассистент. Объясняй фрагменты лекций простым, понятным языком. "
+    "Сохраняй точность, не выдумывай факты. Если контекста мало — попроси уточнение. "
+    "Структура ответа: краткое резюме, пошаговое объяснение, пример/аналогия, мини-словарь, "
+    "1-2 контрольных вопроса. Пиши по-русски."
+)
 
 def get_processor():
     """Получение глобального экземпляра процессора"""
@@ -35,6 +52,15 @@ def get_processor():
     if processor is None:
         processor = DeepSeekProcessor()
     return processor
+
+
+def get_polza_client() -> OpenAI:
+    global polza_client
+    if polza_client is None:
+        if not POLZA_API_KEY:
+            raise HTTPException(status_code=500, detail="POLZA_API_KEY не найден в переменных окружения")
+        polza_client = OpenAI(api_key=POLZA_API_KEY, base_url=POLZA_BASE_URL)
+    return polza_client
 
 
 # Модели данных для API
@@ -73,6 +99,21 @@ class HealthResponse(BaseModel):
     gemini_api_available: bool
     message: str
     timestamp: datetime
+
+
+class ExplainRequest(BaseModel):
+    text: str = Field(..., min_length=10, max_length=6000, description="Фрагмент лекции")
+    lecture_title: Optional[str] = Field(None, max_length=300, description="Название лекции")
+    question: Optional[str] = Field(None, max_length=300, description="Что именно нужно объяснить")
+
+
+class ExplainResponse(BaseModel):
+    success: bool
+    explanation: str
+    model: str
+    processing_time: float
+    timestamp: datetime
+    error: Optional[str] = None
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -227,6 +268,58 @@ async def batch_process_text(request: BatchProcessRequest):
             total_processing_time=total_time,
             timestamp=datetime.now(),
             errors={"general": str(e)}
+        )
+
+
+@router.post("/explain", response_model=ExplainResponse)
+async def explain_fragment(request: ExplainRequest):
+    start_time = datetime.now()
+    try:
+        client = get_polza_client()
+        title = request.lecture_title or "Без названия"
+        question = request.question or "Объясни смысл этого фрагмента"
+
+        user_prompt = (
+            f"Лекция: {title}\n"
+            f"Запрос пользователя: {question}\n\n"
+            "Фрагмент:\n"
+            f"\"\"\"{request.text}\"\"\"\n\n"
+            "Объясни коротко и по делу, без лишней воды."
+        )
+
+        response = client.chat.completions.create(
+            model=POLZA_MODEL,
+            messages=[
+                {"role": "system", "content": EXPLAIN_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            max_tokens=800,
+            top_p=0.9,
+        )
+
+        explanation = response.choices[0].message.content or ""
+        processing_time = (datetime.now() - start_time).total_seconds()
+
+        return ExplainResponse(
+            success=True,
+            explanation=explanation,
+            model=POLZA_MODEL,
+            processing_time=processing_time,
+            timestamp=datetime.now(),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        processing_time = (datetime.now() - start_time).total_seconds()
+        logger.error(f"Ошибка explain: {str(e)}")
+        return ExplainResponse(
+            success=False,
+            explanation="",
+            model=POLZA_MODEL,
+            processing_time=processing_time,
+            timestamp=datetime.now(),
+            error=str(e),
         )
 
 

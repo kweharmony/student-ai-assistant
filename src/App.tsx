@@ -7,7 +7,6 @@ import Features from './components/Features';
 import Footer from './components/Footer';
 import AuthPage from './components/AuthPage';
 import AccountPage from './components/account/AccountPage';
-import PricingPage from './components/PricingPage';
 import PublicBoardPage from './components/PublicBoardPage';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -77,11 +76,6 @@ const AccountPageWrapper = () => {
   );
 };
 
-// Pricing page
-const PricingPageWrapper = () => {
-  const { isLightTheme, toggleTheme } = useTheme();
-  return <PricingPage onToggleTheme={toggleTheme} isLightTheme={isLightTheme} />;
-};
 
 function App() {
   return (
@@ -92,7 +86,6 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/auth" element={<AuthPageWrapper />} />
             <Route path="/account" element={<AccountPageWrapper />} />
-            <Route path="/pricing" element={<PricingPageWrapper />} />
             <Route path="/board/:token" element={<PublicBoardPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
