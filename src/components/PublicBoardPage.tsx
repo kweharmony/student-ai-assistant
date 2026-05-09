@@ -39,7 +39,13 @@ const PublicBoardPage: React.FC = () => {
   const [saveMsg, setSaveMsg] = useState('');
 
   const authHeaders = useCallback(
-    () => authToken ? { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' } : {},
+    (): Record<string, string> | undefined => {
+      if (!authToken) return undefined;
+      return {
+        Authorization: `Bearer ${authToken}`,
+        'Content-Type': 'application/json',
+      };
+    },
     [authToken]
   );
 
@@ -48,8 +54,9 @@ const PublicBoardPage: React.FC = () => {
     if (!shareToken || authLoading) return;
     (async () => {
       try {
+        const h = authHeaders();
         const res = await fetch(`${API_BASE}/api/boards/public/${shareToken}`, {
-          headers: authHeaders(),
+          headers: h,
         });
         if (!res.ok) { setError('Полотно не найдено или ссылка недействительна'); return; }
         const detail: BoardPublicDetail = await res.json();
