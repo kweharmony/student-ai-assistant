@@ -3,14 +3,13 @@ FastAPI эндпоинты для ML обработки текста
 Интеграция DeepSeek API через VseLLM провайдер
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, FastAPI
+from fastapi import APIRouter, HTTPException, Request, FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import logging
 import json
 import re
-import asyncio
 from datetime import datetime
 import os
 from openai import OpenAI
@@ -126,6 +125,10 @@ class ExplainResponse(BaseModel):
     processing_time: float
     timestamp: datetime
     error: Optional[str] = None
+
+
+class QuickSummaryRequest(BaseModel):
+    text: str = Field(..., min_length=10, max_length=70000, description="Текст лекции")
 
 
 class DiagramRequest(BaseModel):
@@ -325,7 +328,7 @@ async def batch_process_text(request: BatchProcessRequest):
 async def explain_fragment(request: ExplainRequest):
     start_time = datetime.now()
     try:
-        client = get_diagram_client()
+        client = get_polza_client()
         title = request.lecture_title or "Без названия"
         question = request.question or "Объясни смысл этого фрагмента"
 
@@ -338,7 +341,7 @@ async def explain_fragment(request: ExplainRequest):
         )
 
         response = client.chat.completions.create(
-            model=DIAGRAM_MODEL,
+            model=POLZA_MODEL,
             messages=[
                 {"role": "system", "content": EXPLAIN_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -354,7 +357,7 @@ async def explain_fragment(request: ExplainRequest):
         return ExplainResponse(
             success=True,
             explanation=explanation,
-            model=DIAGRAM_MODEL,
+            model=POLZA_MODEL,
             processing_time=processing_time,
             timestamp=datetime.now(),
         )
@@ -377,14 +380,14 @@ async def explain_fragment(request: ExplainRequest):
 async def diagram_from_text(request: DiagramRequest):
     start_time = datetime.now()
     try:
-        client = get_polza_client()
+        client = get_diagram_client()
         user_prompt = (
             f"Текст: {request.text}\n"
             f"Пожелание по layout: {request.layout}\n"
             f"max_nodes: {request.max_nodes}"
         )
         response = client.chat.completions.create(
-            model=POLZA_MODEL,
+            model=DIAGRAM_MODEL,
             messages=[
                 {"role": "system", "content": DIAGRAM_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -400,7 +403,7 @@ async def diagram_from_text(request: DiagramRequest):
         return DiagramResponse(
             success=True,
             diagram=diagram,
-            model=POLZA_MODEL,
+            model=DIAGRAM_MODEL,
             processing_time=processing_time,
             timestamp=datetime.now(),
         )
@@ -409,7 +412,7 @@ async def diagram_from_text(request: DiagramRequest):
         return DiagramResponse(
             success=False,
             diagram=None,
-            model=POLZA_MODEL,
+            model=DIAGRAM_MODEL,
             processing_time=processing_time,
             timestamp=datetime.now(),
             error=str(e),
@@ -456,7 +459,7 @@ async def get_available_modes():
 
 
 @router.post("/quick-summary")
-async def quick_summary(request: ProcessRequest):
+async def quick_summary(request: QuickSummaryRequest):
     """Быстрое создание конспекта (упрощенный эндпоинт)"""
     try:
         proc = get_processor()

@@ -685,7 +685,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const rectSkeletons = nodes.map((node: any) => {
       const pos = positions.get(node.id);
       const text = String(node.text || '').trim() || 'Блок';
-      const { width, height } = pos || estimateSize(text);
+      const size = estimateSize(text);
+      const width = pos ? pos.w : size.width;
+      const height = pos ? pos.h : size.height;
       return {
         type: 'rectangle',
         x: pos?.x ?? originX,
