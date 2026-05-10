@@ -140,6 +140,12 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [insertText, setInsertText] = useState('');
   const [lectureSource, setLectureSource] = useState<LectureSource>('my');
 
+  // ── AI diagram ─────────────────────────────────────────────────────────────
+  const [aiDiagramOpen, setAiDiagramOpen] = useState(false);
+  const [aiDiagramText, setAiDiagramText] = useState('');
+  const [aiDiagramLoading, setAiDiagramLoading] = useState(false);
+  const [aiDiagramError, setAiDiagramError] = useState('');
+
   // ── mobile detection ─────────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   useEffect(() => {
@@ -630,6 +636,131 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setInsertText('');
   };
 
+  const createDiagramElements = (diagram: any) => {
+    const api = excalidrawAPI.current;
+    if (!api) return;
+
+    const nodes: Array<any> = Array.isArray(diagram?.nodes) ? diagram.nodes : [];
+    const edges: Array<any> = Array.isArray(diagram?.edges) ? diagram.edges : [];
+    if (nodes.length === 0) return;
+
+    const layout = diagram?.layout || {};
+    const direction = (layout.direction || 'LR').toUpperCase();
+    const spacingX = Number(layout.spacingX) || 240;
+    const spacingY = Number(layout.spacingY) || 140;
+
+    const appState = api.getAppState();
+    const zoom = appState.zoom.value;
+    const originX = (-appState.scrollX + (appState.width || window.innerWidth) / 2) / zoom - 200;
+    const originY = (-appState.scrollY + (appState.height || window.innerHeight) / 2) / zoom - 120;
+
+    const estimateSize = (text: string) => {
+      const lines = text.split(/\r?\n/);
+      const maxLen = Math.max(1, ...lines.map(l => l.length));
+      const width = Math.min(360, Math.max(180, maxLen * 7 + 40));
+      const height = Math.min(240, Math.max(80, lines.length * 22 + 30));
+      return { width, height };
+    };
+
+    const positions = new Map<string, { x: number; y: number; w: number; h: number }>();
+    const gridCols = direction === 'GRID' ? Math.ceil(Math.sqrt(nodes.length)) : (direction === 'TB' ? 1 : nodes.length);
+
+    nodes.forEach((node, index) => {
+      const text = String(node.text || '').trim() || 'Блок';
+      const { width, height } = estimateSize(text);
+      let col = index;
+      let row = 0;
+      if (direction === 'TB') {
+        col = 0;
+        row = index;
+      } else if (direction === 'GRID') {
+        col = index % gridCols;
+        row = Math.floor(index / gridCols);
+      }
+      const x = originX + col * spacingX;
+      const y = originY + row * spacingY;
+      positions.set(node.id, { x, y, w: width, h: height });
+    });
+
+    const rectSkeletons = nodes.map((node: any) => {
+      const pos = positions.get(node.id);
+      const text = String(node.text || '').trim() || 'Блок';
+      const { width, height } = pos || estimateSize(text);
+      return {
+        type: 'rectangle',
+        x: pos?.x ?? originX,
+        y: pos?.y ?? originY,
+        width,
+        height,
+        backgroundColor: 'transparent',
+        fillStyle: 'solid',
+        strokeColor: isLightTheme ? '#44292b' : '#fffff0',
+        strokeWidth: 1,
+        strokeStyle: 'solid',
+        label: {
+          text,
+          textAlign: 'center',
+          verticalAlign: 'middle',
+          fontSize: 16,
+          strokeColor: isLightTheme ? '#44292b' : '#fffff0',
+        },
+      } as any;
+    });
+
+    const arrowSkeletons = edges
+      .map((edge: any) => {
+        const from = positions.get(edge.from);
+        const to = positions.get(edge.to);
+        if (!from || !to) return null;
+        const startX = from.x + from.w / 2;
+        const startY = from.y + from.h / 2;
+        const endX = to.x + to.w / 2;
+        const endY = to.y + to.h / 2;
+        return {
+          type: 'arrow',
+          x: startX,
+          y: startY,
+          points: [[0, 0], [endX - startX, endY - startY]],
+          strokeColor: isLightTheme ? '#44292b' : '#fffff0',
+          strokeWidth: 1,
+          roughness: 0,
+          opacity: 100,
+          endArrowhead: 'arrow',
+          startArrowhead: null,
+        } as any;
+      })
+      .filter(Boolean);
+
+    const rects = convertToExcalidrawElements(rectSkeletons as any);
+    const arrows = convertToExcalidrawElements(arrowSkeletons as any);
+    api.updateScene({ elements: [...api.getSceneElements(), ...rects, ...arrows] });
+    api.scrollToContent?.(rects[0], { fitToViewport: true });
+  };
+
+  const generateDiagram = async () => {
+    if (!aiDiagramText.trim()) return;
+    setAiDiagramLoading(true);
+    setAiDiagramError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/ml/diagram`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ text: aiDiagramText, layout: 'auto', max_nodes: 12 }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload?.success) {
+        throw new Error(payload?.error || 'Не удалось построить схему');
+      }
+      createDiagramElements(payload.diagram);
+      setAiDiagramOpen(false);
+      setAiDiagramText('');
+    } catch (e: any) {
+      setAiDiagramError(e?.message || 'Ошибка построения схемы');
+    } finally {
+      setAiDiagramLoading(false);
+    }
+  };
+
   const insertBoundedTextBlock = () => {
     const api = excalidrawAPI.current;
     if (!api || !boardCanEdit) return;
@@ -920,6 +1051,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             )}
 
             {activeBoardId && boardCanEdit && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
+            {activeBoardId && boardCanEdit && <MobileIconButton icon="auto_awesome" label="AI схема" onClick={() => setAiDiagramOpen(true)} />}
 
             {boardCanEdit && (
             <div style={{ position: 'relative' }}>
@@ -1169,6 +1301,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 {/* Lecture */}
                 {activeBoardId && boardCanEdit && <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />}
 
+                {activeBoardId && boardCanEdit && (
+                  <PanelButton icon="auto_awesome" label="AI схема" onClick={() => setAiDiagramOpen(true)} isLightTheme={isLightTheme} />
+                )}
+
                 {/* Background */}
                 {boardCanEdit && (
                 <div style={{ position: 'relative' }}>
@@ -1266,7 +1402,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                     Сохранить и выйти
                   </button>
                 )}
-                {activeBoardId && !boardCanEdit && (
+                {activeBoardId && boardCanEdit && (
                   <button style={{ ...btnSecondary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(false)}>
                     Выйти
                   </button>
@@ -1447,6 +1583,78 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── AI diagram modal ── */}
+        {aiDiagramOpen && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 520,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '0 16px',
+          }} onClick={e => { if (e.target === e.currentTarget) setAiDiagramOpen(false); }}>
+            <div style={{
+              ...surface,
+              borderRadius: 16,
+              width: '100%',
+              maxWidth: 560,
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              fontFamily: 'Georgia, serif',
+              overflow: 'hidden',
+            }}>
+              <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 18, color: 'var(--text-primary)', fontWeight: 400 }}>
+                    AI схема из текста
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    Опишите структуру — получите блоки и стрелки
+                  </div>
+                </div>
+                <button onClick={() => setAiDiagramOpen(false)}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', padding: 4, borderRadius: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
+                </button>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+                <textarea
+                  value={aiDiagramText}
+                  onChange={e => setAiDiagramText(e.target.value)}
+                  rows={10}
+                  placeholder="Например: Введение → Метод → Результаты → Выводы"
+                  style={{
+                    width: '100%',
+                    background: 'var(--hover-bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'Georgia, serif',
+                    fontSize: 13,
+                    lineHeight: 1.7,
+                    outline: 'none',
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                {aiDiagramError && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#b58488' }}>{aiDiagramError}</div>
+                )}
+              </div>
+
+              <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button style={{ ...btnSecondary, fontSize: 13 }} onClick={() => setAiDiagramOpen(false)}>
+                  Отмена
+                </button>
+                <button style={{ ...btnPrimary, fontSize: 13 }} onClick={generateDiagram} disabled={aiDiagramLoading || !aiDiagramText.trim()}>
+                  {aiDiagramLoading ? 'Генерация…' : 'Построить'}
+                </button>
+              </div>
             </div>
           </div>
         )}

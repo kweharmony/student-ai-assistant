@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import logging
+import json
+import re
 import asyncio
 from datetime import datetime
 import os
@@ -39,6 +41,10 @@ POLZA_BASE_URL = os.getenv('POLZA_BASE_URL', 'https://polza.ai/api/v1')
 POLZA_API_KEY = os.getenv('POLZA_API_KEY')
 POLZA_MODEL = os.getenv('POLZA_MODEL', 'deepseek/deepseek-v4-flash')
 
+DIAGRAM_BASE_URL = os.getenv('DIAGRAM_BASE_URL', POLZA_BASE_URL)
+DIAGRAM_API_KEY = os.getenv('DIAGRAM_API_KEY', POLZA_API_KEY)
+DIAGRAM_MODEL = os.getenv('DIAGRAM_MODEL', 'google/gemma-3-27b-it')
+
 EXPLAIN_SYSTEM_PROMPT = (
     "Ты — учебный ассистент. Объясняй фрагменты лекций простым, понятным языком. "
     "Сохраняй точность, не выдумывай факты. Если контекста мало — попроси уточнение. "
@@ -61,6 +67,12 @@ def get_polza_client() -> OpenAI:
             raise HTTPException(status_code=500, detail="POLZA_API_KEY не найден в переменных окружения")
         polza_client = OpenAI(api_key=POLZA_API_KEY, base_url=POLZA_BASE_URL)
     return polza_client
+
+
+def get_diagram_client() -> OpenAI:
+    if not DIAGRAM_API_KEY:
+        raise HTTPException(status_code=500, detail="DIAGRAM_API_KEY не найден в переменных окружения")
+    return OpenAI(api_key=DIAGRAM_API_KEY, base_url=DIAGRAM_BASE_URL)
 
 
 # Модели данных для API
@@ -114,6 +126,44 @@ class ExplainResponse(BaseModel):
     processing_time: float
     timestamp: datetime
     error: Optional[str] = None
+
+
+class DiagramRequest(BaseModel):
+    text: str = Field(..., min_length=5, max_length=12000, description="Описание схемы")
+    layout: Optional[str] = Field("auto", description="auto | LR | TB | GRID | MINDMAP")
+    max_nodes: int = Field(12, ge=3, le=30)
+
+
+class DiagramResponse(BaseModel):
+    success: bool
+    diagram: Optional[dict] = None
+    model: str
+    processing_time: float
+    timestamp: datetime
+    error: Optional[str] = None
+
+
+DIAGRAM_SYSTEM_PROMPT = (
+    "Ты преобразуешь пользовательский текст в JSON-схему для рисования. "
+    "Возвращай ТОЛЬКО валидный JSON без пояснений и без markdown. "
+    "Формат: {nodes:[{id,text,type}], edges:[{from,to,label?}], layout:{direction,spacingX,spacingY}}. "
+    "id в формате n1,n2... type: box | table | note. "
+    "Для table используй text с строками, разделенными \"\\n\", и колонками через \" | \". "
+    "direction: LR или TB или GRID. spacingX, spacingY — числа. "
+    "Не больше max_nodes узлов."
+)
+
+
+def _extract_json_payload(raw: str) -> dict:
+    text = raw.strip()
+    text = re.sub(r"^```[a-zA-Z]*", "", text).strip()
+    text = re.sub(r"```$", "", text).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("JSON not found")
+    payload = text[start:end + 1]
+    return json.loads(payload)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -275,7 +325,7 @@ async def batch_process_text(request: BatchProcessRequest):
 async def explain_fragment(request: ExplainRequest):
     start_time = datetime.now()
     try:
-        client = get_polza_client()
+        client = get_diagram_client()
         title = request.lecture_title or "Без названия"
         question = request.question or "Объясни смысл этого фрагмента"
 
@@ -288,7 +338,7 @@ async def explain_fragment(request: ExplainRequest):
         )
 
         response = client.chat.completions.create(
-            model=POLZA_MODEL,
+            model=DIAGRAM_MODEL,
             messages=[
                 {"role": "system", "content": EXPLAIN_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -304,7 +354,7 @@ async def explain_fragment(request: ExplainRequest):
         return ExplainResponse(
             success=True,
             explanation=explanation,
-            model=POLZA_MODEL,
+            model=DIAGRAM_MODEL,
             processing_time=processing_time,
             timestamp=datetime.now(),
         )
@@ -316,6 +366,49 @@ async def explain_fragment(request: ExplainRequest):
         return ExplainResponse(
             success=False,
             explanation="",
+            model=POLZA_MODEL,
+            processing_time=processing_time,
+            timestamp=datetime.now(),
+            error=str(e),
+        )
+
+
+@router.post("/diagram", response_model=DiagramResponse)
+async def diagram_from_text(request: DiagramRequest):
+    start_time = datetime.now()
+    try:
+        client = get_polza_client()
+        user_prompt = (
+            f"Текст: {request.text}\n"
+            f"Пожелание по layout: {request.layout}\n"
+            f"max_nodes: {request.max_nodes}"
+        )
+        response = client.chat.completions.create(
+            model=POLZA_MODEL,
+            messages=[
+                {"role": "system", "content": DIAGRAM_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1200,
+            top_p=0.9,
+        )
+        raw = response.choices[0].message.content or ""
+        diagram = _extract_json_payload(raw)
+
+        processing_time = (datetime.now() - start_time).total_seconds()
+        return DiagramResponse(
+            success=True,
+            diagram=diagram,
+            model=POLZA_MODEL,
+            processing_time=processing_time,
+            timestamp=datetime.now(),
+        )
+    except Exception as e:
+        processing_time = (datetime.now() - start_time).total_seconds()
+        return DiagramResponse(
+            success=False,
+            diagram=None,
             model=POLZA_MODEL,
             processing_time=processing_time,
             timestamp=datetime.now(),
