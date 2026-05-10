@@ -694,8 +694,13 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     if (!api) return;
 
     const nodes: Array<any> = Array.isArray(diagram?.nodes) ? diagram.nodes : [];
-    const edges: Array<any> = Array.isArray(diagram?.edges) ? diagram.edges : [];
+    const edgesRaw: Array<any> = Array.isArray(diagram?.edges) ? diagram.edges : [];
     if (nodes.length === 0) return;
+
+    const isSingleTable = nodes.length === 1
+      && (String(nodes[0]?.type || '').toLowerCase() === 'table'
+        || String(nodes[0]?.text || '').includes(' | '));
+    const edges = isSingleTable ? [] : edgesRaw;
 
     const layout = diagram?.layout || {};
     const direction = (layout.direction || 'LR').toUpperCase();
@@ -796,11 +801,17 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       } as any;
     });
 
+    const maxEdges = Math.max(nodes.length + 2, nodes.length * 2);
+    const seenEdges = new Set<string>();
     const arrowSkeletons = edges
       .map((edge: any) => {
         const from = positions.get(edge.from);
         const to = positions.get(edge.to);
-        if (!from || !to) return null;
+        if (!from || !to || edge.from === edge.to) return null;
+        const key = `${edge.from}->${edge.to}`;
+        if (seenEdges.has(key)) return null;
+        if (seenEdges.size >= maxEdges) return null;
+        seenEdges.add(key);
         const startX = from.x + from.w / 2;
         const startY = from.y + from.h / 2;
         const endX = to.x + to.w / 2;
@@ -831,13 +842,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setAiDiagramError('');
     try {
       const requestedLayout = aiDiagramMode === 'table' ? 'GRID' : 'auto';
+      const maxNodes = aiDiagramMode === 'table' ? 1 : 12;
       const promptText = aiDiagramMode === 'table'
         ? `Сделай таблицу по описанию. ${aiDiagramText}`
         : aiDiagramText;
       const res = await fetch(`${API_BASE}/api/ml/diagram`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ text: promptText, layout: requestedLayout, max_nodes: 12 }),
+        body: JSON.stringify({ text: promptText, layout: requestedLayout, max_nodes: maxNodes }),
       });
       const payload = await res.json();
       if (!res.ok || !payload?.success) {
@@ -857,10 +869,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const insertBoundedTextBlock = () => {
     const api = excalidrawAPI.current;
     if (!api || !boardCanEdit) return;
-    const appState = api.getAppState();
-    const viewportWidth = appState.width || window.innerWidth;
-    const viewportHeight = appState.height || window.innerHeight;
-    setTextBlockCursor({ x: viewportWidth / 2, y: viewportHeight / 2 });
+    setTextBlockCursor(null);
     setTextBlockPlacing(true);
     setDesktopPanelOpen(false);
   };
@@ -873,8 +882,12 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const zoom = appState.zoom.value;
     const viewportWidth = appState.width || window.innerWidth;
     const viewportHeight = appState.height || window.innerHeight;
-    const sceneX = (clientX - viewportWidth / 2) / zoom - appState.scrollX;
-    const sceneY = (clientY - viewportHeight / 2) / zoom - appState.scrollY;
+    const offsetLeft = (appState as any).offsetLeft || 0;
+    const offsetTop = (appState as any).offsetTop || 0;
+    const localX = clientX - offsetLeft;
+    const localY = clientY - offsetTop;
+    const sceneX = (localX - viewportWidth / 2) / zoom - appState.scrollX;
+    const sceneY = (localY - viewportHeight / 2) / zoom - appState.scrollY;
     const boxWidth = 440;
     const boxHeight = 180;
     const x = sceneX - boxWidth / 2;

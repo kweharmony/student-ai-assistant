@@ -151,7 +151,11 @@ DIAGRAM_SYSTEM_PROMPT = (
     "Возвращай ТОЛЬКО валидный JSON без пояснений и без markdown. "
     "Формат: {nodes:[{id,text,type}], edges:[{from,to,label?}], layout:{direction,spacingX,spacingY}}. "
     "id в формате n1,n2... type: box | table | note. "
+    "Если пользователь просит таблицу, верни ОДИН узел с type=table и без edges. "
     "Для table используй text с строками, разделенными \"\\n\", и колонками через \" | \". "
+    "Если таблица не запрошена, используй type=box и добавляй edges ТОЛЬКО при явной связи. "
+    "Не делай полносвязный граф; не соединяй все со всеми. "
+    "Если связи не описаны — edges пустой. Для линейного процесса соединяй по порядку. "
     "direction: LR или TB или GRID. spacingX, spacingY — числа. "
     "Не больше max_nodes узлов."
 )
