@@ -379,9 +379,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         // ignore
       }
     }
-    excalidrawAPI.current.updateScene({
+    const api = excalidrawAPI.current;
+    const localState = api.getAppState();
+    const safeAppState = {
+      viewBackgroundColor: nextAppState?.viewBackgroundColor ?? localState.viewBackgroundColor,
+    };
+    api.updateScene({
       elements: nextElements,
-      appState: nextAppState,
+      appState: safeAppState,
     });
     if (nextFiles && excalidrawAPI.current.addFiles) {
       excalidrawAPI.current.addFiles(nextFiles);
@@ -700,7 +705,17 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const isSingleTable = nodes.length === 1
       && (String(nodes[0]?.type || '').toLowerCase() === 'table'
         || String(nodes[0]?.text || '').includes(' | '));
-    const edges = isSingleTable ? [] : edgesRaw;
+    const edges = (() => {
+      if (isSingleTable) return [];
+      if (edgesRaw.length <= 1 || nodes.length < 2) return edgesRaw;
+      if (edgesRaw.length > nodes.length + 1) {
+        return nodes.slice(1).map((node, index) => ({
+          from: nodes[index].id,
+          to: node.id,
+        }));
+      }
+      return edgesRaw;
+    })();
 
     const layout = diagram?.layout || {};
     const direction = (layout.direction || 'LR').toUpperCase();
@@ -844,7 +859,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       const requestedLayout = aiDiagramMode === 'table' ? 'GRID' : 'auto';
       const maxNodes = aiDiagramMode === 'table' ? 1 : 12;
       const promptText = aiDiagramMode === 'table'
-        ? `Сделай таблицу по описанию. ${aiDiagramText}`
+        ? `Сделай таблицу по описанию. Верни одну таблицу. Формат строк: Колонка | Колонка | Колонка. Тема: ${aiDiagramText}`
         : aiDiagramText;
       const res = await fetch(`${API_BASE}/api/ml/diagram`, {
         method: 'POST',
@@ -855,7 +870,30 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       if (!res.ok || !payload?.success) {
         throw new Error(payload?.error || 'Не удалось построить схему');
       }
-      createDiagramElements(payload.diagram);
+      if (aiDiagramMode === 'table') {
+        const rawNodes = Array.isArray(payload?.diagram?.nodes) ? payload.diagram.nodes : [];
+        const tableNode = rawNodes.find((node: any) => {
+          const text = String(node?.text || '');
+          return String(node?.type || '').toLowerCase() === 'table' || text.includes(' | ');
+        });
+        const fallbackText = aiDiagramText.includes('|')
+          ? aiDiagramText
+          : `Параметр | Значение\n${aiDiagramText} | ...`;
+        const normalized = {
+          nodes: [
+            {
+              id: 'n1',
+              type: 'table',
+              text: String(tableNode?.text || fallbackText).trim(),
+            },
+          ],
+          edges: [],
+          layout: { direction: 'GRID', spacingX: 260, spacingY: 160 },
+        };
+        createDiagramElements(normalized);
+      } else {
+        createDiagramElements(payload.diagram);
+      }
       setAiDiagramOpen(false);
       setAiDiagramText('');
       setAiDiagramMode('diagram');
@@ -882,8 +920,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const zoom = appState.zoom.value;
     const viewportWidth = appState.width || window.innerWidth;
     const viewportHeight = appState.height || window.innerHeight;
-    const offsetLeft = (appState as any).offsetLeft || 0;
-    const offsetTop = (appState as any).offsetTop || 0;
+    const container = document.querySelector('.excalidraw') as HTMLElement | null;
+    const rect = container?.getBoundingClientRect();
+    const offsetLeft = rect?.left ?? (appState as any).offsetLeft ?? 0;
+    const offsetTop = rect?.top ?? (appState as any).offsetTop ?? 0;
     const localX = clientX - offsetLeft;
     const localY = clientY - offsetTop;
     const sceneX = (localX - viewportWidth / 2) / zoom - appState.scrollX;
@@ -1988,12 +2028,12 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       </div>
 
       <div style={{ marginTop: 40 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 300, marginBottom: 16 }}>Недавние доски</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 300, marginBottom: 16 }}>Доски других пользователей</h2>
         {recentLoading ? (
           <div style={{ color: 'var(--text-secondary)', fontSize: 14 }}>Загрузка...</div>
         ) : recentBoards.length === 0 ? (
           <div style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-            Здесь появятся чужие доски, которые вы открывали по ссылке.
+            Здесь появятся доски других пользователей, которые вы открывали по ссылке.
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, maxWidth: 860 }}>

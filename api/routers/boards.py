@@ -168,7 +168,7 @@ async def create_board(
 @router.get("/public/{token}", response_model=BoardDetailOut)
 async def get_public_board(
     token: str,
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
