@@ -76,6 +76,42 @@ const BG_MAIN = [
   { color: '#ffffff', label: 'Белый'         },
 ];
 
+const AI_DIAGRAM_TEMPLATES = [
+  {
+    id: 'process',
+    title: 'Процесс',
+    text: 'Процесс создания конспекта: запись лекции -> распознавание -> очистка текста -> выделение ключевых идей -> итоговый конспект. Добавь стрелки по порядку.',
+  },
+  {
+    id: 'compare',
+    title: 'Сравнение',
+    text: 'Сравни два подхода: метод А и метод Б. Для каждого укажи шаги, плюсы и минусы. Свяжи блоки так, чтобы было видно различия.',
+  },
+  {
+    id: 'mindmap',
+    title: 'Майндмэп',
+    text: 'Центр: "Машинное обучение". Ветки: "Данные", "Модели", "Обучение", "Оценка", "Применение". Для каждой ветки 2-3 подпункта.',
+  },
+];
+
+const AI_TABLE_TEMPLATES = [
+  {
+    id: 'terms',
+    title: 'Термины',
+    text: 'Сделай таблицу: Термин | Определение. Возьми 6-8 ключевых терминов по теме "Алгоритмы".',
+  },
+  {
+    id: 'pros-cons',
+    title: 'Плюсы/минусы',
+    text: 'Сделай таблицу: Подход | Плюсы | Минусы. Сравни "KNN" и "SVM".',
+  },
+  {
+    id: 'timeline',
+    title: 'Шаги',
+    text: 'Сделай таблицу: Шаг | Действие | Результат. Описать процесс обучения модели.',
+  },
+];
+
 const BG_PALETTE = [
   '#ffffff', '#f5f5f0', '#e8e8e8', '#b0b0b0', '#555555',
   '#fff9e6', '#fef3c7', '#fde8c8', '#f5c6a0', '#e8b89a',
@@ -142,9 +178,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   // ── AI diagram ─────────────────────────────────────────────────────────────
   const [aiDiagramOpen, setAiDiagramOpen] = useState(false);
+  const [aiDiagramMode, setAiDiagramMode] = useState<'diagram' | 'table'>('diagram');
   const [aiDiagramText, setAiDiagramText] = useState('');
   const [aiDiagramLoading, setAiDiagramLoading] = useState(false);
   const [aiDiagramError, setAiDiagramError] = useState('');
+
+  // ── text block placement ──────────────────────────────────────────────────
+  const [textBlockPlacing, setTextBlockPlacing] = useState(false);
+  const [textBlockCursor, setTextBlockCursor] = useState<{ x: number; y: number } | null>(null);
 
   // ── mobile detection ─────────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
@@ -153,6 +194,18 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
+
+  useEffect(() => {
+    if (!textBlockPlacing) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setTextBlockPlacing(false);
+        setTextBlockCursor(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [textBlockPlacing]);
 
   const authHeaders = useCallback(
     () => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }),
@@ -651,23 +704,37 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
     const appState = api.getAppState();
     const zoom = appState.zoom.value;
-    const originX = (-appState.scrollX + (appState.width || window.innerWidth) / 2) / zoom - 200;
-    const originY = (-appState.scrollY + (appState.height || window.innerHeight) / 2) / zoom - 120;
+    const viewportWidth = appState.width || window.innerWidth;
+    const viewportHeight = appState.height || window.innerHeight;
+    const viewportCenterX = (-appState.scrollX + viewportWidth / 2) / zoom;
+    const viewportCenterY = (-appState.scrollY + viewportHeight / 2) / zoom;
 
-    const estimateSize = (text: string) => {
+    const estimateSize = (text: string, isTable: boolean) => {
       const lines = text.split(/\r?\n/);
       const maxLen = Math.max(1, ...lines.map(l => l.length));
-      const width = Math.min(360, Math.max(180, maxLen * 7 + 40));
-      const height = Math.min(240, Math.max(80, lines.length * 22 + 30));
+      const minWidth = isTable ? 240 : 180;
+      const maxWidth = isTable ? 520 : 360;
+      const width = Math.min(maxWidth, Math.max(minWidth, maxLen * 7 + 40));
+      const height = Math.min(260, Math.max(80, lines.length * 22 + 30));
       return { width, height };
     };
 
-    const positions = new Map<string, { x: number; y: number; w: number; h: number }>();
-    const gridCols = direction === 'GRID' ? Math.ceil(Math.sqrt(nodes.length)) : (direction === 'TB' ? 1 : nodes.length);
-
-    nodes.forEach((node, index) => {
+    const nodeMeta = nodes.map((node) => {
       const text = String(node.text || '').trim() || 'Блок';
-      const { width, height } = estimateSize(text);
+      const isTable = String(node.type || '').toLowerCase() === 'table' || text.includes(' | ');
+      const size = estimateSize(text, isTable);
+      return { node, text, width: size.width, height: size.height, isTable };
+    });
+
+    const maxWidth = Math.max(...nodeMeta.map((m) => m.width));
+    const maxHeight = Math.max(...nodeMeta.map((m) => m.height));
+    const baseSpacingX = Math.max(spacingX, maxWidth + 80);
+    const baseSpacingY = Math.max(spacingY, maxHeight + 60);
+
+    const positions = new Map<string, { x: number; y: number; w: number; h: number }>();
+    const gridCols = direction === 'GRID' ? Math.ceil(Math.sqrt(nodeMeta.length)) : (direction === 'TB' ? 1 : nodeMeta.length);
+
+    nodeMeta.forEach((meta, index) => {
       let col = index;
       let row = 0;
       if (direction === 'TB') {
@@ -677,21 +744,41 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         col = index % gridCols;
         row = Math.floor(index / gridCols);
       }
-      const x = originX + col * spacingX;
-      const y = originY + row * spacingY;
-      positions.set(node.id, { x, y, w: width, h: height });
+      const x = col * baseSpacingX;
+      const y = row * baseSpacingY;
+      positions.set(meta.node.id, { x, y, w: meta.width, h: meta.height });
+    });
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    positions.forEach((pos) => {
+      minX = Math.min(minX, pos.x);
+      minY = Math.min(minY, pos.y);
+      maxX = Math.max(maxX, pos.x + pos.w);
+      maxY = Math.max(maxY, pos.y + pos.h);
+    });
+
+    const diagramCenterX = (minX + maxX) / 2;
+    const diagramCenterY = (minY + maxY) / 2;
+    const offsetX = viewportCenterX - diagramCenterX;
+    const offsetY = viewportCenterY - diagramCenterY;
+    positions.forEach((pos, key) => {
+      positions.set(key, { x: pos.x + offsetX, y: pos.y + offsetY, w: pos.w, h: pos.h });
     });
 
     const rectSkeletons = nodes.map((node: any) => {
       const pos = positions.get(node.id);
       const text = String(node.text || '').trim() || 'Блок';
-      const size = estimateSize(text);
+      const isTable = String(node.type || '').toLowerCase() === 'table' || text.includes(' | ');
+      const size = estimateSize(text, isTable);
       const width = pos ? pos.w : size.width;
       const height = pos ? pos.h : size.height;
       return {
         type: 'rectangle',
-        x: pos?.x ?? originX,
-        y: pos?.y ?? originY,
+        x: pos?.x ?? viewportCenterX,
+        y: pos?.y ?? viewportCenterY,
         width,
         height,
         backgroundColor: 'transparent',
@@ -701,8 +788,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         strokeStyle: 'solid',
         label: {
           text,
-          textAlign: 'center',
-          verticalAlign: 'middle',
+          textAlign: isTable ? 'left' : 'center',
+          verticalAlign: isTable ? 'top' : 'middle',
           fontSize: 16,
           strokeColor: isLightTheme ? '#44292b' : '#fffff0',
         },
@@ -736,7 +823,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const rects = convertToExcalidrawElements(rectSkeletons as any);
     const arrows = convertToExcalidrawElements(arrowSkeletons as any);
     api.updateScene({ elements: [...api.getSceneElements(), ...rects, ...arrows] });
-    api.scrollToContent?.(rects[0], { fitToViewport: true });
   };
 
   const generateDiagram = async () => {
@@ -744,10 +830,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setAiDiagramLoading(true);
     setAiDiagramError('');
     try {
+      const requestedLayout = aiDiagramMode === 'table' ? 'GRID' : 'auto';
+      const promptText = aiDiagramMode === 'table'
+        ? `Сделай таблицу по описанию. ${aiDiagramText}`
+        : aiDiagramText;
       const res = await fetch(`${API_BASE}/api/ml/diagram`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ text: aiDiagramText, layout: 'auto', max_nodes: 12 }),
+        body: JSON.stringify({ text: promptText, layout: requestedLayout, max_nodes: 12 }),
       });
       const payload = await res.json();
       if (!res.ok || !payload?.success) {
@@ -756,6 +846,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       createDiagramElements(payload.diagram);
       setAiDiagramOpen(false);
       setAiDiagramText('');
+      setAiDiagramMode('diagram');
     } catch (e: any) {
       setAiDiagramError(e?.message || 'Ошибка построения схемы');
     } finally {
@@ -766,15 +857,28 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const insertBoundedTextBlock = () => {
     const api = excalidrawAPI.current;
     if (!api || !boardCanEdit) return;
+    const appState = api.getAppState();
+    const viewportWidth = appState.width || window.innerWidth;
+    const viewportHeight = appState.height || window.innerHeight;
+    setTextBlockCursor({ x: viewportWidth / 2, y: viewportHeight / 2 });
+    setTextBlockPlacing(true);
+    setDesktopPanelOpen(false);
+  };
+
+  const placeTextBlockAt = (clientX: number, clientY: number) => {
+    const api = excalidrawAPI.current;
+    if (!api || !boardCanEdit) return;
 
     const appState = api.getAppState();
     const zoom = appState.zoom.value;
-    const boxWidth = 440;
-    const boxHeight = 180;
     const viewportWidth = appState.width || window.innerWidth;
     const viewportHeight = appState.height || window.innerHeight;
-    const x = (-appState.scrollX + viewportWidth / 2) / zoom - boxWidth / 2;
-    const y = (-appState.scrollY + viewportHeight / 2) / zoom - boxHeight / 2;
+    const sceneX = (clientX - viewportWidth / 2) / zoom - appState.scrollX;
+    const sceneY = (clientY - viewportHeight / 2) / zoom - appState.scrollY;
+    const boxWidth = 440;
+    const boxHeight = 180;
+    const x = sceneX - boxWidth / 2;
+    const y = sceneY - boxHeight / 2;
 
     const newElements = convertToExcalidrawElements([
       {
@@ -801,6 +905,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     api.updateScene({
       elements: [...api.getSceneElements(), ...newElements],
     });
+    setTextBlockPlacing(false);
+    setTextBlockCursor(null);
   };
 
   // ── exit ──────────────────────────────────────────────────────────────────────
@@ -876,31 +982,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             viewModeEnabled={!boardCanEdit}
             theme="light"
             langCode="ru-RU"
-            renderTopRightUI={(isMobile) => (
-              boardCanEdit ? (
-                <button
-                  onClick={insertBoundedTextBlock}
-                  title="Вставить текстовый блок"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 10,
-                    background: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    padding: isMobile ? '7px 10px' : '8px 12px',
-                    cursor: 'pointer',
-                    fontFamily: 'Georgia, serif',
-                    fontSize: 13,
-                    lineHeight: 1,
-                  }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>text_fields</span>
-                  {!isMobile && <span>Текст-блок</span>}
-                </button>
-              ) : null
-            )}
+            renderTopRightUI={() => null}
             UIOptions={{
               canvasActions: {
                 saveToActiveFile: false,
@@ -912,6 +994,68 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               },
             }}
           />
+        )}
+
+        {textBlockPlacing && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 320,
+              cursor: 'crosshair',
+              background: 'rgba(0,0,0,0.02)',
+            }}
+            onPointerMove={(event) => setTextBlockCursor({ x: event.clientX, y: event.clientY })}
+            onPointerDown={(event) => placeTextBlockAt(event.clientX, event.clientY)}
+          >
+            <style>{`
+              @keyframes textBlockPulse {
+                0% { transform: translate(-50%, -50%) scale(0.7); opacity: 0.55; }
+                70% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.2; }
+                100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
+              }
+            `}</style>
+            <div
+              style={{
+                position: 'absolute',
+                top: 16,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: isLightTheme ? 'rgba(255,253,245,0.95)' : 'rgba(24,18,19,0.92)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 12,
+                padding: '8px 14px',
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                fontFamily: 'Georgia, serif',
+                boxShadow: '0 10px 24px rgba(0,0,0,0.2)',
+              }}
+            >
+              Кликните по холсту, чтобы вставить текстовый блок. Esc — отмена.
+            </div>
+            {textBlockCursor && (
+              <div style={{ position: 'absolute', left: textBlockCursor.x, top: textBlockCursor.y, pointerEvents: 'none' }}>
+                <div style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: '50%',
+                  background: isLightTheme ? 'rgba(68,41,43,0.5)' : 'rgba(255,255,240,0.6)',
+                  border: `1px solid ${isLightTheme ? 'rgba(68,41,43,0.6)' : 'rgba(255,255,240,0.8)'}`,
+                  transform: 'translate(-50%, -50%)',
+                }} />
+                <div style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: '50%',
+                  border: `2px solid ${isLightTheme ? 'rgba(68,41,43,0.35)' : 'rgba(255,255,240,0.45)'}`,
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  animation: 'textBlockPulse 1.4s ease-out infinite',
+                }} />
+              </div>
+            )}
+          </div>
         )}
 
         {/* ── Mobile panel — bottom center ── */}
@@ -1053,6 +1197,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             )}
 
             {activeBoardId && boardCanEdit && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
+            {activeBoardId && boardCanEdit && <MobileIconButton icon="text_fields" label="Текст-блок" onClick={insertBoundedTextBlock} />}
             {activeBoardId && boardCanEdit && <MobileIconButton icon="auto_awesome" label="AI схема" onClick={() => setAiDiagramOpen(true)} />}
 
             {boardCanEdit && (
@@ -1127,7 +1272,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
         {/* ── Desktop panel — hamburger style top-left ── */}
         {!isMobile && (
-          <div style={{ position: 'fixed', left: 12, top: 12, zIndex: 300 }}>
+          <div style={{ position: 'fixed', right: 12, top: 12, zIndex: 300 }}>
             <button
               onClick={() => setDesktopPanelOpen(o => !o)}
               title="Меню полотна"
@@ -1152,7 +1297,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               <div style={{
                 position: 'absolute',
                 top: 'calc(100% + 8px)',
-                left: 0,
+                right: 0,
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 2,
@@ -1202,7 +1347,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                   )}
                   {saveMsg && (
                     <div style={{
-                      position: 'absolute', left: 'calc(100% + 10px)', top: 8,
+                      position: 'absolute', right: 'calc(100% + 10px)', top: 8,
                       display: 'inline-flex', alignItems: 'center', gap: 4,
                       padding: '4px 10px', whiteSpace: 'nowrap',
                       background: isLightTheme ? '#fffdf5' : '#140f11',
@@ -1223,7 +1368,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                     <PanelButton icon="save" label="Сохранить" onClick={() => { setSaveMenuOpen(o => !o); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
                     {saveMenuOpen && (
                       <div style={{
-                        position: 'absolute', left: 'calc(100% + 8px)', top: 0,
+                        position: 'absolute', right: 'calc(100% + 8px)', top: 0,
                         background: isLightTheme ? '#fffdf5' : '#140f11',
                         border: '1px solid var(--border-color)',
                         borderRadius: 12, padding: 6, minWidth: 190,
@@ -1249,7 +1394,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                     <PanelButton icon={activeBoard?.is_public ? 'link' : 'share'} label="Поделиться" onClick={() => { setShareMenuOpen(o => !o); setSaveMenuOpen(false); }} isLightTheme={isLightTheme} active={activeBoard?.is_public} />
                     {shareMenuOpen && (
                       <div style={{
-                        position: 'absolute', left: 'calc(100% + 8px)', top: 0,
+                        position: 'absolute', right: 'calc(100% + 8px)', top: 0,
                         background: isLightTheme ? '#fffdf5' : '#140f11',
                         border: '1px solid var(--border-color)',
                         borderRadius: 12, padding: 12, minWidth: 240,
@@ -1300,9 +1445,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                   </div>
                 )}
 
-                {/* Lecture */}
+                {/* Lecture + text + AI */}
                 {activeBoardId && boardCanEdit && <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />}
-
+                {activeBoardId && boardCanEdit && <PanelButton icon="text_fields" label="Текст-блок" onClick={insertBoundedTextBlock} isLightTheme={isLightTheme} />}
                 {activeBoardId && boardCanEdit && (
                   <PanelButton icon="auto_awesome" label="AI схема" onClick={() => setAiDiagramOpen(true)} isLightTheme={isLightTheme} />
                 )}
@@ -1313,7 +1458,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                   <PanelButton icon="format_color_fill" label="Фон холста" onClick={() => { setBgMenuOpen(o => !o); setSaveMenuOpen(false); setShareMenuOpen(false); }} isLightTheme={isLightTheme} />
                   {bgMenuOpen && (
                     <div style={{
-                      position: 'absolute', left: 'calc(100% + 8px)', top: 0,
+                      position: 'absolute', right: 'calc(100% + 8px)', top: 0,
                       background: isLightTheme ? '#fffdf5' : '#140f11',
                       border: '1px solid var(--border-color)',
                       borderRadius: 12, padding: '10px 10px 8px',
@@ -1614,7 +1759,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                     AI схема из текста
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    Опишите структуру — получите блоки и стрелки
+                    Опишите структуру или таблицу — получите блоки и стрелки
                   </div>
                 </div>
                 <button onClick={() => setAiDiagramOpen(false)}
@@ -1624,11 +1769,44 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               </div>
 
               <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+                <div style={{ display: 'inline-flex', borderRadius: 999, border: '1px solid var(--border-color)', overflow: 'hidden', marginBottom: 10 }}>
+                  <button
+                    onClick={() => setAiDiagramMode('diagram')}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: aiDiagramMode === 'diagram' ? 'var(--text-primary)' : 'transparent',
+                      color: aiDiagramMode === 'diagram' ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                      fontFamily: 'Georgia, serif',
+                    }}
+                  >
+                    Схема
+                  </button>
+                  <button
+                    onClick={() => setAiDiagramMode('table')}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: aiDiagramMode === 'table' ? 'var(--text-primary)' : 'transparent',
+                      color: aiDiagramMode === 'table' ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                      fontFamily: 'Georgia, serif',
+                    }}
+                  >
+                    Таблица
+                  </button>
+                </div>
                 <textarea
                   value={aiDiagramText}
                   onChange={e => setAiDiagramText(e.target.value)}
                   rows={10}
-                  placeholder="Например: Введение → Метод → Результаты → Выводы"
+                  placeholder={aiDiagramMode === 'table'
+                    ? 'Например: Таблица: Понятие | Определение. 6-8 строк.'
+                    : 'Например: Введение → Метод → Результаты → Выводы'
+                  }
                   style={{
                     width: '100%',
                     background: 'var(--hover-bg)',
@@ -1644,6 +1822,27 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                     boxSizing: 'border-box',
                   }}
                 />
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.08em', opacity: 0.6 }}>
+                    ШАБЛОНЫ
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {(aiDiagramMode === 'table' ? AI_TABLE_TEMPLATES : AI_DIAGRAM_TEMPLATES).map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => setAiDiagramText(item.text)}
+                        style={{
+                          ...btnSecondary,
+                          fontSize: 12,
+                          padding: '6px 10px',
+                          borderRadius: 999,
+                        }}
+                      >
+                        {item.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {aiDiagramError && (
                   <div style={{ marginTop: 8, fontSize: 12, color: '#b58488' }}>{aiDiagramError}</div>
                 )}
