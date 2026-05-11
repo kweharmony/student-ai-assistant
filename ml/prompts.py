@@ -598,7 +598,7 @@ PROMPTS = {
     "cheat_sheet": CHEAT_SHEET_PROMPT
 }
 
-# Настройки для разных типов обработки (оптимизировано под DeepSeek с chunking)
+# Настройки для разных типов обработки
 PROCESSING_CONFIGS = {
     "summarize": {
         "max_tokens": 16000,
