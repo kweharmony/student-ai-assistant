@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from './Header';
 import Footer from './Footer';
 import { useAuth, RegisterData } from '../contexts/AuthContext';
@@ -13,7 +13,10 @@ type Role = 'student' | 'teacher';
 
 const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login, register, isAuthenticated } = useAuth();
+
+  const redirectTo = searchParams.get('redirectTo');
 
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -44,9 +47,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
   });
 
   // Redirect if already logged in (but not if showing modal)
+  const afterAuthRedirect = redirectTo || '/account';
   React.useEffect(() => {
-    if (isAuthenticated && !showLoginModal) navigate('/account');
-  }, [isAuthenticated, showLoginModal, navigate]);
+    if (isAuthenticated && !showLoginModal) navigate(afterAuthRedirect);
+  }, [isAuthenticated, showLoginModal, navigate, afterAuthRedirect]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -63,7 +67,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
     try {
       if (isLogin) {
         await login({ email: formData.email, password: formData.password });
-        navigate('/account');
+        // useEffect with isAuthenticated will handle redirect
       } else {
         const payload: RegisterData = {
           email: formData.email,
@@ -107,7 +111,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onToggleTheme, isLightTheme }) => {
 
   const handleCloseModal = () => {
     setShowLoginModal(false);
-    navigate('/account');
+    // useEffect will handle redirect after modal closes
   };
 
   const handleModeToggle = () => {

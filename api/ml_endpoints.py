@@ -3,13 +3,17 @@ FastAPI эндпоинты для ML обработки текста
 Интеграция DeepSeek API через VseLLM провайдер
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, FastAPI
+from fastapi import APIRouter, HTTPException, Request, FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import logging
-import asyncio
+import json
+import re
 from datetime import datetime
+import os
+from openai import OpenAI
+from dotenv import load_dotenv
 
 # Импортируем DeepSeek процессор
 try:
@@ -23,11 +27,29 @@ except ImportError:
 # Настройка логирования
 logger = logging.getLogger(__name__)
 
+load_dotenv()
+
 # Создаем роутер
 router = APIRouter(prefix="/api/ml", tags=["ML Text Processing"])
 
 # Глобальный экземпляр процессора (stateless, безопасен для параллельных запросов)
 processor = None
+polza_client: Optional[OpenAI] = None
+
+POLZA_BASE_URL = os.getenv('POLZA_BASE_URL', 'https://polza.ai/api/v1')
+POLZA_API_KEY = os.getenv('POLZA_API_KEY')
+POLZA_MODEL = os.getenv('POLZA_MODEL', 'deepseek/deepseek-v4-flash')
+
+DIAGRAM_BASE_URL = os.getenv('DIAGRAM_BASE_URL', POLZA_BASE_URL)
+DIAGRAM_API_KEY = os.getenv('DIAGRAM_API_KEY', POLZA_API_KEY)
+DIAGRAM_MODEL = os.getenv('DIAGRAM_MODEL', 'google/gemma-3-27b-it')
+
+EXPLAIN_SYSTEM_PROMPT = (
+    "Ты — учебный ассистент. Объясняй фрагменты лекций простым, понятным языком. "
+    "Сохраняй точность, не выдумывай факты. Если контекста мало — попроси уточнение. "
+    "Структура ответа: краткое резюме, пошаговое объяснение, пример/аналогия, мини-словарь, "
+    "1-2 контрольных вопроса. Пиши по-русски."
+)
 
 def get_processor():
     """Получение глобального экземпляра процессора"""
@@ -35,6 +57,21 @@ def get_processor():
     if processor is None:
         processor = DeepSeekProcessor()
     return processor
+
+
+def get_polza_client() -> OpenAI:
+    global polza_client
+    if polza_client is None:
+        if not POLZA_API_KEY:
+            raise HTTPException(status_code=500, detail="POLZA_API_KEY не найден в переменных окружения")
+        polza_client = OpenAI(api_key=POLZA_API_KEY, base_url=POLZA_BASE_URL)
+    return polza_client
+
+
+def get_diagram_client() -> OpenAI:
+    if not DIAGRAM_API_KEY:
+        raise HTTPException(status_code=500, detail="DIAGRAM_API_KEY не найден в переменных окружения")
+    return OpenAI(api_key=DIAGRAM_API_KEY, base_url=DIAGRAM_BASE_URL)
 
 
 # Модели данных для API
@@ -73,6 +110,67 @@ class HealthResponse(BaseModel):
     gemini_api_available: bool
     message: str
     timestamp: datetime
+
+
+class ExplainRequest(BaseModel):
+    text: str = Field(..., min_length=10, max_length=6000, description="Фрагмент лекции")
+    lecture_title: Optional[str] = Field(None, max_length=300, description="Название лекции")
+    question: Optional[str] = Field(None, max_length=300, description="Что именно нужно объяснить")
+
+
+class ExplainResponse(BaseModel):
+    success: bool
+    explanation: str
+    model: str
+    processing_time: float
+    timestamp: datetime
+    error: Optional[str] = None
+
+
+class QuickSummaryRequest(BaseModel):
+    text: str = Field(..., min_length=10, max_length=70000, description="Текст лекции")
+
+
+class DiagramRequest(BaseModel):
+    text: str = Field(..., min_length=5, max_length=12000, description="Описание схемы")
+    layout: Optional[str] = Field("auto", description="auto | LR | TB | GRID | MINDMAP")
+    max_nodes: int = Field(12, ge=3, le=30)
+
+
+class DiagramResponse(BaseModel):
+    success: bool
+    diagram: Optional[dict] = None
+    model: str
+    processing_time: float
+    timestamp: datetime
+    error: Optional[str] = None
+
+
+DIAGRAM_SYSTEM_PROMPT = (
+    "Ты преобразуешь пользовательский текст в JSON-схему для рисования. "
+    "Возвращай ТОЛЬКО валидный JSON без пояснений и без markdown. "
+    "Формат: {nodes:[{id,text,type}], edges:[{from,to,label?}], layout:{direction,spacingX,spacingY}}. "
+    "id в формате n1,n2... type: box | table | note. "
+    "Если пользователь просит таблицу, верни ОДИН узел с type=table и без edges. "
+    "Для table используй text с строками, разделенными \"\\n\", и колонками через \" | \". "
+    "Если таблица не запрошена, используй type=box и добавляй edges ТОЛЬКО при явной связи. "
+    "Не делай полносвязный граф; не соединяй все со всеми. "
+    "Если связи не описаны — edges пустой. Для линейного процесса соединяй по порядку. "
+    "direction: LR или TB или GRID. spacingX, spacingY — числа. "
+    "Не больше max_nodes узлов."
+)
+
+
+def _extract_json_payload(raw: str) -> dict:
+    text = raw.strip()
+    text = re.sub(r"^```[a-zA-Z]*", "", text).strip()
+    text = re.sub(r"```$", "", text).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("JSON not found")
+    payload = text[start:end + 1]
+    return json.loads(payload)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -230,6 +328,101 @@ async def batch_process_text(request: BatchProcessRequest):
         )
 
 
+@router.post("/explain", response_model=ExplainResponse)
+async def explain_fragment(request: ExplainRequest):
+    start_time = datetime.now()
+    try:
+        client = get_polza_client()
+        title = request.lecture_title or "Без названия"
+        question = request.question or "Объясни смысл этого фрагмента"
+
+        user_prompt = (
+            f"Лекция: {title}\n"
+            f"Запрос пользователя: {question}\n\n"
+            "Фрагмент:\n"
+            f"\"\"\"{request.text}\"\"\"\n\n"
+            "Объясни коротко и по делу, без лишней воды."
+        )
+
+        response = client.chat.completions.create(
+            model=POLZA_MODEL,
+            messages=[
+                {"role": "system", "content": EXPLAIN_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            max_tokens=800,
+            top_p=0.9,
+        )
+
+        explanation = response.choices[0].message.content or ""
+        processing_time = (datetime.now() - start_time).total_seconds()
+
+        return ExplainResponse(
+            success=True,
+            explanation=explanation,
+            model=POLZA_MODEL,
+            processing_time=processing_time,
+            timestamp=datetime.now(),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        processing_time = (datetime.now() - start_time).total_seconds()
+        logger.error(f"Ошибка explain: {str(e)}")
+        return ExplainResponse(
+            success=False,
+            explanation="",
+            model=POLZA_MODEL,
+            processing_time=processing_time,
+            timestamp=datetime.now(),
+            error=str(e),
+        )
+
+
+@router.post("/diagram", response_model=DiagramResponse)
+async def diagram_from_text(request: DiagramRequest):
+    start_time = datetime.now()
+    try:
+        client = get_diagram_client()
+        user_prompt = (
+            f"Текст: {request.text}\n"
+            f"Пожелание по layout: {request.layout}\n"
+            f"max_nodes: {request.max_nodes}"
+        )
+        response = client.chat.completions.create(
+            model=DIAGRAM_MODEL,
+            messages=[
+                {"role": "system", "content": DIAGRAM_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1200,
+            top_p=0.9,
+        )
+        raw = response.choices[0].message.content or ""
+        diagram = _extract_json_payload(raw)
+
+        processing_time = (datetime.now() - start_time).total_seconds()
+        return DiagramResponse(
+            success=True,
+            diagram=diagram,
+            model=DIAGRAM_MODEL,
+            processing_time=processing_time,
+            timestamp=datetime.now(),
+        )
+    except Exception as e:
+        processing_time = (datetime.now() - start_time).total_seconds()
+        return DiagramResponse(
+            success=False,
+            diagram=None,
+            model=DIAGRAM_MODEL,
+            processing_time=processing_time,
+            timestamp=datetime.now(),
+            error=str(e),
+        )
+
+
 @router.get("/modes")
 async def get_available_modes():
     """Получение списка доступных режимов обработки"""
@@ -270,7 +463,7 @@ async def get_available_modes():
 
 
 @router.post("/quick-summary")
-async def quick_summary(request: ProcessRequest):
+async def quick_summary(request: QuickSummaryRequest):
     """Быстрое создание конспекта (упрощенный эндпоинт)"""
     try:
         proc = get_processor()

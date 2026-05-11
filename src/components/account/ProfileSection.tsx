@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 const EMOJI_LIST = [
@@ -345,39 +344,6 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
               </div>
             </div>
           )}
-
-          {/* Subscription block */}
-          <div className="border rounded-lg p-4 md:p-5"
-            style={{
-              background: 'var(--hover-bg)',
-              borderColor: '#B58488'
-            }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined" style={{ color: '#B58488' }}>workspace_premium</span>
-                <h4 className="text-base md:text-lg font-semibold" style={{ color: '#B58488' }}>Премиум подписка</h4>
-              </div>
-              <div className="px-2 py-0.5 text-xs font-medium rounded-full" style={{ background: '#B58488', color: '#fffff0' }}>
-                Активна
-              </div>
-            </div>
-            <div className="mt-3 flex justify-end">
-              <Link
-                to="/pricing"
-                className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-all duration-300"
-                style={{
-                  background: '#B58488',
-                  borderColor: '#B58488',
-                  color: '#fffff0'
-                }}
-              >
-                <span>Посмотреть планы</span>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </Link>
-            </div>
-          </div>
 
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center">

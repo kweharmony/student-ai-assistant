@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { AccountPageProps, ActiveSection } from './types';
 import Sidebar from './Sidebar';
 import ProfileSection from './ProfileSection';
-import CalendarSection from './CalendarSection';
+import ExplainSection from './ExplainSection';
 import TranscriberSection, { LectureMeta } from './TranscriberSection';
 import TextProcessingSection from './TextProcessingSection';
 import TranscriptionModals from './TranscriptionModals';
@@ -19,7 +19,7 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const ACCOUNT_ACTIVE_SECTION_KEY = 'mindesync_account_active_section';
 const ALLOWED_SECTIONS: ActiveSection[] = [
   'profile',
-  'calendar',
+  'explain',
   'transcriber',
   'text-processing',
   'lectures',
@@ -29,7 +29,20 @@ const ALLOWED_SECTIONS: ActiveSection[] = [
   'board',
 ];
 
+const getSectionFromUrl = (): ActiveSection | null => {
+  try {
+    if (new URLSearchParams(window.location.search).get('board')) {
+      return 'board';
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+};
+
 const getInitialActiveSection = (): ActiveSection => {
+  const fromUrl = getSectionFromUrl();
+  if (fromUrl) return fromUrl;
   try {
     const saved = localStorage.getItem(ACCOUNT_ACTIVE_SECTION_KEY);
     if (saved && ALLOWED_SECTIONS.includes(saved as ActiveSection)) {
@@ -499,10 +512,8 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
           />
         )}
 
-        {activeSection === 'calendar' && (
-          <CalendarSection
-            isLightTheme={isLightTheme}
-          />
+        {activeSection === 'explain' && (
+          <ExplainSection isLightTheme={isLightTheme} />
         )}
 
         {activeSection === 'transcriber' && (

@@ -1,25 +1,119 @@
 """
 Роутер для досок (Excalidraw-полотна).
-Эндпоинты: CRUD + публичный доступ по share_token.
+Эндпоинты: CRUD + публичный доступ по share_token + WebSocket real-time collaboration.
 """
 
+import asyncio
+import json
+import os
 import secrets
+import uuid
+from collections import defaultdict
 from datetime import datetime
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..database import async_session
 from ..dependencies import get_db
 from ..dependencies import get_current_user
 from ..dependencies import get_current_user_optional
+from ..auth import decode_access_token
 from ..models import Board, BoardVisit, User
 from ..schemas import BoardCreate, BoardDetailOut, BoardOut, BoardRecentOut, BoardShareRequest, BoardUpdate
 
+try:
+    import redis.asyncio as redis
+except Exception:  # pragma: no cover - optional dependency
+    redis = None
+
 router = APIRouter(prefix="/api/boards", tags=["boards"])
+
+# ── WebSocket rooms ───────────────────────────────────────────────────────────
+_ws_rooms: dict[str, list[WebSocket]] = defaultdict(list)
+_redis_client = None
+
+
+async def _get_redis_client():
+    global _redis_client
+    if redis is None:
+        return None
+    redis_url = os.getenv("REDIS_URL")
+    if not redis_url:
+        return None
+    if _redis_client is None:
+        _redis_client = redis.from_url(redis_url, decode_responses=True)
+    return _redis_client
+
+
+async def _redis_listener(pubsub, websocket: WebSocket, client_id: str):
+    try:
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            try:
+                payload = json.loads(message.get("data", "{}"))
+            except Exception:
+                continue
+            if payload.get("sender_id") == client_id:
+                continue
+            await websocket.send_json(payload)
+    except Exception:
+        pass
+
+
+async def _save_board_data(board_id: str, data: str):
+    """Persist board data to PostgreSQL (fire-and-forget from websocket handler)."""
+    try:
+        async with async_session() as db:
+            board = await db.get(Board, UUID(board_id))
+            if board and board.data != data:
+                board.data = data
+                await db.commit()
+    except Exception:
+        # DB may be temporarily unavailable; next update will retry
+        pass
+
+
+async def _authenticate_ws_token(token: str | None, db: AsyncSession) -> User | None:
+    """Decode JWT from WebSocket query param and return user or None."""
+    if not token:
+        return None
+    payload = decode_access_token(token)
+    if payload is None:
+        return None
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.student_profile), selectinload(User.teacher_profile), selectinload(User.stream))
+        .where(User.id == UUID(user_id), User.is_deleted == False)
+    )
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        return None
+    return user
+
+
+async def _broadcast_to_room(board_id: str, sender: WebSocket, payload: dict):
+    """Send JSON payload to every socket in the room except sender."""
+    listeners = _ws_rooms.get(board_id, [])
+    dead = []
+    for ws in listeners:
+        if ws is sender:
+            continue
+        try:
+            await ws.send_json(payload)
+        except Exception:
+            dead.append(ws)
+    for d in dead:
+        if d in listeners:
+            listeners.remove(d)
 
 
 # ── список полотен текущего пользователя ──────────────────────────────────────
@@ -74,7 +168,7 @@ async def create_board(
 @router.get("/public/{token}", response_model=BoardDetailOut)
 async def get_public_board(
     token: str,
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -102,7 +196,7 @@ async def get_board(
     return _serialize_board_detail(board, current_user)
 
 
-# ── сохранить данные полотна ───────────────────────────────────────────────────
+# ── сохранить данные полотна (manual / fallback) ───────────────────────────────
 @router.put("/{board_id}", response_model=BoardOut)
 async def update_board(
     board_id: UUID,
@@ -124,6 +218,88 @@ async def update_board(
     await db.commit()
     await db.refresh(board)
     return board
+
+
+# ── WebSocket real-time collaboration ─────────────────────────────────────────
+@router.websocket("/{board_id}/ws")
+async def board_ws(
+    board_id: UUID,
+    websocket: WebSocket,
+):
+    """
+    WebSocket endpoint for collaborative real-time board editing.
+    Client must provide ?token=<jwt> query param.
+    """
+    await websocket.accept()
+
+    token = websocket.query_params.get("token")
+    can_edit = False
+    async with async_session() as db:
+        board = await db.get(Board, board_id)
+        if not board:
+            await websocket.close(code=4404, reason="Board not found")
+            return
+
+        user = await _authenticate_ws_token(token, db)
+        if user is not None and _can_edit_board(board, user):
+            can_edit = True
+        elif not board.is_public:
+            await websocket.close(code=4403, reason="Forbidden")
+            return
+
+    bid = str(board_id)
+    _ws_rooms[bid].append(websocket)
+    client_id = str(uuid.uuid4())
+    redis_client = await _get_redis_client()
+    pubsub = None
+    redis_task = None
+    if redis_client is not None:
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe(f"boards:{bid}")
+        redis_task = asyncio.create_task(_redis_listener(pubsub, websocket, client_id))
+
+    try:
+        while True:
+            msg = await websocket.receive_json()
+            if msg.get("type") == "update":
+                if not can_edit:
+                    continue
+                elements = msg.get("elements", [])
+                app_state = msg.get("appState", {})
+                # reconstruct full Excalidraw JSON string for DB snapshot
+                full_data = msg.get("data", "")
+                if full_data:
+                    asyncio.create_task(_save_board_data(bid, full_data))
+                payload = {
+                    "type": "update",
+                    "elements": elements,
+                    "appState": app_state,
+                    "data": full_data,
+                    "sender_id": client_id,
+                }
+                if redis_client is not None:
+                    try:
+                        await redis_client.publish(f"boards:{bid}", json.dumps(payload))
+                    except Exception:
+                        pass
+                else:
+                    await _broadcast_to_room(bid, websocket, payload)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if redis_task is not None:
+            redis_task.cancel()
+        if pubsub is not None:
+            try:
+                await pubsub.unsubscribe()
+                await pubsub.close()
+            except Exception:
+                pass
+        listeners = _ws_rooms.get(bid, [])
+        if websocket in listeners:
+            listeners.remove(websocket)
+        if not listeners:
+            _ws_rooms.pop(bid, None)
 
 
 # ── удалить полотно ────────────────────────────────────────────────────────────
