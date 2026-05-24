@@ -16,7 +16,7 @@ import re
 from ..auth import hash_password, verify_password
 from ..dependencies import get_current_user, get_db
 from ..models import Direction, Faculty, Stream, User
-from ..schemas import ChangePasswordRequest, SetEmojiRequest, StreamCreateForUserIn, UserOut, UserUpdateRequest
+from ..schemas import ChangePasswordRequest, SetEmojiRequest, StreamCreateForUserIn, UserOut, UserRoleUpdateIn, UserUpdateRequest
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -68,6 +68,22 @@ async def update_my_profile(
         if body.academic_degree is not None:
             prof.academic_degree = body.academic_degree
 
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.put("/me/role", response_model=UserOut)
+async def set_own_role(
+    body: UserRoleUpdateIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not user.can_choose_role:
+        raise HTTPException(status_code=403, detail="Самостоятельный выбор роли недоступен для вашего аккаунта")
+    from ..models import UserRole
+    user.role = UserRole(body.role)
+    user.can_choose_role = False
     await db.commit()
     await db.refresh(user)
     return user

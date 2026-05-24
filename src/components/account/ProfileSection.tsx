@@ -24,6 +24,11 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate }) => {
   const { user, token, logout, updateUser } = useAuth();
 
+  // Role selection (one-time, only when can_choose_role)
+  const [selectedRole, setSelectedRole] = useState<'student' | 'teacher'>('student');
+  const [roleSaveLoading, setRoleSaveLoading] = useState(false);
+  const [roleSaveError, setRoleSaveError] = useState('');
+
   // Stream selection
   const [allStreams, setAllStreams] = useState<{ id: string; name: string; direction_id: string }[]>([]);
   const [allDirections, setAllDirections] = useState<{ id: string; name: string; faculty_id: string }[]>([]);
@@ -208,6 +213,26 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
     }
   };
 
+  const handleSaveRole = async () => {
+    setRoleSaveLoading(true);
+    setRoleSaveError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/users/me/role`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ role: selectedRole }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setRoleSaveError(err.detail || 'Ошибка сохранения роли');
+        return;
+      }
+      updateUser(await res.json());
+    } finally {
+      setRoleSaveLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (user?.stream_id || streamDataLoaded) return;
     const auth = { Authorization: `Bearer ${token}` };
@@ -358,14 +383,16 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
           <p className="text-base md:text-lg lg:text-xl mb-1" style={{ color: 'var(--text-secondary)' }}>
             {user.email}
           </p>
-          <p className="text-sm md:text-base mb-1" style={{ color: 'var(--text-secondary)', opacity: 0.8 }}>
-            {user.is_group_head ? 'Студент (Старший)' : (roleLabels[user.role] || user.role)}
+          <div className="flex items-center justify-center gap-2 flex-wrap mb-1">
+            <span className="text-xs px-2.5 py-0.5 rounded-full font-medium" style={{ background: 'var(--hover-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
+              {user.is_group_head ? 'Студент (Старший)' : (roleLabels[user.role] || user.role)}
+            </span>
             {user.stream && (
-              <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--hover-bg)', color: 'var(--text-secondary)' }}>
+              <span className="text-xs px-2.5 py-0.5 rounded-full" style={{ background: 'var(--hover-bg)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
                 {user.stream.name}
               </span>
             )}
-          </p>
+          </div>
           <p className="text-xs md:text-sm lg:text-base opacity-70" style={{ color: 'var(--text-secondary)' }}>
             Зарегистрирован: {createdDate}
           </p>
@@ -438,6 +465,52 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
               </div>
             </div>
           )}
+
+          {/* Role block */}
+          <div className="border rounded-lg p-4 md:p-5" style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined" style={{ color: '#B58488' }}>badge</span>
+              <h4 className="text-base md:text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Роль</h4>
+            </div>
+
+            {!user.can_choose_role ? (
+              <div className="flex justify-between items-center">
+                <span className="text-xs md:text-sm opacity-70" style={{ color: 'var(--text-secondary)' }}>Текущая роль:</span>
+                <span className="text-xs md:text-sm font-medium px-2.5 py-0.5 rounded-full" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
+                  {user.is_group_head ? 'Студент (Старший)' : (roleLabels[user.role] || user.role)}
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  Выберите свою роль (доступно один раз):
+                </p>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedRole}
+                    onChange={e => setSelectedRole(e.target.value as 'student' | 'teacher')}
+                    className="flex-1 px-3 py-2 rounded-lg border text-sm outline-none"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  >
+                    <option value="student">Студент</option>
+                    <option value="teacher">Преподаватель</option>
+                  </select>
+                  <button
+                    onClick={handleSaveRole}
+                    disabled={roleSaveLoading}
+                    className="px-3 py-2 rounded-lg text-sm disabled:opacity-50"
+                    style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
+                  >
+                    {roleSaveLoading ? '...' : 'Сохранить'}
+                  </button>
+                </div>
+                {roleSaveError && <p className="text-xs" style={{ color: '#ef4444' }}>{roleSaveError}</p>}
+                <p className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
+                  После сохранения изменить роль сможет только администратор.
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Stream block */}
           <div className="border rounded-lg p-4 md:p-5" style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)' }}>

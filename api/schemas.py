@@ -76,6 +76,7 @@ class UserOut(BaseModel):
     avatar_url: Optional[str] = None
     avatar_emoji: Optional[str] = None
     is_group_head: bool = False
+    can_choose_role: bool = False
     stream_id: Optional[UUID] = None
     stream: Optional[UserStreamOut] = None
     is_active: bool
@@ -85,6 +86,10 @@ class UserOut(BaseModel):
     teacher_profile: Optional[TeacherProfileOut] = None
 
     model_config = {"from_attributes": True}
+
+
+class UserRoleUpdateIn(BaseModel):
+    role: str = Field(..., pattern="^(student|teacher)$")
 
 
 class UserUpdateRequest(BaseModel):

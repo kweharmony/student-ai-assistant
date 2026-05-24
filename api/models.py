@@ -54,6 +54,7 @@ class User(Base):
     avatar_emoji = Column(String(10), nullable=True)
     is_group_head = Column(Boolean, default=False, nullable=False, index=True)
     stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id"), nullable=True, index=True)
+    can_choose_role = Column(Boolean, default=False, nullable=False, server_default="false")
     is_active = Column(Boolean, default=True, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     blocked_reason = Column(String(300), nullable=True)

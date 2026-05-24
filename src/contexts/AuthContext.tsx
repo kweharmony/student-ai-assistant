@@ -20,6 +20,7 @@ export interface User {
   email: string;
   role: 'student' | 'teacher' | 'admin';
   is_group_head: boolean;
+  can_choose_role: boolean;
   stream_id: string | null;
   stream: { id: string; name: string } | null;
   full_name: string | null;
