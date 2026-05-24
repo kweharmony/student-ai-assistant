@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+
+const STREAM_NAME_RE = /^[А-ЯA-ZЁ]+\d{2}$/;
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -62,6 +64,23 @@ interface LectureItem {
   uploader: { id: string; login: string; role: string } | null;
   audio_count: number;
   transcription_count: number;
+}
+
+interface StreamItem {
+  id: string;
+  name: string;
+  direction_id: string;
+}
+
+interface FacultyItem {
+  id: string;
+  name: string;
+}
+
+interface DirectionItem {
+  id: string;
+  name: string;
+  faculty_id: string;
 }
 
 interface AdminBoardItem {
@@ -144,6 +163,21 @@ const AdminDashboard: React.FC = () => {
 
   // Hard delete modal
   const [hardDeleteModal, setHardDeleteModal] = useState<{ userId: string; login: string } | null>(null);
+
+  // Assign group head modal
+  const [assignModal, setAssignModal] = useState<{ userId: string; login: string; currentStreamId: string | null } | null>(null);
+  const [assignStreamId, setAssignStreamId] = useState('');
+  const [assignShowCreate, setAssignShowCreate] = useState(false);
+  const [assignFacultyId, setAssignFacultyId] = useState('');
+  const [assignDirectionId, setAssignDirectionId] = useState('');
+  const [assignStreamName, setAssignStreamName] = useState('');
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+
+  // Lookup data for assign modal
+  const [allStreams, setAllStreams] = useState<StreamItem[]>([]);
+  const [allFaculties, setAllFaculties] = useState<FacultyItem[]>([]);
+  const [allDirections, setAllDirections] = useState<DirectionItem[]>([]);
 
   // Edit lecture modal
   const [editLectureModal, setEditLectureModal] = useState<LectureItem | null>(null);
@@ -247,13 +281,26 @@ const AdminDashboard: React.FC = () => {
     fetchStats();
   }, [fetchStats]);
 
+  const fetchLookups = useCallback(async () => {
+    try {
+      const [streamsRes, facultiesRes, directionsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/catalog/streams`, { headers }),
+        fetch(`${API_BASE}/api/catalog/faculties`, { headers }),
+        fetch(`${API_BASE}/api/catalog/directions`, { headers }),
+      ]);
+      if (streamsRes.ok) setAllStreams(await streamsRes.json());
+      if (facultiesRes.ok) setAllFaculties(await facultiesRes.json());
+      if (directionsRes.ok) setAllDirections(await directionsRes.json());
+    } catch { /* ignore */ }
+  }, [token]);
+
   useEffect(() => {
-    if (activeTab === 'users') fetchUsers();
+    if (activeTab === 'users') { fetchUsers(); fetchLookups(); }
     if (activeTab === 'queue') fetchLecturesWithAudio({});
     if (activeTab === 'workers') fetchWorkers();
     if (activeTab === 'lectures') fetchLectures({});
     if (activeTab === 'boards') fetchBoards({});
-  }, [activeTab, fetchUsers, fetchQueue, fetchWorkers, fetchLectures, fetchBoards, fetchLecturesWithAudio]);
+  }, [activeTab, fetchUsers, fetchQueue, fetchWorkers, fetchLectures, fetchBoards, fetchLecturesWithAudio, fetchLookups]);
 
   // Actions
   const handleBlock = async () => {
@@ -364,11 +411,76 @@ const AdminDashboard: React.FC = () => {
     return map[role] || 'rgba(156, 163, 175, 0.2)';
   };
 
-  const handleAssignGroupHead = async (userId: string, currentStreamId?: string | null) => {
-    const streamId = window.prompt('Введите ID потока для назначения старосты', currentStreamId || '');
-    if (!streamId) return;
+  const openAssignModal = (userId: string, login: string, currentStreamId: string | null) => {
+    setAssignModal({ userId, login, currentStreamId });
+    setAssignStreamId(currentStreamId || '');
+    setAssignShowCreate(false);
+    setAssignFacultyId('');
+    setAssignDirectionId('');
+    setAssignStreamName('');
+    setAssignError(null);
+  };
+
+  const closeAssignModal = () => {
+    setAssignModal(null);
+    setAssignError(null);
+  };
+
+  const filteredAssignDirections = useMemo(
+    () => allDirections.filter(d => d.faculty_id === assignFacultyId),
+    [allDirections, assignFacultyId]
+  );
+
+  const handleAssignGroupHeadConfirm = async () => {
+    if (!assignModal) return;
+    setAssignLoading(true);
+    setAssignError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${userId}/group-head`, {
+      let streamId = assignStreamId;
+
+      if (assignShowCreate) {
+        const name = assignStreamName.trim().toUpperCase();
+        if (!STREAM_NAME_RE.test(name)) {
+          setAssignError('Формат: заглавные буквы + 2 цифры, например БВТ24');
+          setAssignLoading(false);
+          return;
+        }
+        if (!assignDirectionId) {
+          setAssignError('Выберите направление');
+          setAssignLoading(false);
+          return;
+        }
+        // Check if stream already exists locally
+        const existing = allStreams.find(s => s.name === name);
+        if (existing) {
+          setAssignShowCreate(false);
+          setAssignStreamId(existing.id);
+          setAssignError(`Поток «${name}» уже существует — он выбран в списке`);
+          setAssignLoading(false);
+          return;
+        }
+        // Create stream
+        const createRes = await fetch(`${API_BASE}/api/catalog/streams`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ direction_id: assignDirectionId, name }),
+        });
+        if (!createRes.ok) {
+          const err = await createRes.json().catch(() => ({}));
+          throw new Error(err.detail || 'Ошибка создания потока');
+        }
+        const newStream: StreamItem = await createRes.json();
+        streamId = newStream.id;
+        setAllStreams(prev => [...prev, newStream]);
+      }
+
+      if (!streamId) {
+        setAssignError('Выберите поток');
+        setAssignLoading(false);
+        return;
+      }
+
+      const res = await fetch(`${API_BASE}/api/admin/users/${assignModal.userId}/group-head`, {
         method: 'PUT',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_group_head: true, stream_id: streamId }),
@@ -377,8 +489,10 @@ const AdminDashboard: React.FC = () => {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Ошибка назначения старосты');
       }
+      closeAssignModal();
       fetchUsers();
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) { setAssignError(e.message); }
+    setAssignLoading(false);
   };
 
   const handleRemoveGroupHead = async (userId: string, keepStreamId?: string | null) => {
@@ -591,7 +705,7 @@ const AdminDashboard: React.FC = () => {
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleAssignGroupHead(user.id, user.stream_id)}
+                            onClick={() => openAssignModal(user.id, user.login, user.stream_id)}
                             className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
                             style={{ borderColor: 'rgba(34,197,94,0.35)', color: '#22c55e' }}
                           >
@@ -1149,6 +1263,115 @@ const AdminDashboard: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== Assign Group Head Modal ==================== */}
+      {assignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={closeAssignModal}>
+          <div className="max-w-md w-full rounded-2xl p-6 border" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }} onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-light mb-1" style={{ color: 'var(--text-primary)' }}>
+              Назначить старостой
+            </h3>
+            <p className="text-xs opacity-50 mb-5" style={{ color: 'var(--text-secondary)' }}>
+              {assignModal.login}
+            </p>
+
+            {assignError && (
+              <div className="mb-4 p-3 rounded-lg text-xs border" style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
+                {assignError}
+              </div>
+            )}
+
+            {!assignShowCreate ? (
+              <>
+                <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Поток</label>
+                <select
+                  value={assignStreamId}
+                  onChange={e => setAssignStreamId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border mb-3"
+                  style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                >
+                  <option value="">— выберите поток —</option>
+                  {allStreams.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => { setAssignShowCreate(true); setAssignError(null); }}
+                  className="text-xs underline opacity-60 hover:opacity-100 mb-5 block"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Нет нужного потока? Создать новый
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Создать новый поток</p>
+                <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Факультет</label>
+                <select
+                  value={assignFacultyId}
+                  onChange={e => { setAssignFacultyId(e.target.value); setAssignDirectionId(''); }}
+                  className="w-full px-3 py-2 text-sm rounded-lg border mb-3"
+                  style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                >
+                  <option value="">— выберите факультет —</option>
+                  {allFaculties.map(f => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+                {assignFacultyId && (
+                  <>
+                    <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Направление</label>
+                    <select
+                      value={assignDirectionId}
+                      onChange={e => setAssignDirectionId(e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border mb-3"
+                      style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                    >
+                      <option value="">— выберите направление —</option>
+                      {filteredAssignDirections.map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Название потока</label>
+                <input
+                  type="text"
+                  value={assignStreamName}
+                  onChange={e => setAssignStreamName(e.target.value.toUpperCase())}
+                  placeholder="Например, БВТ24"
+                  className="w-full px-3 py-2 text-sm rounded-lg border mb-1"
+                  style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                />
+                <p className="text-xs opacity-40 mb-4" style={{ color: 'var(--text-secondary)' }}>
+                  Заглавные буквы + 2 цифры (например БВТ24)
+                </p>
+                <button
+                  onClick={() => { setAssignShowCreate(false); setAssignError(null); }}
+                  className="text-xs underline opacity-60 hover:opacity-100 mb-5 block"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  ← Выбрать из существующих
+                </button>
+              </>
+            )}
+
+            <div className="flex gap-3 justify-end">
+              <button onClick={closeAssignModal} className="px-4 py-2 text-sm rounded-lg border" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+                Отмена
+              </button>
+              <button
+                onClick={handleAssignGroupHeadConfirm}
+                disabled={assignLoading}
+                className="px-4 py-2 text-sm rounded-lg transition-opacity"
+                style={{ background: '#22c55e', color: '#fff', opacity: assignLoading ? 0.5 : 1 }}
+              >
+                {assignLoading ? 'Сохранение...' : 'Назначить'}
+              </button>
+            </div>
           </div>
         </div>
       )}
