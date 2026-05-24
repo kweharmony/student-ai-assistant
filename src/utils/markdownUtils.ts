@@ -47,10 +47,9 @@ export function fixBrokenFormulas(markdown: string): string {
  * KaTeX auto-render (renderMathInElement) to pick up.
  */
 export function safeMdParse(value: string): string {
-  const fixed = fixBrokenFormulas(value);
-
   const mathStore: Array<{ type: 'block' | 'inline'; latex: string }> = [];
-  let text = fixed;
+  // De-indent $$ lines so marked doesn't treat them as code blocks.
+  let text = value.replace(/^[ \t]+(\$\$)/gm, '$1');
 
   // Block formulas: non-greedy match with a line-count safety cap to prevent a stray
   // unclosed $$ from eating dozens of lines of content as one "formula".
