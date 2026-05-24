@@ -52,19 +52,15 @@ export function safeMdParse(value: string): string {
   const mathStore: Array<{ type: 'block' | 'inline'; latex: string }> = [];
   let text = fixed;
 
-  // Multi-line block formulas: $$ must be on its own line (backend-normalized format).
-  // Using line-anchored regex prevents a stray unclosed $$ from eating all subsequent
-  // content up to the next $$ occurrence.
-  text = text.replace(/\$\$[ \t]*\n([\s\S]+?)\n[ \t]*\$\$/g, (_, latex) => {
+  // Block formulas: non-greedy match with a line-count safety cap to prevent a stray
+  // unclosed $$ from eating dozens of lines of content as one "formula".
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, latex) => {
+    const lineCount = (latex.match(/\n/g) || []).length;
+    if (lineCount > 25) return match; // runaway match — leave for KaTeX auto-render
     mathStore.push({ type: 'block', latex });
     return `\n\nMATHHOLDER${mathStore.length - 1}END\n\n`;
   });
-  // Single-line block formulas: $$formula$$ on one line (no newlines inside).
-  text = text.replace(/\$\$([^$\n]+?)\$\$/g, (_, latex) => {
-    mathStore.push({ type: 'block', latex });
-    return `\n\nMATHHOLDER${mathStore.length - 1}END\n\n`;
-  });
-  // Inline formulas: $formula$ — no newlines to prevent cross-line mismatches.
+  // Inline formulas: no newlines allowed — inline math never spans multiple lines.
   text = text.replace(/\$([^$\n]+?)\$/g, (_, latex) => {
     mathStore.push({ type: 'inline', latex });
     return `MATHHOLDER${mathStore.length - 1}END`;

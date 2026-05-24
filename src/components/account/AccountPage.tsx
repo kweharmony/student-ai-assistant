@@ -331,13 +331,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     const mathStore: Array<{ type: 'block' | 'inline'; latex: string }> = [];
     let text = value;
 
-    // Multi-line block formulas: $$ on its own line.
-    text = text.replace(/\$\$[ \t]*\n([\s\S]+?)\n[ \t]*\$\$/g, (_, latex) => {
-      mathStore.push({ type: 'block', latex });
-      return `MATHTOKEN${mathStore.length - 1}MATHEND`;
-    });
-    // Single-line block formulas: $$formula$$ (no newlines inside).
-    text = text.replace(/\$\$([^$\n]+?)\$\$/g, (_, latex) => {
+    // De-indent $$ lines so marked doesn't treat them as code blocks.
+    text = text.replace(/^[ \t]+(\$\$)/gm, '$1');
+
+    // Block formulas: non-greedy with a line-count cap to prevent runaway matches.
+    text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, latex) => {
+      const lineCount = (latex.match(/\n/g) || []).length;
+      if (lineCount > 25) return match;
       mathStore.push({ type: 'block', latex });
       return `MATHTOKEN${mathStore.length - 1}MATHEND`;
     });
