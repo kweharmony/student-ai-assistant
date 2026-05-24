@@ -52,15 +52,20 @@ export function safeMdParse(value: string): string {
   const mathStore: Array<{ type: 'block' | 'inline'; latex: string }> = [];
   let text = fixed;
 
-  // Block formulas: use \n\n wrapper so the placeholder is at column 0.
-  // Without this, if the original $$...$$ line was indented, the placeholder
-  // would also be indented and marked would wrap it in <pre><code> — then
-  // renderMathInElement ignores it (KaTeX skips content inside <code> by default).
-  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, latex) => {
+  // Multi-line block formulas: $$ must be on its own line (backend-normalized format).
+  // Using line-anchored regex prevents a stray unclosed $$ from eating all subsequent
+  // content up to the next $$ occurrence.
+  text = text.replace(/\$\$[ \t]*\n([\s\S]+?)\n[ \t]*\$\$/g, (_, latex) => {
     mathStore.push({ type: 'block', latex });
     return `\n\nMATHHOLDER${mathStore.length - 1}END\n\n`;
   });
-  text = text.replace(/\$([^$]+?)\$/g, (_, latex) => {
+  // Single-line block formulas: $$formula$$ on one line (no newlines inside).
+  text = text.replace(/\$\$([^$\n]+?)\$\$/g, (_, latex) => {
+    mathStore.push({ type: 'block', latex });
+    return `\n\nMATHHOLDER${mathStore.length - 1}END\n\n`;
+  });
+  // Inline formulas: $formula$ — no newlines to prevent cross-line mismatches.
+  text = text.replace(/\$([^$\n]+?)\$/g, (_, latex) => {
     mathStore.push({ type: 'inline', latex });
     return `MATHHOLDER${mathStore.length - 1}END`;
   });

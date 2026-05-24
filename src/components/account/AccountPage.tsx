@@ -331,11 +331,18 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     const mathStore: Array<{ type: 'block' | 'inline'; latex: string }> = [];
     let text = value;
 
-    text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, latex) => {
+    // Multi-line block formulas: $$ on its own line.
+    text = text.replace(/\$\$[ \t]*\n([\s\S]+?)\n[ \t]*\$\$/g, (_, latex) => {
       mathStore.push({ type: 'block', latex });
       return `MATHTOKEN${mathStore.length - 1}MATHEND`;
     });
-    text = text.replace(/\$([^$]+?)\$/g, (_, latex) => {
+    // Single-line block formulas: $$formula$$ (no newlines inside).
+    text = text.replace(/\$\$([^$\n]+?)\$\$/g, (_, latex) => {
+      mathStore.push({ type: 'block', latex });
+      return `MATHTOKEN${mathStore.length - 1}MATHEND`;
+    });
+    // Inline formulas: $formula$ — no newlines.
+    text = text.replace(/\$([^$\n]+?)\$/g, (_, latex) => {
       mathStore.push({ type: 'inline', latex });
       return `MATHTOKEN${mathStore.length - 1}MATHEND`;
     });
