@@ -491,65 +491,6 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
         )}
       </div>
 
-      {/* Выбор режима ML обработки */}
-      <div className="mb-8">
-        <label className="block text-sm font-medium mb-4" style={{ color: 'var(--text-primary)' }}>
-          Выберите режим обработки:
-        </label>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mlModes.map((mode) => (
-            <button
-              key={mode.id}
-              onClick={() => setSelectedMLMode(mode.id)}
-              className={`p-4 rounded-lg border-2 text-left transition-all duration-200 hover:-translate-y-1 ${
-                selectedMLMode === mode.id
-                  ? 'shadow-lg'
-                  : ''
-              }`}
-              style={{
-                borderColor: selectedMLMode === mode.id ? 'var(--text-primary)' : 'var(--border-color)',
-                background: selectedMLMode === mode.id ? 'var(--text-primary)' : 'var(--hover-bg)',
-                color: selectedMLMode === mode.id ? (isLightTheme ? '#fffff0' : '#1f1516') : 'var(--text-primary)'
-              }}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="material-symbols-outlined text-2xl" style={{ color: selectedMLMode === mode.id ? (isLightTheme ? '#fffff0' : '#1f1516') : 'var(--text-primary)' }}>{mode.icon}</span>
-                <h3 className="font-semibold" style={{ color: selectedMLMode === mode.id ? (isLightTheme ? '#fffff0' : '#1f1516') : 'var(--text-primary)' }}>
-                  {mode.name}
-                </h3>
-              </div>
-              <p className="text-sm opacity-80" style={{ color: selectedMLMode === mode.id ? (isLightTheme ? '#fffff0' : '#1f1516') : 'var(--text-secondary)' }}>
-                {mode.description}
-              </p>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Поле для темы (только для expand_topic) */}
-      {selectedMLMode === 'expand_topic' && (
-        <div className="mb-8">
-          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
-            Тема для расширения: <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            value={topicInput}
-            onChange={(e) => setTopicInput(e.target.value)}
-            placeholder="Например: нейронные сети, квантовая физика, алгоритмы сортировки"
-            className="w-full px-4 py-3 border rounded-lg transition-all duration-200"
-            style={{
-              borderColor: 'var(--border-color)',
-              background: 'var(--hover-bg)',
-              color: 'var(--text-primary)'
-            }}
-          />
-          <p className="mt-2 text-xs opacity-70" style={{ color: 'var(--text-secondary)' }}>
-            <span className="material-symbols-outlined text-sm align-middle mr-1">lightbulb</span> Укажите конкретную тему из вашего текста, которую хотите подробно изучить
-          </p>
-        </div>
-      )}
-
       {/* Секция загрузки файлов */}
       <div className="bg-transparent border rounded-2xl p-4 md:p-8 lg:p-12 xl:p-16 mb-8 md:mb-16" style={{ borderColor: 'var(--border-color)' }}>
         <div className="text-center">
