@@ -14,6 +14,10 @@ export function fixBrokenFormulas(markdown: string): string {
   // This prevents marked from treating indented $$...$$ as code blocks.
   let result = markdown.replace(/^[ \t]+(\$\$)/gm, '$1');
 
+  // Type 0: \left$ / \right$ are unambiguously broken AI output — AI confuses the
+  // LaTeX group delimiter with the math $ sign. Replace with \left\{ / \right\}.
+  result = result.replace(/\\left\$/g, '\\left\\{').replace(/\\right\$/g, '\\right\\}');
+
   // Type 1: strip $...$ inside $$...$$
   result = result.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner) => {
     const fixed = inner.replace(/\$([^$\n]+?)\$/g, '$1');
@@ -36,11 +40,28 @@ export function fixBrokenFormulas(markdown: string): string {
     const hasLatexOutside = /\\[a-zA-Z]+/.test(afterStrip);
 
     if (hasLatexOutside) {
-      // Keep formula content but strip $ delimiters, then wrap the whole line.
       const fixed = trimmed.replace(/\$([^$\n]+?)\$/g, '$1');
       return `$$${fixed}$$`;
     }
     return line;
+  }).join('\n');
+
+  // Type 3: bare LaTeX lines — no $ at all, but 3+ LaTeX commands and minimal Cyrillic prose.
+  // Catches AI-generated formula lines that were never wrapped in $$ (including lines
+  // left after Type 0 stripped \left$/\right$ and the line still has no $ delimiter).
+  result = result.split('\n').map(line => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('|') ||
+        trimmed.startsWith('>') || trimmed.includes('$')) return line;
+
+    const latexCommands = trimmed.match(/\\[a-zA-Z]+/g) || [];
+    if (latexCommands.length < 3) return line;
+
+    // Allow at most 1 Cyrillic word sequence (e.g. \text{метка}) — more means prose.
+    const cyrillicWords = trimmed.match(/[а-яёА-ЯЁ]{3,}/g) || [];
+    if (cyrillicWords.length > 1) return line;
+
+    return `$$${trimmed}$$`;
   }).join('\n');
 
   return result;
