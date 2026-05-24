@@ -21,17 +21,22 @@ export function fixBrokenFormulas(markdown: string): string {
   });
 
   // Type 2: lines with $...$ fragments + raw LaTeX commands outside → wrap in $$...$$
+  // Skip headings (#), table rows (|), blockquotes (>) — they're never pure math lines.
   result = result.split('\n').map(line => {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('$$') || !trimmed.includes('$')) return line;
+    if (!trimmed || trimmed.startsWith('$$') || trimmed.startsWith('#') ||
+        trimmed.startsWith('|') || trimmed.startsWith('>') || !trimmed.includes('$')) return line;
 
     const hasInlineDollar = /\$[^$\n]+\$/.test(trimmed);
     if (!hasInlineDollar) return line;
 
-    const afterStrip = trimmed.replace(/\$([^$\n]+?)\$/g, '$1');
+    // Remove formula *content* entirely (not just delimiters) so LaTeX inside $...$
+    // doesn't falsely register as "LaTeX outside".
+    const afterStrip = trimmed.replace(/\$[^$\n]+?\$/g, '');
     const hasLatexOutside = /\\[a-zA-Z]+/.test(afterStrip);
 
     if (hasLatexOutside) {
+      // Keep formula content but strip $ delimiters, then wrap the whole line.
       const fixed = trimmed.replace(/\$([^$\n]+?)\$/g, '$1');
       return `$$${fixed}$$`;
     }
@@ -48,8 +53,8 @@ export function fixBrokenFormulas(markdown: string): string {
  */
 export function safeMdParse(value: string): string {
   const mathStore: Array<{ type: 'block' | 'inline'; latex: string }> = [];
-  // De-indent $$ lines so marked doesn't treat them as code blocks.
-  let text = value.replace(/^[ \t]+(\$\$)/gm, '$1');
+  // Fix broken AI formula patterns, then extract before marked runs.
+  let text = fixBrokenFormulas(value);
 
   // Block formulas: non-greedy match with a line-count safety cap to prevent a stray
   // unclosed $$ from eating dozens of lines of content as one "formula".
