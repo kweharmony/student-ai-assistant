@@ -14,6 +14,7 @@ import BoardSection from './BoardSection';
 import CatalogSection from './CatalogSection';
 import CatalogModerationSection from './CatalogModerationSection';
 import { useAuth } from '../../contexts/AuthContext';
+import { fixBrokenFormulas } from '../../utils/markdownUtils';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const ACCOUNT_ACTIVE_SECTION_KEY = 'mindesync_account_active_section';
@@ -385,8 +386,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const handleOpenInEditor = (text: string, lectureId: string, lectureTitle?: string) => {
     setCurrentLectureId(lectureId);
     setCurrentLectureTitle(lectureTitle || null);
-    const isHtml = /<[a-zA-Z][^>]*>/.test(text);
-    const html = isHtml ? text : markdownToHtml(text);
+    // Use a strict check for actual HTML semantic tags to avoid false-positives on
+    // math/vector notation like <X, Y> or <a_1, a_2> that appear in lecture notes.
+    const isHtml = /<(p|div|h[1-6]|ul|ol|li|strong|em|br|table|tr|td|th|span|blockquote|pre|code)[^>]*>/i.test(text);
+    const html = isHtml ? text : markdownToHtml(fixBrokenFormulas(text));
     if (editorInstance) {
       editorInstance.commands.setContent(html);
     }
