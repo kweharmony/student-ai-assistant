@@ -333,11 +333,11 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
     text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, latex) => {
       mathStore.push({ type: 'block', latex });
-      return `MATHHOLDER_${mathStore.length - 1}_END`;
+      return `MATHTOKEN${mathStore.length - 1}MATHEND`;
     });
     text = text.replace(/\$([^$]+?)\$/g, (_, latex) => {
       mathStore.push({ type: 'inline', latex });
-      return `MATHHOLDER_${mathStore.length - 1}_END`;
+      return `MATHTOKEN${mathStore.length - 1}MATHEND`;
     });
 
     marked.setOptions({ breaks: true, gfm: true });
@@ -362,7 +362,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       return original;
     });
 
-    html = html.replace(/MATHHOLDER_(\d+)_END/g, (_, idx) => {
+    html = html.replace(/MATHTOKEN(\d+)MATHEND/g, (_, idx) => {
       const { type, latex } = mathStore[Number(idx)];
       return type === 'block'
         ? `<div data-type="block-math" data-latex="${escapeAttr(latex)}"></div>`
