@@ -11,10 +11,12 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import re
+
 from ..auth import hash_password, verify_password
 from ..dependencies import get_current_user, get_db
-from ..models import Stream, User
-from ..schemas import ChangePasswordRequest, SetEmojiRequest, UserOut, UserUpdateRequest
+from ..models import Direction, Faculty, Stream, User
+from ..schemas import ChangePasswordRequest, SetEmojiRequest, StreamCreateForUserIn, UserOut, UserUpdateRequest
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -66,6 +68,53 @@ async def update_my_profile(
         if body.academic_degree is not None:
             prof.academic_degree = body.academic_degree
 
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+STREAM_NAME_RE = re.compile(r'^[А-ЯA-ZЁ]+\d{2}$')
+
+
+@router.post("/me/stream", response_model=UserOut)
+async def create_and_assign_stream(
+    body: StreamCreateForUserIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stream_name = body.stream_name.strip().upper()
+    if not STREAM_NAME_RE.match(stream_name):
+        raise HTTPException(
+            status_code=400,
+            detail="Название потока должно быть в формате «БВТ24»: заглавные буквы + 2 цифры",
+        )
+
+    existing_result = await db.execute(select(Stream).where(Stream.name == stream_name))
+    if existing_result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Поток с таким названием уже существует. Выберите его из списка.",
+        )
+
+    faculty_result = await db.execute(select(Faculty).where(Faculty.id == body.faculty_id))
+    if faculty_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Факультет не найден")
+
+    direction_result = await db.execute(
+        select(Direction).where(
+            Direction.id == body.direction_id,
+            Direction.faculty_id == body.faculty_id,
+        )
+    )
+    direction = direction_result.scalar_one_or_none()
+    if direction is None:
+        raise HTTPException(status_code=404, detail="Направление не найдено")
+
+    new_stream = Stream(direction_id=direction.id, name=stream_name)
+    db.add(new_stream)
+    await db.flush()
+
+    user.stream_id = new_stream.id
     await db.commit()
     await db.refresh(user)
     return user

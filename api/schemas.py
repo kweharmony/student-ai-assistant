@@ -101,6 +101,12 @@ class UserUpdateRequest(BaseModel):
     academic_degree: Optional[str] = Field(None, max_length=100)
 
 
+class StreamCreateForUserIn(BaseModel):
+    stream_name: str = Field(..., min_length=3, max_length=20)
+    faculty_id: UUID
+    direction_id: UUID
+
+
 class SetEmojiRequest(BaseModel):
     emoji: str = Field(..., min_length=1, max_length=10)
 

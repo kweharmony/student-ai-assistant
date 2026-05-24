@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const EMOJI_LIST = [
@@ -23,6 +23,21 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate }) => {
   const { user, token, logout, updateUser } = useAuth();
+
+  // Stream selection
+  const [allStreams, setAllStreams] = useState<{ id: string; name: string; direction_id: string }[]>([]);
+  const [allDirections, setAllDirections] = useState<{ id: string; name: string; faculty_id: string }[]>([]);
+  const [allFaculties, setAllFaculties] = useState<{ id: string; name: string }[]>([]);
+  const [streamDataLoaded, setStreamDataLoaded] = useState(false);
+  const [selectedStreamId, setSelectedStreamId] = useState('');
+  const [streamAssignLoading, setStreamAssignLoading] = useState(false);
+  const [streamAssignError, setStreamAssignError] = useState('');
+  const [showCreateStream, setShowCreateStream] = useState(false);
+  const [newStreamFacultyId, setNewStreamFacultyId] = useState('');
+  const [newStreamDirectionId, setNewStreamDirectionId] = useState('');
+  const [newStreamName, setNewStreamName] = useState('');
+  const [streamCreateLoading, setStreamCreateLoading] = useState(false);
+  const [streamCreateError, setStreamCreateError] = useState('');
 
   // Emoji picker
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -193,6 +208,80 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
     }
   };
 
+  useEffect(() => {
+    if (user?.stream_id || streamDataLoaded) return;
+    const auth = { Authorization: `Bearer ${token}` };
+    Promise.all([
+      fetch(`${API_BASE}/api/catalog/faculties`, { headers: auth }),
+      fetch(`${API_BASE}/api/catalog/directions`, { headers: auth }),
+      fetch(`${API_BASE}/api/catalog/streams`, { headers: auth }),
+    ]).then(async ([fRes, dRes, sRes]) => {
+      if (fRes.ok) setAllFaculties(await fRes.json());
+      if (dRes.ok) setAllDirections(await dRes.json());
+      if (sRes.ok) setAllStreams(await sRes.json());
+      setStreamDataLoaded(true);
+    });
+  }, [user?.stream_id, token, streamDataLoaded]);
+
+  const handleAssignStream = async () => {
+    if (!selectedStreamId) return;
+    setStreamAssignLoading(true);
+    setStreamAssignError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/users/me`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ stream_id: selectedStreamId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setStreamAssignError(err.detail || 'Ошибка выбора потока');
+        return;
+      }
+      updateUser(await res.json());
+    } finally {
+      setStreamAssignLoading(false);
+    }
+  };
+
+  const STREAM_NAME_REGEX = /^[А-ЯA-ZЁ]+\d{2}$/;
+
+  const handleCreateStream = async () => {
+    const name = newStreamName.trim().toUpperCase();
+    if (!STREAM_NAME_REGEX.test(name)) {
+      setStreamCreateError('Формат: заглавные буквы + 2 цифры (например, БВТ24)');
+      return;
+    }
+    if (!newStreamFacultyId || !newStreamDirectionId) {
+      setStreamCreateError('Выберите факультет и направление');
+      return;
+    }
+    const existing = allStreams.find(s => s.name.toUpperCase() === name);
+    if (existing) {
+      setShowCreateStream(false);
+      setSelectedStreamId(existing.id);
+      setStreamAssignError(`Поток «${name}» уже существует — он выбран в списке, нажмите «Выбрать»`);
+      return;
+    }
+    setStreamCreateLoading(true);
+    setStreamCreateError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/users/me/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ stream_name: name, faculty_id: newStreamFacultyId, direction_id: newStreamDirectionId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setStreamCreateError(err.detail || 'Ошибка создания потока');
+        return;
+      }
+      updateUser(await res.json());
+    } finally {
+      setStreamCreateLoading(false);
+    }
+  };
+
   if (!user) return null;
 
   const createdDate = new Date(user.created_at).toLocaleDateString('ru-RU', {
@@ -270,7 +359,12 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
             {user.email}
           </p>
           <p className="text-sm md:text-base mb-1" style={{ color: 'var(--text-secondary)', opacity: 0.8 }}>
-            {roleLabels[user.role] || user.role}
+            {user.is_group_head ? 'Студент (Старший)' : (roleLabels[user.role] || user.role)}
+            {user.stream && (
+              <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--hover-bg)', color: 'var(--text-secondary)' }}>
+                {user.stream.name}
+              </span>
+            )}
           </p>
           <p className="text-xs md:text-sm lg:text-base opacity-70" style={{ color: 'var(--text-secondary)' }}>
             Зарегистрирован: {createdDate}
@@ -344,6 +438,118 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
               </div>
             </div>
           )}
+
+          {/* Stream block */}
+          <div className="border rounded-lg p-4 md:p-5" style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined" style={{ color: '#B58488' }}>groups</span>
+              <h4 className="text-base md:text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {user.stream ? 'Поток' : 'Поток не выбран'}
+              </h4>
+            </div>
+
+            {user.stream ? (
+              <div className="flex justify-between items-center">
+                <span className="text-xs md:text-sm opacity-70" style={{ color: 'var(--text-secondary)' }}>Название:</span>
+                <span className="text-xs md:text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{user.stream.name}</span>
+              </div>
+            ) : !streamDataLoaded ? (
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Загрузка...</p>
+            ) : !showCreateStream ? (
+              <div className="space-y-2">
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Выберите ваш поток из списка:</p>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedStreamId}
+                    onChange={e => setSelectedStreamId(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg border text-sm outline-none"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  >
+                    <option value="">— Выберите поток —</option>
+                    {allStreams.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleAssignStream}
+                    disabled={!selectedStreamId || streamAssignLoading}
+                    className="px-3 py-2 rounded-lg text-sm disabled:opacity-50"
+                    style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
+                  >
+                    {streamAssignLoading ? '...' : 'Выбрать'}
+                  </button>
+                </div>
+                {streamAssignError && <p className="text-xs" style={{ color: '#ef4444' }}>{streamAssignError}</p>}
+                <button
+                  onClick={() => { setShowCreateStream(true); setStreamCreateError(''); }}
+                  className="text-xs underline opacity-70 hover:opacity-100"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Нет нужного потока? Создать новый
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  Создать новый поток (если его точно нет в списке):
+                </p>
+                <select
+                  value={newStreamFacultyId}
+                  onChange={e => { setNewStreamFacultyId(e.target.value); setNewStreamDirectionId(''); }}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                  style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                >
+                  <option value="">— Выберите факультет —</option>
+                  {allFaculties.map(f => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+                {newStreamFacultyId && (
+                  <select
+                    value={newStreamDirectionId}
+                    onChange={e => setNewStreamDirectionId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  >
+                    <option value="">— Выберите направление —</option>
+                    {allDirections.filter(d => d.faculty_id === newStreamFacultyId).map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                )}
+                <input
+                  type="text"
+                  value={newStreamName}
+                  onChange={e => setNewStreamName(e.target.value.toUpperCase())}
+                  placeholder="БВТ24"
+                  maxLength={10}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                  style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                />
+                <p className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
+                  Формат: только заглавные буквы + ровно 2 цифры в конце (напр. БВТ24, ПМ25)
+                </p>
+                {streamCreateError && <p className="text-xs" style={{ color: '#ef4444' }}>{streamCreateError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowCreateStream(false); setStreamCreateError(''); setNewStreamName(''); setNewStreamFacultyId(''); setNewStreamDirectionId(''); }}
+                    className="flex-1 px-3 py-2 rounded-lg text-sm"
+                    style={{ background: 'var(--hover-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    onClick={handleCreateStream}
+                    disabled={streamCreateLoading}
+                    className="flex-1 px-3 py-2 rounded-lg text-sm disabled:opacity-50"
+                    style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
+                  >
+                    {streamCreateLoading ? 'Создание...' : 'Создать и выбрать'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
