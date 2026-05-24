@@ -480,6 +480,11 @@ class CatalogLecturerTemplateCreateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
 
 
+class CatalogSemesterCreateIn(BaseModel):
+    stream_id: UUID
+    course_text: str = Field(..., min_length=1, max_length=50)
+
+
 class CatalogSemesterOut(BaseModel):
     stream_id: UUID
     course_text: str

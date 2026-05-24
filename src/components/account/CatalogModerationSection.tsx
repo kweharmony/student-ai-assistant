@@ -113,6 +113,14 @@ interface ConfirmDialogState {
   onConfirm: () => void;
 }
 
+interface CourseDeleteDialogState {
+  open: boolean;
+  streamId: string;
+  courseText: string;
+  message: string;
+  counts: Record<string, number>;
+}
+
 interface CatalogNoticeState {
   type: 'error' | 'success';
   message: string;
@@ -208,8 +216,11 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
   const [newFacultyName, setNewFacultyName] = useState('');
   const [newDirectionName, setNewDirectionName] = useState('');
   const [newStreamName, setNewStreamName] = useState('');
+  const [newCourseName, setNewCourseName] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const [deleteProcessing, setDeleteProcessing] = useState(false);
+  const [courseDeleteDialog, setCourseDeleteDialog] = useState<CourseDeleteDialogState | null>(null);
+  const [courseDeleteProcessing, setCourseDeleteProcessing] = useState(false);
 
   const [renameFacultyName, setRenameFacultyName] = useState('');
   const [renameDirectionName, setRenameDirectionName] = useState('');
@@ -752,6 +763,79 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     await loadLookups();
     selectStreamNode(activeFacultyId, activeDirectionId, created.id);
   };
+
+  const createCourse = async () => {
+    const name = newCourseName.trim();
+    if (!activeStreamId || !name) return;
+    const res = await fetch(`${API_BASE}/api/catalog/semesters`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stream_id: activeStreamId, course_text: name }),
+    });
+    if (res.ok) {
+      setNewCourseName('');
+      await loadLookups();
+      setExpandedStreams(prev => ({ ...prev, [activeStreamId]: true }));
+    } else {
+      const err = await res.json().catch(() => ({}));
+      setCatalogNotice({ type: 'error', message: err?.detail || 'Не удалось создать курс.' });
+    }
+  };
+
+  const deleteCourse = async (streamId: string, courseText: string, force = false) => {
+    if (!streamId || !courseText) return;
+    const params = new URLSearchParams({ stream_id: streamId, course_text: courseText, force: String(force) });
+    const res = await fetch(`${API_BASE}/api/catalog/semesters/by-course?${params}`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (res.ok || res.status === 204) {
+      setActiveCourseKey('');
+      setActiveSemesterKey('');
+      setActiveDisciplineName('');
+      setActiveNodeType('stream');
+      setCourseDeleteDialog(null);
+      await loadLookups();
+      window.dispatchEvent(new Event('catalog:refresh'));
+      return;
+    }
+
+    const payload = await res.json().catch(() => ({}));
+    const detail = parseDeleteError(payload);
+    if (res.status === 409 && detail?.code === 'catalog_node_not_empty') {
+      setCourseDeleteDialog({
+        open: true,
+        streamId,
+        courseText,
+        message: detail.message || `В курсе «${courseText}» есть лекции. Удалить вместе со всем содержимым?`,
+        counts: detail.counts || {},
+      });
+      return;
+    }
+    setCatalogNotice({ type: 'error', message: detail?.message || 'Не удалось удалить курс.' });
+  };
+
+  const confirmDeleteCourse = async () => {
+    if (!courseDeleteDialog) return;
+    setCourseDeleteProcessing(true);
+    try {
+      await deleteCourse(courseDeleteDialog.streamId, courseDeleteDialog.courseText, true);
+    } finally {
+      setCourseDeleteProcessing(false);
+    }
+  };
+
+  const courseDeleteCountEntries = useMemo(() => {
+    if (!courseDeleteDialog?.counts) return [];
+    const labels: Record<string, string> = {
+      catalog_items: 'Лекций в каталоге',
+      discipline_nodes: 'Дисциплин',
+    };
+    return Object.entries(courseDeleteDialog.counts)
+      .filter(([, value]) => Number(value) > 0)
+      .map(([key, value]) => ({ label: labels[key] || key, value: Number(value) }));
+  }, [courseDeleteDialog]);
 
   const pluralByNodeType: Record<DeletableNodeType, string> = {
     faculty: 'faculties',
@@ -1522,6 +1606,12 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                     <button onClick={renameStream} disabled={renameProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--hover-bg)', color: 'var(--text-primary)' }}>Сохранить</button>
                   </div>
                 )}
+                {user?.role === 'admin' && (
+                  <div className="flex gap-2">
+                    <input value={newCourseName} onChange={(e) => setNewCourseName(e.target.value)} placeholder={`Новый курс для ${activeStream.name} (напр. 1 курс)`} className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                    <button onClick={createCourse} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Добавить курс</button>
+                  </div>
+                )}
                 <div className="p-3 rounded-lg border text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
                   Публикация лекций в базу выполняется в разделе «Лекции» через кнопки «Предложить в базу» и «Добавить в базу».
                 </div>
@@ -1544,6 +1634,15 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                   <input value={bulkCourseName} onChange={(e) => setBulkCourseName(e.target.value)} placeholder="Новое название курса" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                   <button onClick={updateCourseNode} disabled={catalogProcessing} className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}>Применить</button>
                 </div>
+                {user?.role === 'admin' && (
+                  <button
+                    onClick={() => deleteCourse(activeStreamId, activeCourseKey)}
+                    className="px-3 py-2 rounded-lg text-sm"
+                    style={{ background: 'rgba(239,68,68,.14)', color: '#ef4444' }}
+                  >
+                    Удалить курс
+                  </button>
+                )}
               </div>
             )}
 
@@ -1656,6 +1755,47 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
                 disabled={deleteProcessing}
               >
                 {deleteProcessing ? 'Удаление...' : 'Удалить всё'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {courseDeleteDialog?.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }}>
+          <div className="w-full max-w-xl rounded-2xl border p-5" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+            <h3 className="text-lg font-medium mb-2" style={{ color: headingColor }}>Подтвердите удаление курса</h3>
+            <p className="text-sm mb-3" style={{ color: mutedColor }}>{courseDeleteDialog.message}</p>
+
+            {courseDeleteCountEntries.length > 0 && (
+              <div className="rounded-lg border p-3 mb-4" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+                <p className="text-xs mb-2" style={{ color: mutedColor }}>Будут удалены:</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {courseDeleteCountEntries.map((entry) => (
+                    <div key={entry.label} className="text-sm" style={{ color: headingColor }}>
+                      {entry.label}: {entry.value}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button
+                onClick={() => setCourseDeleteDialog(null)}
+                className="px-4 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--hover-bg)', color: 'var(--text-primary)' }}
+                disabled={courseDeleteProcessing}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={confirmDeleteCourse}
+                className="px-4 py-2 rounded-lg text-sm"
+                style={{ background: '#ef4444', color: '#fff' }}
+                disabled={courseDeleteProcessing}
+              >
+                {courseDeleteProcessing ? 'Удаление...' : 'Удалить всё'}
               </button>
             </div>
           </div>

@@ -44,6 +44,7 @@ from ..schemas import (
     CatalogDisciplineNodeCreateIn,
     CatalogDisciplineNodeOut,
     CatalogBulkUpdateIn,
+    CatalogSemesterCreateIn,
     CatalogSemesterOut,
     DirectionCreateIn,
     DirectionOut,
@@ -217,6 +218,95 @@ async def list_catalog_semesters(
         )
         for row in rows
     ]
+
+
+@router.post("/semesters", response_model=List[CatalogSemesterOut], status_code=status.HTTP_201_CREATED)
+async def create_catalog_course(
+    body: CatalogSemesterCreateIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    del admin
+    stream_result = await db.execute(select(Stream).where(Stream.id == body.stream_id))
+    stream = stream_result.scalar_one_or_none()
+    if stream is None:
+        raise HTTPException(status_code=404, detail="Поток не найден")
+
+    course_text = body.course_text.strip()
+    if not course_text:
+        raise HTTPException(status_code=400, detail="Нужно указать название курса")
+
+    await _ensure_catalog_semesters(db, stream.id, course_text)
+    await db.commit()
+
+    result = await db.execute(
+        select(CatalogSemester).where(
+            CatalogSemester.stream_id == stream.id,
+            CatalogSemester.course_text == course_text,
+        )
+    )
+    rows = result.scalars().all()
+    return [
+        CatalogSemesterOut(stream_id=row.stream_id, course_text=row.course_text, semester_key=row.semester_key)
+        for row in rows
+    ]
+
+
+@router.delete("/semesters/by-course", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_catalog_course(
+    stream_id: UUID = Query(...),
+    course_text: str = Query(...),
+    force: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    del admin
+    course_text = course_text.strip()
+    if not course_text:
+        raise HTTPException(status_code=400, detail="Нужно указать название курса")
+
+    stream_result = await db.execute(select(Stream).where(Stream.id == stream_id))
+    if stream_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Поток не найден")
+
+    catalog_items_count = await db.scalar(
+        select(func.count(LectureCatalogItem.id)).where(
+            LectureCatalogItem.stream_id == stream_id,
+            LectureCatalogItem.course_text == course_text,
+        )
+    )
+    discipline_nodes_count = await db.scalar(
+        select(func.count(CatalogDisciplineNode.id)).where(
+            CatalogDisciplineNode.stream_id == stream_id,
+            CatalogDisciplineNode.course_text == course_text,
+        )
+    )
+    counts = {
+        "catalog_items": int(catalog_items_count or 0),
+        "discipline_nodes": int(discipline_nodes_count or 0),
+    }
+    if not force and _has_catalog_node_content(counts):
+        _raise_not_empty_error(course_text, counts)
+
+    await db.execute(
+        delete(LectureCatalogItem).where(
+            LectureCatalogItem.stream_id == stream_id,
+            LectureCatalogItem.course_text == course_text,
+        )
+    )
+    await db.execute(
+        delete(CatalogDisciplineNode).where(
+            CatalogDisciplineNode.stream_id == stream_id,
+            CatalogDisciplineNode.course_text == course_text,
+        )
+    )
+    await db.execute(
+        delete(CatalogSemester).where(
+            CatalogSemester.stream_id == stream_id,
+            CatalogSemester.course_text == course_text,
+        )
+    )
+    await db.commit()
 
 
 @router.get("/discipline-nodes", response_model=List[CatalogDisciplineNodeOut])
