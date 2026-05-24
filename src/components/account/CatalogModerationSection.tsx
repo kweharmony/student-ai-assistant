@@ -774,7 +774,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
     });
     if (res.ok) {
       setNewCourseName('');
-      await loadLookups();
+      await Promise.all([loadLookups(), loadCatalogItems()]);
       setExpandedStreams(prev => ({ ...prev, [activeStreamId]: true }));
     } else {
       const err = await res.json().catch(() => ({}));
@@ -796,7 +796,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       setActiveDisciplineName('');
       setActiveNodeType('stream');
       setCourseDeleteDialog(null);
-      await loadLookups();
+      await Promise.all([loadLookups(), loadCatalogItems()]);
       window.dispatchEvent(new Event('catalog:refresh'));
       return;
     }
