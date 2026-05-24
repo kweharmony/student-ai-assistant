@@ -1538,6 +1538,17 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                   <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
                   Скачать
                 </button>
+                <button
+                  onClick={() => {
+                    handleGenerateNote(noteActionMenu.lecture.id, noteActionMenu.note.mode);
+                    closeNoteActionMenu();
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border text-left flex items-center gap-2 text-sm"
+                  style={{ borderColor: 'rgba(251,146,60,.35)', color: '#f97316', background: 'rgba(251,146,60,.08)' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>replay</span>
+                  Перегенерировать
+                </button>
               </div>
             ) : (
               <div>

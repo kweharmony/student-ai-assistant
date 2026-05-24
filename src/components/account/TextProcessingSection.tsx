@@ -725,30 +725,6 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
               )}
 
               <button
-                onClick={handleMLProcess}
-                disabled={isProcessing || !editorInstance}
-                className={`btn-ai btn-lg flex items-center justify-center gap-2 w-full md:w-auto ${
-                  isProcessing || !editorInstance
-                    ? 'opacity-50 cursor-not-allowed'
-                    : ''
-                }`}
-              >
-                {isProcessing ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                    Обработка...
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined">psychology</span>
-                    Обработать с ИИ
-                  </>
-                )}
-              </button>
-              <button
                 onClick={handleCopyText}
                 className="btn btn-lg flex items-center justify-center gap-2 w-full md:w-auto"
               >
