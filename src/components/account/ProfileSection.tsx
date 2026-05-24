@@ -44,6 +44,11 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
   const [streamCreateLoading, setStreamCreateLoading] = useState(false);
   const [streamCreateError, setStreamCreateError] = useState('');
 
+  // Dropdown open states
+  const [streamDropdownOpen, setStreamDropdownOpen] = useState(false);
+  const [facultyDropdownOpen, setFacultyDropdownOpen] = useState(false);
+  const [directionDropdownOpen, setDirectionDropdownOpen] = useState(false);
+
   // Emoji picker
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiLoading, setEmojiLoading] = useState(false);
@@ -485,21 +490,26 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                   Выберите свою роль (доступно один раз):
                 </p>
-                <div className="flex gap-2">
-                  <select
-                    value={selectedRole}
-                    onChange={e => setSelectedRole(e.target.value as 'student' | 'teacher')}
-                    className="flex-1 px-3 py-2 rounded-lg border text-sm outline-none"
-                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                  >
-                    <option value="student">Студент</option>
-                    <option value="teacher">Преподаватель</option>
-                  </select>
+                <div className="flex gap-2 flex-wrap">
+                  {(['student', 'teacher'] as const).map(r => (
+                    <button
+                      key={r}
+                      onClick={() => setSelectedRole(r)}
+                      className="px-4 py-2 rounded-lg border text-sm transition-all"
+                      style={{
+                        borderColor: selectedRole === r ? 'var(--text-primary)' : 'var(--border-color)',
+                        background: selectedRole === r ? 'var(--text-primary)' : 'transparent',
+                        color: selectedRole === r ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                      }}
+                    >
+                      {r === 'student' ? 'Студент' : 'Преподаватель'}
+                    </button>
+                  ))}
                   <button
                     onClick={handleSaveRole}
                     disabled={roleSaveLoading}
-                    className="px-3 py-2 rounded-lg text-sm disabled:opacity-50"
-                    style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
+                    className="px-3 py-2 rounded-lg text-sm disabled:opacity-50 border"
+                    style={{ borderColor: '#22c55e', color: '#22c55e' }}
                   >
                     {roleSaveLoading ? '...' : 'Сохранить'}
                   </button>
@@ -532,21 +542,39 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
               <div className="space-y-2">
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Выберите ваш поток из списка:</p>
                 <div className="flex gap-2">
-                  <select
-                    value={selectedStreamId}
-                    onChange={e => setSelectedStreamId(e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-lg border text-sm outline-none"
-                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                  >
-                    <option value="">— Выберите поток —</option>
-                    {allStreams.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                  <div className="relative flex-1">
+                    <button
+                      type="button"
+                      onClick={() => setStreamDropdownOpen(v => !v)}
+                      className="w-full px-3 py-2 rounded-lg border text-sm flex items-center justify-between text-left"
+                      style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                    >
+                      <span className="truncate">{selectedStreamId ? (allStreams.find(s => s.id === selectedStreamId)?.name ?? '— Выберите поток —') : '— Выберите поток —'}</span>
+                      <span className="material-symbols-outlined shrink-0" style={{ fontSize: 16 }}>{streamDropdownOpen ? 'expand_less' : 'expand_more'}</span>
+                    </button>
+                    {streamDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-xl border shadow-xl overflow-auto max-h-48" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                        {allStreams.length === 0 && (
+                          <p className="px-3 py-2 text-sm opacity-50" style={{ color: 'var(--text-secondary)' }}>Нет потоков</p>
+                        )}
+                        {allStreams.map(s => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => { setSelectedStreamId(s.id); setStreamDropdownOpen(false); }}
+                            className="w-full text-left px-3 py-2 text-sm border-b last:border-b-0 hover:opacity-70 transition-opacity"
+                            style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)', background: selectedStreamId === s.id ? 'var(--hover-bg)' : 'transparent' }}
+                          >
+                            {s.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={handleAssignStream}
                     disabled={!selectedStreamId || streamAssignLoading}
-                    className="px-3 py-2 rounded-lg text-sm disabled:opacity-50"
+                    className="px-3 py-2 rounded-lg text-sm disabled:opacity-50 shrink-0"
                     style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)' }}
                   >
                     {streamAssignLoading ? '...' : 'Выбрать'}
@@ -566,29 +594,62 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                   Создать новый поток (если его точно нет в списке):
                 </p>
-                <select
-                  value={newStreamFacultyId}
-                  onChange={e => { setNewStreamFacultyId(e.target.value); setNewStreamDirectionId(''); }}
-                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                  style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                >
-                  <option value="">— Выберите факультет —</option>
-                  {allFaculties.map(f => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-                {newStreamFacultyId && (
-                  <select
-                    value={newStreamDirectionId}
-                    onChange={e => setNewStreamDirectionId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setFacultyDropdownOpen(v => !v)}
+                    className="w-full px-3 py-2 rounded-lg border text-sm flex items-center justify-between text-left"
                     style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                   >
-                    <option value="">— Выберите направление —</option>
-                    {allDirections.filter(d => d.faculty_id === newStreamFacultyId).map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
+                    <span className="truncate">{newStreamFacultyId ? (allFaculties.find(f => f.id === newStreamFacultyId)?.name ?? '— Выберите факультет —') : '— Выберите факультет —'}</span>
+                    <span className="material-symbols-outlined shrink-0" style={{ fontSize: 16 }}>{facultyDropdownOpen ? 'expand_less' : 'expand_more'}</span>
+                  </button>
+                  {facultyDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-xl border shadow-xl overflow-auto max-h-48" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                      {allFaculties.map(f => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => { setNewStreamFacultyId(f.id); setNewStreamDirectionId(''); setFacultyDropdownOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-sm border-b last:border-b-0 hover:opacity-70 transition-opacity"
+                          style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)', background: newStreamFacultyId === f.id ? 'var(--hover-bg)' : 'transparent' }}
+                        >
+                          {f.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {newStreamFacultyId && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setDirectionDropdownOpen(v => !v)}
+                      className="w-full px-3 py-2 rounded-lg border text-sm flex items-center justify-between text-left"
+                      style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                    >
+                      <span className="truncate">{newStreamDirectionId ? (allDirections.find(d => d.id === newStreamDirectionId)?.name ?? '— Выберите направление —') : '— Выберите направление —'}</span>
+                      <span className="material-symbols-outlined shrink-0" style={{ fontSize: 16 }}>{directionDropdownOpen ? 'expand_less' : 'expand_more'}</span>
+                    </button>
+                    {directionDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-xl border shadow-xl overflow-auto max-h-48" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                        {allDirections.filter(d => d.faculty_id === newStreamFacultyId).length === 0 && (
+                          <p className="px-3 py-2 text-sm opacity-50" style={{ color: 'var(--text-secondary)' }}>Нет направлений</p>
+                        )}
+                        {allDirections.filter(d => d.faculty_id === newStreamFacultyId).map(d => (
+                          <button
+                            key={d.id}
+                            type="button"
+                            onClick={() => { setNewStreamDirectionId(d.id); setDirectionDropdownOpen(false); }}
+                            className="w-full text-left px-3 py-2 text-sm border-b last:border-b-0 hover:opacity-70 transition-opacity"
+                            style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)', background: newStreamDirectionId === d.id ? 'var(--hover-bg)' : 'transparent' }}
+                          >
+                            {d.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
                 <input
                   type="text"

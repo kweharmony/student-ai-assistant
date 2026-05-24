@@ -173,6 +173,9 @@ const AdminDashboard: React.FC = () => {
   const [assignStreamName, setAssignStreamName] = useState('');
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
+  const [assignStreamOpen, setAssignStreamOpen] = useState(false);
+  const [assignFacultyOpen, setAssignFacultyOpen] = useState(false);
+  const [assignDirectionOpen, setAssignDirectionOpen] = useState(false);
 
   // Lookup data for assign modal
   const [allStreams, setAllStreams] = useState<StreamItem[]>([]);
@@ -419,6 +422,9 @@ const AdminDashboard: React.FC = () => {
     setAssignDirectionId('');
     setAssignStreamName('');
     setAssignError(null);
+    setAssignStreamOpen(false);
+    setAssignFacultyOpen(false);
+    setAssignDirectionOpen(false);
   };
 
   const closeAssignModal = () => {
@@ -1287,19 +1293,38 @@ const AdminDashboard: React.FC = () => {
             {!assignShowCreate ? (
               <>
                 <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Поток</label>
-                <select
-                  value={assignStreamId}
-                  onChange={e => setAssignStreamId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border mb-3"
-                  style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                >
-                  <option value="">— выберите поток —</option>
-                  {allStreams.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
+                <div className="relative mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setAssignStreamOpen(v => !v)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border flex items-center justify-between text-left"
+                    style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  >
+                    <span>{assignStreamId ? (allStreams.find(s => s.id === assignStreamId)?.name ?? '— выберите поток —') : '— выберите поток —'}</span>
+                    <span className="material-symbols-outlined shrink-0" style={{ fontSize: 16 }}>{assignStreamOpen ? 'expand_less' : 'expand_more'}</span>
+                  </button>
+                  {assignStreamOpen && (
+                    <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-xl border shadow-xl overflow-auto max-h-48" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                      {allStreams.length === 0 && (
+                        <p className="px-3 py-2 text-sm opacity-50" style={{ color: 'var(--text-secondary)' }}>Нет потоков</p>
+                      )}
+                      {allStreams.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => { setAssignStreamId(s.id); setAssignStreamOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-sm border-b last:border-b-0 hover:opacity-70 transition-opacity"
+                          style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)', background: assignStreamId === s.id ? 'var(--hover-bg)' : 'transparent' }}
+                        >
+                          {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button
-                  onClick={() => { setAssignShowCreate(true); setAssignError(null); }}
+                  type="button"
+                  onClick={() => { setAssignShowCreate(true); setAssignStreamOpen(false); setAssignError(null); }}
                   className="text-xs underline opacity-60 hover:opacity-100 mb-5 block"
                   style={{ color: 'var(--text-secondary)' }}
                 >
@@ -1310,31 +1335,64 @@ const AdminDashboard: React.FC = () => {
               <>
                 <p className="text-xs font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Создать новый поток</p>
                 <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Факультет</label>
-                <select
-                  value={assignFacultyId}
-                  onChange={e => { setAssignFacultyId(e.target.value); setAssignDirectionId(''); }}
-                  className="w-full px-3 py-2 text-sm rounded-lg border mb-3"
-                  style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                >
-                  <option value="">— выберите факультет —</option>
-                  {allFaculties.map(f => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
+                <div className="relative mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setAssignFacultyOpen(v => !v)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border flex items-center justify-between text-left"
+                    style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                  >
+                    <span>{assignFacultyId ? (allFaculties.find(f => f.id === assignFacultyId)?.name ?? '— выберите факультет —') : '— выберите факультет —'}</span>
+                    <span className="material-symbols-outlined shrink-0" style={{ fontSize: 16 }}>{assignFacultyOpen ? 'expand_less' : 'expand_more'}</span>
+                  </button>
+                  {assignFacultyOpen && (
+                    <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-xl border shadow-xl overflow-auto max-h-48" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                      {allFaculties.map(f => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => { setAssignFacultyId(f.id); setAssignDirectionId(''); setAssignFacultyOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-sm border-b last:border-b-0 hover:opacity-70 transition-opacity"
+                          style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)', background: assignFacultyId === f.id ? 'var(--hover-bg)' : 'transparent' }}
+                        >
+                          {f.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {assignFacultyId && (
                   <>
                     <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Направление</label>
-                    <select
-                      value={assignDirectionId}
-                      onChange={e => setAssignDirectionId(e.target.value)}
-                      className="w-full px-3 py-2 text-sm rounded-lg border mb-3"
-                      style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                    >
-                      <option value="">— выберите направление —</option>
-                      {filteredAssignDirections.map(d => (
-                        <option key={d.id} value={d.id}>{d.name}</option>
-                      ))}
-                    </select>
+                    <div className="relative mb-3">
+                      <button
+                        type="button"
+                        onClick={() => setAssignDirectionOpen(v => !v)}
+                        className="w-full px-3 py-2 text-sm rounded-lg border flex items-center justify-between text-left"
+                        style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                      >
+                        <span>{assignDirectionId ? (filteredAssignDirections.find(d => d.id === assignDirectionId)?.name ?? '— выберите направление —') : '— выберите направление —'}</span>
+                        <span className="material-symbols-outlined shrink-0" style={{ fontSize: 16 }}>{assignDirectionOpen ? 'expand_less' : 'expand_more'}</span>
+                      </button>
+                      {assignDirectionOpen && (
+                        <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-xl border shadow-xl overflow-auto max-h-48" style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                          {filteredAssignDirections.length === 0 && (
+                            <p className="px-3 py-2 text-sm opacity-50" style={{ color: 'var(--text-secondary)' }}>Нет направлений</p>
+                          )}
+                          {filteredAssignDirections.map(d => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => { setAssignDirectionId(d.id); setAssignDirectionOpen(false); }}
+                              className="w-full text-left px-3 py-2 text-sm border-b last:border-b-0 hover:opacity-70 transition-opacity"
+                              style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)', background: assignDirectionId === d.id ? 'var(--hover-bg)' : 'transparent' }}
+                            >
+                              {d.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
                 <label className="block text-xs mb-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>Название потока</label>
@@ -1350,6 +1408,7 @@ const AdminDashboard: React.FC = () => {
                   Заглавные буквы + 2 цифры (например БВТ24)
                 </p>
                 <button
+                  type="button"
                   onClick={() => { setAssignShowCreate(false); setAssignError(null); }}
                   className="text-xs underline opacity-60 hover:opacity-100 mb-5 block"
                   style={{ color: 'var(--text-secondary)' }}
