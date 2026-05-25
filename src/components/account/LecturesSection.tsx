@@ -435,8 +435,9 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
 
   // Add-note dropdown
   const [addNoteDropdown, setAddNoteDropdown]       = useState<string | null>(null); // lectureId
-  const [generatingNote, setGeneratingNote]         = useState<{ lectureId: string; mode: string } | null>(null);
+  const [generatingNote, setGeneratingNote]         = useState<{ lectureId: string; mode: string; jobId?: string } | null>(null);
   const [topicInput, setTopicInput]                 = useState('');
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [pendingTopicMode, setPendingTopicMode]     = useState<{ lectureId: string; mode: string } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [openCatalogDropdown, setOpenCatalogDropdown] = useState<string | null>(null);
@@ -657,6 +658,66 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     return () => document.removeEventListener('mousedown', handler);
   }, [addNoteDropdown, openCatalogDropdown]);
 
+  // Restore pending generation job from sessionStorage on page load
+  useEffect(() => {
+    const saved = sessionStorage.getItem('noteGenJob');
+    if (!saved) return;
+    try {
+      const job = JSON.parse(saved);
+      if (job?.lectureId && job?.mode && job?.jobId) {
+        setGeneratingNote(job);
+      }
+    } catch {
+      sessionStorage.removeItem('noteGenJob');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Poll job status when a jobId is active
+  useEffect(() => {
+    const jobId = generatingNote?.jobId;
+    const lectureId = generatingNote?.lectureId;
+    if (!jobId || !lectureId) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/lectures/${lectureId}/notes/generate/${jobId}`, {
+          headers: authHeaders(),
+        });
+        if (!res.ok) {
+          // Server restarted — job lost; refresh to pick up any saved note
+          clearInterval(pollingRef.current!);
+          pollingRef.current = null;
+          setGeneratingNote(null);
+          sessionStorage.removeItem('noteGenJob');
+          await fetchLectures();
+          return;
+        }
+        const job = await res.json();
+        if (job.status === 'done') {
+          clearInterval(pollingRef.current!);
+          pollingRef.current = null;
+          setGeneratingNote(null);
+          sessionStorage.removeItem('noteGenJob');
+          await fetchLectures();
+        } else if (job.status === 'failed') {
+          clearInterval(pollingRef.current!);
+          pollingRef.current = null;
+          setGeneratingNote(null);
+          sessionStorage.removeItem('noteGenJob');
+          alert(`Ошибка генерации: ${job.error || 'Неизвестная ошибка'}`);
+        }
+      } catch {
+        // Network error — keep polling
+      }
+    };
+
+    pollingRef.current = setInterval(poll, 5000);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [generatingNote?.jobId, generatingNote?.lectureId, authHeaders, fetchLectures]);
+
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleApplyFilter = async (lecture: LectureItem) => {
@@ -749,56 +810,24 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const handleGenerateNote = async (lectureId: string, mode: string, topic?: string) => {
     setAddNoteDropdown(null);
     setPendingTopicMode(null);
-    setGeneratingNote({ lectureId, mode });
+    setTopicInput('');
     try {
-      // 1. Fetch lecture text
-      const lectureRes = await fetch(`${API_BASE}/api/lectures/${lectureId}`, { headers: authHeaders() });
-      if (!lectureRes.ok) throw new Error('Не удалось загрузить текст лекции');
-      const lectureData = await lectureRes.json();
-      const tr = lectureData.transcriptions?.[0];
-      const text = tr?.processed_text || tr?.raw_text || '';
-      if (!text) throw new Error('Текст лекции пуст');
-
-      // 2. Call ML API
-      const mlHeaders = { ...authHeaders(), 'Content-Type': 'application/json' };
-      const mlRes = await fetch(`${API_BASE}/api/ml/process`, {
+      const headers = { ...authHeaders(), 'Content-Type': 'application/json' };
+      const res = await fetch(`${API_BASE}/api/lectures/${lectureId}/notes/generate`, {
         method: 'POST',
-        headers: mlHeaders,
-        body: JSON.stringify({ text, mode, topic }),
+        headers,
+        body: JSON.stringify({ mode, topic }),
       });
-      if (!mlRes.ok) {
-        const err = await mlRes.json().catch(() => ({}));
-        throw new Error(err.detail || 'Ошибка генерации');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось запустить генерацию');
       }
-      const mlData = await mlRes.json();
-      const content: string = mlData.processed_text;
-
-      // 3. Save note
-      const saveRes = await fetch(`${API_BASE}/api/lectures/${lectureId}/notes`, {
-        method: 'POST',
-        headers: mlHeaders,
-        body: JSON.stringify({ mode, content }),
-      });
-      if (!saveRes.ok) {
-        const err = await saveRes.json().catch(() => ({}));
-        throw new Error(
-          err.detail ||
-          err.message ||
-          (saveRes.status ? `Не удалось сохранить заметку (HTTP ${saveRes.status})` : 'Не удалось сохранить заметку')
-        );
-      }
-      const savedNote: NoteInfo = await saveRes.json();
-
-      setLectures(prev => prev.map(l =>
-        l.id === lectureId
-          ? { ...l, notes: [...l.notes.filter(n => n.mode !== mode), savedNote] }
-          : l
-      ));
+      const { job_id } = await res.json();
+      const jobInfo = { lectureId, mode, jobId: job_id };
+      sessionStorage.setItem('noteGenJob', JSON.stringify(jobInfo));
+      setGeneratingNote(jobInfo);
     } catch (e: any) {
       alert(`Ошибка: ${e.message}`);
-    } finally {
-      setGeneratingNote(null);
-      setTopicInput('');
     }
   };
 

@@ -252,6 +252,20 @@ class LectureNoteIn(BaseModel):
     content: str
 
 
+class NoteGenerateIn(BaseModel):
+    mode: str = Field(..., min_length=1, max_length=50)
+    topic: Optional[str] = Field(None, max_length=300)
+
+
+class NoteGenJobOut(BaseModel):
+    job_id: str
+    status: str
+    note_id: Optional[str] = None
+    error: Optional[str] = None
+    lecture_id: str
+    mode: str
+
+
 class LectureMyOut(BaseModel):
     id: UUID
     title: str

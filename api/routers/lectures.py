@@ -4,6 +4,7 @@
 
 import mimetypes
 import os
+import uuid as _uuid_mod
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
@@ -34,6 +35,7 @@ from ..schemas import (
     LectureNoteOut,
     LectureOut,
     LectureUpdateRequest,
+    NoteGenerateIn,
     SaveTextIn,
     TaskEnqueuedOut,
     TranscriptionOut,
@@ -807,6 +809,104 @@ async def reject_ai_filter_request(
     await db.commit()
     await db.refresh(req)
     return _ai_filter_request_out(req.lecture, req)
+
+
+# ---------- Note Generation (background jobs) ----------
+
+_note_gen_jobs: dict = {}
+
+
+async def _run_note_gen_job(
+    job_id: str,
+    lecture_id_str: str,
+    user_id_str: str,
+    mode: str,
+    text: str,
+    topic: Optional[str],
+) -> None:
+    _note_gen_jobs[job_id]["status"] = "processing"
+    try:
+        from ..ml_endpoints import get_processor
+        proc = get_processor()
+        if mode == "expand_topic":
+            content = await proc.expand_topic(topic=topic, context=text)
+        else:
+            content = await proc.process_text(text, mode)
+
+        lecture_uuid = PyUUID(lecture_id_str)
+        async with async_session() as db:
+            result = await db.execute(
+                select(LectureNote).where(
+                    LectureNote.lecture_id == lecture_uuid,
+                    LectureNote.mode == mode,
+                )
+            )
+            note = result.scalar_one_or_none()
+            if note:
+                note.content = content
+                note.created_at = datetime.utcnow()
+            else:
+                note = LectureNote(lecture_id=lecture_uuid, mode=mode, content=content)
+                db.add(note)
+            await db.commit()
+            await db.refresh(note)
+            _note_gen_jobs[job_id]["status"] = "done"
+            _note_gen_jobs[job_id]["note_id"] = str(note.id)
+    except Exception as exc:
+        _note_gen_jobs[job_id]["status"] = "failed"
+        _note_gen_jobs[job_id]["error"] = str(exc)[:500]
+
+
+@router.post("/{lecture_id}/notes/generate", status_code=202)
+async def start_note_generation(
+    lecture_id: UUID,
+    body: NoteGenerateIn,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    lecture = await _get_lecture_or_404(lecture_id, db, load_relations=True)
+    _check_owner_or_catalog_moderator(lecture, user)
+
+    active_transcriptions = [t for t in lecture.transcriptions if not t.is_deleted]
+    if not active_transcriptions:
+        raise HTTPException(status_code=400, detail="Транскрипция не найдена")
+    latest = sorted(active_transcriptions, key=lambda t: t.created_at, reverse=True)[0]
+    text = latest.processed_text or latest.raw_text or ""
+    if not text:
+        raise HTTPException(status_code=400, detail="Текст лекции пуст")
+
+    if body.mode == "expand_topic" and not body.topic:
+        raise HTTPException(status_code=400, detail="Для expand_topic нужна тема")
+
+    job_id = str(_uuid_mod.uuid4())
+    _note_gen_jobs[job_id] = {
+        "job_id": job_id,
+        "status": "pending",
+        "note_id": None,
+        "error": None,
+        "lecture_id": str(lecture_id),
+        "mode": body.mode,
+        "user_id": str(user.id),
+    }
+    background_tasks.add_task(
+        _run_note_gen_job, job_id, str(lecture_id), str(user.id), body.mode, text, body.topic
+    )
+    return {"job_id": job_id, "status": "pending"}
+
+
+@router.get("/{lecture_id}/notes/generate/{job_id}")
+async def get_note_gen_status(
+    lecture_id: UUID,
+    job_id: str,
+    user: User = Depends(get_current_user),
+):
+    job = _note_gen_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    if job["user_id"] != str(user.id):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    return job
 
 
 # ---------- Lecture Notes ----------
