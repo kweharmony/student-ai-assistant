@@ -171,7 +171,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   const [mlResults, setMlResults] = useState<Record<string, { html: string; rawMd: string }>>({});
 
   // ── Inline explain on selection ────────────────────────────────────────────
-  const [explainTooltip, setExplainTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [explainTooltip, setExplainTooltip] = useState<{ text: string; x: number; y: number; rectTop: number } | null>(null);
   const [explainResult, setExplainResult] = useState<string | null>(null);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
@@ -227,7 +227,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     const rect = range.getBoundingClientRect();
     const x = Math.min(rect.right, window.innerWidth - 16);
     const y = rect.bottom;
-    setExplainTooltip({ text, x, y });
+    setExplainTooltip({ text, x, y, rectTop: rect.top });
     setExplainResult(null);
     setExplainError(null);
   };
@@ -1292,125 +1292,151 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
         </div>
       )}
       {/* ── Explain tooltip ── */}
-      {explainTooltip && !explainResult && !explainLoading && (
-        <button
-          onMouseDown={e => e.stopPropagation()}
-          onClick={handleExplainClick}
-          style={{
-            position: 'fixed',
-            left: explainTooltip.x,
-            top: explainTooltip.y + 8,
-            transform: 'translateX(-100%)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            padding: '6px 14px',
-            borderRadius: 999,
-            fontSize: 12,
-            fontFamily: 'Georgia, serif',
-            cursor: 'pointer',
-            border: 'none',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.32)',
-            background: '#44292b',
-            color: '#fff7ec',
-            userSelect: 'none',
-            whiteSpace: 'nowrap',
-            fontWeight: 500,
-          }}
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>auto_awesome</span>
-          Объяснить
-        </button>
-      )}
+      {explainTooltip && !explainResult && !explainLoading && (() => {
+        const spaceBelow = window.innerHeight - explainTooltip.y - 16;
+        const showBelow = spaceBelow >= 48;
+        const posStyle: React.CSSProperties = showBelow
+          ? { top: explainTooltip.y + 8 }
+          : { bottom: window.innerHeight - explainTooltip.rectTop + 8 };
+        return (
+          <button
+            onMouseDown={e => e.stopPropagation()}
+            onClick={handleExplainClick}
+            style={{
+              position: 'fixed',
+              left: explainTooltip.x,
+              ...posStyle,
+              transform: 'translateX(-100%)',
+              zIndex: 1000,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '6px 14px',
+              borderRadius: 999,
+              fontSize: 12,
+              fontFamily: 'Georgia, serif',
+              cursor: 'pointer',
+              border: 'none',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.32)',
+              background: '#44292b',
+              color: '#fff7ec',
+              userSelect: 'none',
+              whiteSpace: 'nowrap',
+              fontWeight: 500,
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>auto_awesome</span>
+            Объяснить
+          </button>
+        );
+      })()}
 
       {/* ── Explain loading pill ── */}
-      {explainTooltip && explainLoading && (
-        <div
-          style={{
-            position: 'fixed',
-            left: explainTooltip.x,
-            top: explainTooltip.y + 8,
-            transform: 'translateX(-100%)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '5px 12px',
-            borderRadius: 999,
-            fontSize: 12,
-            fontFamily: 'Georgia, serif',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-            background: isLightTheme ? '#fffdf5' : '#1f1516',
-            color: 'var(--text-secondary)',
-            outline: '1px solid rgba(181,132,136,0.35)',
-            userSelect: 'none',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <svg style={{ width: 13, height: 13, animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25"/>
-            <path fill="currentColor" opacity="0.75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-          </svg>
-          Объясняю...
-        </div>
-      )}
+      {explainTooltip && explainLoading && (() => {
+        const spaceBelow = window.innerHeight - explainTooltip.y - 16;
+        const showBelow = spaceBelow >= 40;
+        const posStyle: React.CSSProperties = showBelow
+          ? { top: explainTooltip.y + 8 }
+          : { bottom: window.innerHeight - explainTooltip.rectTop + 8 };
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              left: explainTooltip.x,
+              ...posStyle,
+              transform: 'translateX(-100%)',
+              zIndex: 1000,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 12px',
+              borderRadius: 999,
+              fontSize: 12,
+              fontFamily: 'Georgia, serif',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+              background: isLightTheme ? '#fffdf5' : '#1f1516',
+              color: 'var(--text-secondary)',
+              outline: '1px solid rgba(181,132,136,0.35)',
+              userSelect: 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <svg style={{ width: 13, height: 13, animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25"/>
+              <path fill="currentColor" opacity="0.75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            Объясняю...
+          </div>
+        );
+      })()}
 
       {/* ── Explain result panel ── */}
-      {explainTooltip && (explainResult !== null || explainError) && (
-        <div
-          ref={explainPanelRef}
-          onMouseDown={e => e.stopPropagation()}
-          style={{
-            position: 'fixed',
-            left: Math.min(explainTooltip.x, window.innerWidth - 348),
-            top: Math.min(explainTooltip.y + 8, window.innerHeight - 420),
-            transform: 'translateX(-100%)',
-            zIndex: 1000,
-            width: 340,
-            maxHeight: '55vh',
-            display: 'flex',
-            flexDirection: 'column',
-            borderRadius: 14,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
-            background: isLightTheme ? '#fffdf5' : '#1f1516',
-            outline: '1px solid rgba(181,132,136,0.3)',
-            fontFamily: 'Georgia, serif',
-          }}
-        >
-          {/* Panel header */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '10px 14px 8px',
-            borderBottom: '1px solid var(--border-color)',
-            flexShrink: 0,
-          }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 15, color: '#B58488' }}>auto_awesome</span>
-            <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>
-              «{explainTooltip.text.slice(0, 60)}{explainTooltip.text.length > 60 ? '…' : ''}»
-            </span>
-            <button
-              onClick={() => { setExplainTooltip(null); setExplainResult(null); setExplainError(null); }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0 }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
-            </button>
-          </div>
+      {explainTooltip && (explainResult !== null || explainError) && (() => {
+        const panelW = 340;
+        const spaceBelow = window.innerHeight - explainTooltip.y - 16;
+        const showBelow = spaceBelow >= 160;
+        const maxH = showBelow
+          ? Math.max(spaceBelow - 8, 160)
+          : Math.max(explainTooltip.rectTop - 24, 160);
+        const posStyle: React.CSSProperties = showBelow
+          ? { top: explainTooltip.y + 8 }
+          : { bottom: window.innerHeight - explainTooltip.rectTop + 8 };
+        const leftPos = Math.min(explainTooltip.x, window.innerWidth - 16);
+        return (
+          <div
+            ref={explainPanelRef}
+            onMouseDown={e => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              left: leftPos,
+              ...posStyle,
+              transform: 'translateX(-100%)',
+              zIndex: 1000,
+              width: panelW,
+              maxHeight: maxH,
+              display: 'flex',
+              flexDirection: 'column',
+              borderRadius: 14,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+              background: isLightTheme ? '#fffdf5' : '#1f1516',
+              outline: '1px solid rgba(181,132,136,0.3)',
+              fontFamily: 'Georgia, serif',
+            }}
+          >
+            {/* Panel header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '10px 14px 8px',
+              borderBottom: '1px solid var(--border-color)',
+              flexShrink: 0,
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 15, color: '#B58488' }}>auto_awesome</span>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>
+                «{explainTooltip.text.slice(0, 60)}{explainTooltip.text.length > 60 ? '…' : ''}»
+              </span>
+              <button
+                onClick={() => { setExplainTooltip(null); setExplainResult(null); setExplainError(null); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0 }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+              </button>
+            </div>
 
-          {/* Panel body */}
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 14px 12px' }}>
-            {explainError ? (
-              <p style={{ fontSize: 12, color: '#B58488', margin: 0 }}>{explainError}</p>
-            ) : (
-              <div
-                className="prose prose-sm max-w-none"
-                style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--text-primary)' }}
-                dangerouslySetInnerHTML={{ __html: safeMdParse(explainResult || '') }}
-              />
-            )}
+            {/* Panel body */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 14px 12px' }}>
+              {explainError ? (
+                <p style={{ fontSize: 12, color: '#B58488', margin: 0 }}>{explainError}</p>
+              ) : (
+                <div
+                  className="prose prose-sm max-w-none"
+                  style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--text-primary)' }}
+                  dangerouslySetInnerHTML={{ __html: safeMdParse(explainResult || '') }}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>

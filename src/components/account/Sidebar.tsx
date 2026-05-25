@@ -118,7 +118,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Nav items */}
-        <div className="flex-1 p-4 space-y-3">
+        <div className="flex-1 p-4 space-y-3 overflow-y-auto min-h-0">
           {items.map((item) => {
             if (item.id === 'exit') {
               return (
