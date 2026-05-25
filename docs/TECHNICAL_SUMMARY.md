@@ -1,54 +1,99 @@
-# Технический обзор проекта Student AI Assistant
+# Technical Summary
 
-Данный документ представляет собой высокоуровневое описание технической архитектуры и стека технологий проекта Student AI Assistant. Он предназначен для быстрого погружения в проект и понимания его структуры без излишней детализации.
+This document gives a compact technical overview of the project.
 
-## 🛠 Технологический стек
+## 1. Stack overview
 
-Проект разделен на две основные части: клиентскую (Frontend) и серверную (Backend).
+### Frontend
 
-### Frontend (Клиентская часть)
-Клиентская часть представляет собой Single Page Application (SPA), разработанное с использованием современных веб-технологий.
+- React 18
+- TypeScript
+- TipTap editor
+- Tailwind CSS
+- Framer Motion
+- React Router
 
-*   **Фреймворк:** React 18.2.0
-*   **Язык:** TypeScript для статической типизации и повышения надежности кода.
-*   **Стилизация:** Tailwind CSS (utility-first подход) для быстрой и адаптивной верстки.
-*   **Маршрутизация:** React Router DOM v6 для навигации между страницами (Лендинг, Авторизация, Личный кабинет).
-*   **Текстовый редактор:** TipTap (на базе ProseMirror) — расширяемый WYSIWYG-редактор.
-*   **Экспорт документов:** Различные библиотеки для генерации файлов на стороне клиента (`jspdf`, `docx`, `file-saver`, `html2canvas`).
+### Backend
 
-### Backend (Серверная часть)
-Серверная часть отвечает за обработку запросов, транскрибацию аудио и взаимодействие с ML-моделями (LLM).
+- FastAPI
+- Uvicorn
+- SQLAlchemy async
+- Alembic migrations
+- Pydantic
+- PostgreSQL via asyncpg
 
-*   **Фреймворк:** FastAPI (Python 3.10+) — современный и быстрый фреймворк для создания REST API.
-*   **Сервер:** Uvicorn (ASGI-сервер).
-*   **Транскрибация аудио:** OpenAI Whisper (локальный запуск) с использованием PyTorch и FFmpeg для обработки медиафайлов.
-*   **ML-интеграция:** Взаимодействие с LLM (DeepSeek v3.2 через API) для обработки и анализа текста.
+### Processing
 
-## 🏗 Архитектура и структура проекта
+- Whisper for local transcription
+- DeepSeek v3.2 via VseLLM-compatible API
+- Redis for token invalidation and WebSocket sync
+- PDF service with Express, Playwright, and Chromium
 
-Проект организован по модульному принципу. Ниже представлена базовая структура репозитория:
+## 2. Runtime components
 
-```text
-student-ai-assistant/
-├── api/             # Backend (FastAPI) - эндпоинты API (app.py, transcribe.py, ml_endpoints.py)
-├── ml/              # Логика взаимодействия с ML-моделями и промпты (DeepSeek)
-├── src/             # Frontend (React + TypeScript)
-│   ├── components/  # Переиспользуемые React-компоненты и страницы
-│   ├── hooks/       # Пользовательские хуки (useExport, useFileUpload, useMLProcessor)
-│   └── types/       # Описания TypeScript-интерфейсов
-├── public/          # Статические файлы (HTML-шаблон)
-└── whisper_models/  # Локальные модели для транскрибации
-```
+- `api/` - main backend application
+- `src/` - frontend SPA
+- `worker/` - transcription worker with tray UI
+- `pdf-service/` - standalone Markdown to PDF renderer
+- `nginx/` - reverse proxy for the Docker deployment
 
-### Взаимодействие компонентов
+## 3. Data flow
 
-1.  **Frontend** отправляет HTTP-запросы на **Backend** (`/api/...`).
-2.  Для ресурсоемких задач (например, **транскрибация аудио**), Backend использует локальную модель Whisper. Эта часть работает автономно и не зависит от внешних API (кроме возможного использования специализированных сервисов, если настроено).
-3.  Для **интеллектуальной обработки текста** (создание конспектов, генерация вопросов и т.д.), Backend формирует промпты и отправляет запросы к внешней LLM (DeepSeek API).
-4.  Сгенерированные результаты возвращаются на Frontend, где отображаются в текстовом редакторе. Затем пользователь может их отредактировать и экспортировать в нужный формат (PDF, DOCX, MD, TXT).
+### Transcription
 
-## 📊 Основные потоки данных
+1. User uploads a media file.
+2. Backend stores the task and file metadata in PostgreSQL.
+3. Worker polls `GET /api/worker/next`.
+4. Worker downloads the audio and runs Whisper.
+5. Worker posts the transcription result back to the backend.
 
-*   **Аудио в текст:** Пользователь загружает аудио -> Frontend (`useFileUpload`) отправляет файл на `/api/transcribe/audio` -> Backend обрабатывает файл (Whisper) -> Возвращается текст -> Текст вставляется в редактор.
-*   **Обработка текста (ML):** Текст из редактора -> Frontend (`useMLProcessor`) отправляет текст и выбранный режим на `/api/ml/...` -> Backend отправляет запрос к LLM (DeepSeek) -> Возвращается результат в формате Markdown -> Frontend рендерит Markdown в HTML и показывает пользователю.
-*   **Экспорт:** Весь процесс генерации финального документа (PDF, Word) происходит полностью на клиентской стороне (в браузере) с использованием HTML-содержимого редактора.
+### AI processing
+
+1. User selects a processing mode.
+2. Frontend sends text to the backend ML endpoint.
+3. Backend sends a prompt to DeepSeek.
+4. Backend returns structured Markdown to the frontend.
+
+### Export
+
+1. Frontend builds or sends the final document content.
+2. Backend or PDF service renders the result.
+3. The user downloads the file.
+
+## 4. Worker model
+
+The transcription worker is a separate desktop process.
+
+- it maintains its own `worker/.venv`
+- it uses tray controls to enable or disable polling
+- it sends heartbeat updates while a task is running
+- the backend recovery loop returns stale tasks to `pending`
+
+## 5. Deployment modes
+
+### Local development
+
+- `setup.bat` / `setup.sh` prepares dependencies
+- `run.bat` / `run.sh` starts backend and frontend
+- worker and PDF service are started separately
+
+### Docker
+
+- `docker compose up --build -d` starts the full web stack
+- worker is not part of the compose file and must be run separately
+
+## 6. Important config files
+
+- `.env` - root application settings
+- `worker/config.json` - worker server URL, API key, model, and device
+- `package.json` - frontend dependencies
+- `requirements.txt` - backend dependencies
+- `pdf-service/package.json` - PDF service dependencies
+
+## 7. Related docs
+
+- [Project Documentation](PROJECT_DOCUMENTATION.md)
+- [Features](FEATURES.md)
+- [Worker Guide](WORKER_GUIDE.md)
+- [CUDA Setup](CUDA_SETUP.md)
+

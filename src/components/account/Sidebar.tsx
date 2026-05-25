@@ -28,7 +28,6 @@ const sidebarItems: SidebarItem[] = [
   { id: 'catalog', label: 'База лекций', icon: 'menu_book' },
   { id: 'text-processing', label: 'Обработка текста', icon: 'edit_note' },
   { id: 'board', label: 'Полотно', icon: 'dashboard' },
-  { id: 'exit', label: 'Выход', icon: 'close' },
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({

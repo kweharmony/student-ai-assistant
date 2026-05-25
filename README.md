@@ -1,362 +1,386 @@
 # MindeSync
 
-Веб-платформа для автоматической обработки студенческих лекций с помощью искусственного интеллекта.
+Платформа для автоматической обработки студенческих лекций: загрузка аудио, локальная транскрибация через Whisper, AI-обработка текста через DeepSeek и экспорт в удобные форматы.
 
-## Возможности
+## Что умеет проект
 
-- **Транскрибация аудио** — конвертация аудиозаписей лекций в текст (Whisper AI, локально, без интернета)
-- **AI-фильтрация** — очистка транскрибированного текста от ошибок распознавания
-- **Создание конспектов** — автоматическое структурирование материала (6 режимов AI)
-- **Извлечение терминов** — список ключевых понятий с определениями
-- **Генерация вопросов** — вопросы для самопроверки
-- **Шпаргалки** — компактные памятки для быстрого повторения
-- **Экспорт** — сохранение в PDF, DOCX, TXT, Markdown
-- **Темизация** — тёмная/светлая тема
+- транскрибация аудио в текст локально, без отправки аудио во внешние сервисы
+- AI-фильтрация транскрипта от ошибок распознавания и мусора
+- генерация конспектов, терминов, вопросов, шпаргалок и расширенных объяснений
+- экспорт в PDF, DOCX, TXT и Markdown
+- работа с курсами, семестрами, досками и каталогом дисциплин
+- личные кабинеты студентов, преподавателей и администраторов
+- отдельный воркер транскрибации с системным треем и heartbeat
 
 ## Технологический стек
 
-**Frontend:** React 18 + TypeScript, TipTap (WYSIWYG-редактор), Tailwind CSS, Framer Motion
+- Frontend: React 18, TypeScript, TipTap, Tailwind CSS, Framer Motion
+- Backend: FastAPI, Uvicorn, SQLAlchemy, Alembic, Pydantic
+- ML: Whisper, DeepSeek v3.2 через VseLLM, локальные фильтры текста
+- Infra: PostgreSQL, Redis, Nginx, PDF service на Node.js + Playwright
 
-**Backend:** FastAPI + Uvicorn, Python 3.12, Pydantic
+## Структура проекта
 
-**AI/ML:** DeepSeek v3.2 API через VseLLM, OpenAI Whisper (локальная транскрибация), FFmpeg
+```text
+student-ai-assistant/
+├── api/                FastAPI backend, роутеры, модели, схемы
+├── src/                React frontend
+├── ml/                 Промпты и обработка текста
+├── worker/             Отдельный воркер транскрибации
+├── pdf-service/        Сервис рендера PDF
+├── scripts/            Утилиты установки и администрирования
+├── docs/               Подробная документация по подсистемам
+├── setup.bat/.sh       Автоматическая установка
+├── run.bat/.sh         Запуск backend + frontend
+├── requirements.txt    Python-зависимости backend
+├── package.json        npm-зависимости frontend
+└── docker-compose.yml  Полный стек через Docker
+```
 
-## Системные требования
+## Требования
 
-- **Python 3.12** ([скачать](https://www.python.org/downloads/))
-- **DeepSeek API ключ** через VseLLM ([получить](https://vsellm.ru))
-- **8+ ГБ RAM** (для модели Whisper `small`/`medium`)
-- **NVIDIA GPU с CUDA** (опционально, ускоряет транскрибацию в 10-15 раз)
+- Python 3.12
+- Node.js 20+
+- npm
+- PostgreSQL 16+ для работы backend
+- Redis 7+ для инвалидации токенов и синхронизации WebSocket
+- FFmpeg
+- DeepSeek API ключ через VseLLM
+- NVIDIA GPU с CUDA — опционально, для ускорения воркера
 
-Node.js, FFmpeg и модели Whisper скачиваются автоматически скриптом установки.
+На Windows, macOS и Linux проект можно запускать локально. Для полного стека также доступен Docker Compose.
 
-### Поддерживаемые ОС
+## Быстрый старт
 
-- Windows 10/11
-- macOS 11+
-- Linux (Ubuntu 20.04+, Fedora 35+)
+### Вариант 1. Docker Compose
 
----
+Подходит, если хотите поднять backend, frontend, PostgreSQL, Redis и PDF service одной командой.
 
-## Быстрый старт (автоматическая установка)
-
-### 1. Клонирование репозитория
+1. Скопируйте `.env.example` в `.env` и заполните значения.
+2. Запустите:
 
 ```bash
-git clone https://github.com/kweharmony/student-ai-assistant.git
-cd student-ai-assistant
+docker compose up --build -d
 ```
 
-Или скачайте ZIP и распакуйте.
+После старта будут доступны:
 
-### 2. Настройка .env
+- сайт: `http://localhost`
+- API: `http://localhost:8000`
+- документация API: `http://localhost:8000/docs`
 
-Скопируйте пример и впишите свой API ключ:
+Важно: воркер транскрибации в Docker Compose не запускается, его нужно поднимать отдельно на рабочей машине.
 
-```bash
-cp .env.example .env
+### Вариант 2. Локальный запуск без Docker
+
+Этот вариант удобнее, если вы хотите запускать проект напрямую на машине и видеть отдельные процессы backend, frontend и worker.
+
+1. Скопируйте `.env.example` в `.env` и заполните ключи.
+
+2. Установите зависимости через скрипт.
+
+**Что делает `setup`:**
+- создаёт `.venv` для Python
+- устанавливает backend-зависимости из `requirements.txt`
+- скачивает FFmpeg и Node.js в папку проекта
+- ставит npm-зависимости для frontend
+- предлагает выбрать модель Whisper
+
+**Windows**
+
+```powershell
+setup.bat
 ```
 
-Откройте `.env` и заполните:
-
-```env
-DEEPSEEK_API_KEY=vsellm_ваш_ключ_сюда
-DEEPSEEK_BASE_URL=https://api.vsellm.ru/v1
-DEEPSEEK_MODEL=deepseek/deepseek-v3.2
-WHISPER_MODEL=medium
-REACT_APP_API_URL=http://localhost:8000
-```
-
-Получить API ключ: [vsellm.ru](https://vsellm.ru)
-
-### 3. Запуск установки
-
-> **Для скачивания некоторых библиотек (PyTorch, Whisper) может потребоваться VPN.**
-
-**Windows** — двойной клик по `setup.bat`
-
-**Linux / macOS:**
+**Linux / macOS**
 
 ```bash
 chmod +x setup.sh
 ./setup.sh
 ```
 
-Скрипт установки:
-- Создаст виртуальное окружение Python 3.12 (`.venv/`)
-- Установит все Python-зависимости в `.venv/`
-- Предложит установить PyTorch с CUDA (для NVIDIA GPU)
-- Скачает FFmpeg в `tools/ffmpeg/`
-- Скачает Node.js в `tools/node/`
-- Установит npm-зависимости в `node_modules/`
-- Предложит выбрать модель Whisper:
+3. Запустите проект.
 
-| # | Модель | Размер   | 30 мин аудио | Качество                  |
-|---|--------|----------|--------------|---------------------------|
-| 1 | tiny   | ~75 МБ   | ~10 мин      | Низкое                    |
-| 2 | base   | ~150 МБ  | ~7 мин       | Нормальное                |
-| 3 | small  | ~500 МБ  | ~5 мин       | Хорошее                   |
-| 4 | medium | ~1.5 ГБ  | ~3 мин       | Отличное (по умолчанию)   |
-| 5 | large  | ~3 ГБ    | ~2 мин       | Лучшее                    |
+**Windows**
 
-Время указано для CPU. С CUDA GPU в 10-15 раз быстрее.
+```powershell
+run.bat
+```
 
-**Всё устанавливается локально** — ничего не ставится в систему, только в папку проекта.
-
-### 4. Запуск проекта
-
-**Windows** — двойной клик по `run.bat`
-
-**Linux / macOS:**
+**Linux / macOS**
 
 ```bash
 chmod +x run.sh
 ./run.sh
 ```
 
-Запустятся два сервера:
+После этого поднимутся два окна/процесса:
 
-| Сервис      | URL                          |
-|-------------|------------------------------|
-| API         | http://localhost:8000        |
-| Frontend    | http://localhost:3000        |
-| Документация API | http://localhost:8000/docs   |
+- backend на `http://localhost:8000`
+- frontend на `http://localhost:3000`
 
----
+4. Откройте сайт и проверьте, что API отвечает по `http://localhost:8000/docs`.
 
-## Ручная установка (если скрипты не подходят)
+### Если нужен ручной старт вместо `run.bat` / `run.sh`
 
-Если `setup.bat` / `setup.sh` не работает или вы хотите контролировать каждый шаг.
+В двух отдельных терминалах запустите backend и frontend вручную:
 
-### 1. Создание виртуального окружения
+**Терминал 1 — backend**
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+uvicorn api.app:app --host 0.0.0.0 --port 8000
+```
+
+**Терминал 2 — frontend**
+
+```powershell
+npm start
+```
+
+Если PowerShell не даёт активировать venv, можно обойтись без `Activate.ps1` и запускать команды через `.venv\Scripts\python`.
+
+### Дополнительно: PDF service и worker
+
+Если вам нужен полный локальный стек, поднимите ещё два компонента отдельно:
+
+**PDF service**
 
 ```bash
-# Windows (PowerShell):
+cd pdf-service
+npm install
+npm start
+```
+
+Он слушает порт `3001` и используется backend для генерации PDF.
+
+**Worker транскрибации**
+
+```powershell
+cd worker
 python -m venv .venv
-.venv\Scripts\Activate.ps1
-
-# Linux / macOS:
-python3.12 -m venv .venv
-source .venv/bin/activate
+.\.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python tray_app.py
 ```
 
-Должно появиться `(.venv)` в начале строки терминала.
-
-### 2. Установка Python-зависимостей
-
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### 3. Установка PyTorch с CUDA (опционально, для NVIDIA GPU)
-
-```bash
-pip uninstall -y torch torchaudio
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
-```
-
-Проверка:
-
-```bash
-python -c "import torch; print('CUDA:', torch.cuda.is_available())"
-# Должно вывести: CUDA: True
-```
-
-### 4. Установка FFmpeg
-
-**Windows:**
+Для NVIDIA GPU можно поставить PyTorch с CUDA отдельно в `worker/.venv`:
 
 ```powershell
-winget install ffmpeg
+.\.venv\Scripts\python -m pip install --index-url https://download.pytorch.org/whl/cu118 torch torchvision torchaudio
 ```
 
-**macOS:**
+Worker запускается отдельно и живёт в своей папке, поэтому не зависит от `run.bat`.
 
-```bash
-brew install ffmpeg
-```
+## Ручная установка
 
-**Linux (Ubuntu/Debian):**
+Если хочется контролировать каждый шаг.
 
-```bash
-sudo apt update && sudo apt install ffmpeg
-```
-
-Проверка: `ffmpeg -version`
-
-### 5. Установка Node.js
-
-Скачайте с [nodejs.org](https://nodejs.org/) (версия 18+) или:
-
-**Windows:**
+### 1. Создать виртуальное окружение
 
 ```powershell
-winget install OpenJS.NodeJS.LTS
+python -m venv .venv
 ```
 
-**macOS:**
+### 2. Установить Python-зависимости backend
 
-```bash
-brew install node
+```powershell
+.\.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
+.\.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-**Linux:**
+### 3. Установить зависимости frontend
 
-```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
+```powershell
+npm install
 ```
 
-Проверка: `node --version` (должно быть 18+)
+### 4. Скачать модель Whisper
 
-### 6. Установка npm-зависимостей
-
-```bash
-npm install --legacy-peer-deps
+```powershell
+.\.venv\Scripts\python scripts\download_model.py medium
 ```
 
-### 7. Скачивание модели Whisper
+## Настройка окружения
 
-```bash
-# Активируйте venv если не активировано
-python scripts/download_model.py medium
-```
-
-Модели: `tiny`, `base`, `small`, `medium` (рекомендуется), `large`
-
-### 8. Настройка .env
+Скопируйте пример и заполните секреты:
 
 ```bash
 cp .env.example .env
 ```
 
-Заполните `DEEPSEEK_API_KEY` вашим ключом от [vsellm.ru](https://vsellm.ru).
+Основные переменные:
 
-### 9. Ручной запуск
+- `DEEPSEEK_API_KEY` — ключ VseLLM/DeepSeek
+- `DEEPSEEK_BASE_URL` — базовый URL провайдера
+- `DEEPSEEK_MODEL` — модель DeepSeek
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+- `DATABASE_URL` — строка подключения к PostgreSQL
+- `SECRET_KEY` — секрет для JWT
+- `REDIS_URL` — Redis для токенов и WebSocket sync
+- `CORS_ORIGINS` — разрешённые origin для frontend
+- `REACT_APP_API_URL` — URL backend, который встраивается в frontend на этапе сборки
 
-Откройте **два терминала** в папке проекта.
+## Запуск backend и frontend вручную
 
-**Терминал 1 — Backend:**
+Откройте два терминала в корне проекта.
 
-```bash
-# Windows:
-.venv\Scripts\Activate.ps1
-uvicorn api.app:app --host 0.0.0.0 --port 8000
+**Терминал 1 — backend**
 
-# Linux / macOS:
-source .venv/bin/activate
+```powershell
+.\.venv\Scripts\Activate.ps1
 uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
-**Терминал 2 — Frontend:**
+**Терминал 2 — frontend**
 
-```bash
+```powershell
 npm start
 ```
 
----
+Если скрипты активации PowerShell заблокированы политикой, можно запускать через `.venv\Scripts\python` напрямую.
 
-## Использование
+## PDF service
 
-### Транскрибация аудио в текст
+Отдельный сервис для рендера PDF находится в `pdf-service/` и использует Node.js 20+ и Playwright.
 
-1. Откройте http://localhost:3000
-2. Перейдите в **"Транскрибатор аудио в текст"**
-3. Загрузите аудиофайл (MP3, WAV, M4A, FLAC, OGG, MP4, MKV...)
-4. Дождитесь завершения транскрибации
-5. По желанию примените AI-фильтр для очистки текста
-
-### AI-обработка текста
-
-Выберите режим обработки:
-
-| Режим                 | Описание                             | Время   |
-|-----------------------|--------------------------------------|---------|
-| Краткий конспект      | Структурированное резюме (~30%)      | ~30-40с |
-| Извлечение терминов   | Ключевые термины с определениями     | ~30-40с |
-| Расширенный конспект  | Подробный разбор всех терминов       | ~60-90с |
-| Генерация вопросов    | Вопросы для самопроверки             | ~20-30с |
-| Шпаргалка             | Компактная памятка                   | ~20-30с |
-| Расширение темы       | Подробное объяснение конкретной темы | ~40-50с |
-
-### Экспорт
-
-Сохранение в PDF, DOCX, TXT или Markdown.
-
----
-
-## Настройка CUDA / GPU
-
-Если у вас **NVIDIA GPU** и транскрибация медленная:
+Локальный запуск:
 
 ```bash
-# Активируйте venv
-# Windows:
-.venv\Scripts\Activate.ps1
-# Linux/macOS:
-source .venv/bin/activate
-
-# Переустановите PyTorch с CUDA
-pip uninstall -y torch torchaudio
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-# Проверка
-python -c "import torch; print('CUDA:', torch.cuda.is_available())"
+cd pdf-service
+npm install
+npm start
 ```
 
-Скрипт установки предлагает это автоматически. Если пропустили — выполните команды выше.
+Сервис поднимается на порту `3001` и используется backend для генерации PDF.
 
----
+## Воркер транскрибации
 
-## Решение проблем
+Воркер запускается отдельно от backend/frontend и использует собственное виртуальное окружение в `worker/.venv`.
 
-### Backend не запускается
-
-| Ошибка | Решение |
-|---|---|
-| `ModuleNotFoundError` | Запустите `setup.bat` / `setup.sh` заново |
-| `DEEPSEEK_API_KEY не найден` | Проверьте файл `.env`, без пробелов вокруг `=` |
-| `FFmpeg not found` | Запустите setup заново или установите вручную |
-| `Port 8000 already in use` | Завершите процесс на порту 8000 |
-
-### Frontend не запускается
-
-| Ошибка | Решение |
-|---|---|
-| `npm ERR! code ENOENT` | Удалите `node_modules`, запустите setup заново |
-| `Port 3000 already in use` | Завершите процесс на порту 3000 |
-
-### Проблемы с транскрибацией
-
-| Проблема | Решение |
-|---|---|
-| Очень медленно (есть NVIDIA GPU) | Установите CUDA PyTorch (см. выше) |
-| Плохое качество распознавания | Используйте модель побольше или AI-фильтр |
-| `moov atom not found` | Перезагрузите файл или конвертируйте в MP3 |
-
-### Ошибки PowerShell
+Краткая инструкция:
 
 ```powershell
-Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+cd worker
+python -m venv .venv
+.\.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python tray_app.py
 ```
 
----
+Если у вас NVIDIA GPU, можно установить PyTorch с CUDA-индексом `cu118`:
 
-## Структура проекта
+```powershell
+.\.venv\Scripts\python -m pip install --index-url https://download.pytorch.org/whl/cu118 torch torchvision torchaudio
+```
 
+Полная инструкция: [worker/WORKER_RUN.md](worker/WORKER_RUN.md).
+
+## Worker config
+
+Файл `worker/config.json` задаёт параметры воркера:
+
+```json
+{
+	"SERVER_URL": "https://mindesync.ru",
+	"API_KEY": "ваш_ключ",
+	"WORKER_NAME": "имя_компьютера",
+	"WHISPER_MODEL": "medium",
+	"DEVICE": "auto"
+}
 ```
-student-ai-assistant/
-├── api/                 # FastAPI backend
-├── src/                 # React frontend
-├── ml/                  # ML модуль (Whisper, обработка)
-├── scripts/             # Вспомогательные скрипты
-├── setup.bat / setup.sh # Установка (ставит всё автоматически)
-├── run.bat / run.sh     # Запуск (поднимает оба сервера)
-├── .venv/               # Виртуальное окружение Python (создаётся setup)
-├── tools/               # FFmpeg, Node.js (скачивается setup)
-├── whisper_models/      # Модели Whisper (скачивается setup)
-├── requirements.txt     # Python-зависимости
-├── package.json         # npm-зависимости
-└── .env                 # Конфигурация (создать из .env.example)
+
+Что важно:
+
+- `SERVER_URL` должен указывать на доступный API
+- `API_KEY` должен совпадать с `WORKER_API_KEYS` на сервере
+- `DEVICE` обычно оставляют `auto`
+- на Windows при проблемах с Tkinter нужно задать `TCL_LIBRARY` и `TK_LIBRARY`
+
+## Администрирование
+
+Для создания первого администратора и тестовых данных есть скрипты:
+
+```powershell
+.\.venv\Scripts\python -m scripts.create_admin
+.\.venv\Scripts\python -m scripts.seed_admin
 ```
+
+Скрипт `create_admin` спрашивает логин, email и пароль. `seed_admin` создаёт стандартного локального администратора для первого запуска.
+
+## Как пользоваться
+
+1. Откройте сайт.
+2. Загрузите аудиофайл в разделе транскрибации.
+3. Дождитесь обработки Whisper и при необходимости примените AI-фильтр.
+4. Сгенерируйте конспект, термины, вопросы или шпаргалку.
+5. Сохраните результат в PDF, DOCX, TXT или Markdown.
+
+## Архитектура сервисов
+
+- `api/` — основное FastAPI-приложение и все роутеры
+- `src/` — frontend на React
+- `ml/` — локальная обработка текста и промпты
+- `worker/` — отдельный воркер, который забирает задачи и шлёт heartbeat
+- `pdf-service/` — серверная генерация PDF через Playwright
+- `nginx/` — конфигурация reverse proxy для Docker
+
+## Troubleshooting
+
+### Backend не стартует
+
+- проверьте `.env`
+- убедитесь, что PostgreSQL доступен
+- проверьте `DATABASE_URL`
+- посмотрите вывод `uvicorn`
+
+### Frontend не стартует
+
+- удалите `node_modules` и переустановите зависимости
+- проверьте `REACT_APP_API_URL`
+- освободите порт `3000`
+
+### Воркер не отображается как активный
+
+- проверьте `worker/config.json`
+- убедитесь, что сервер принимает ключ через `/api/worker/register`
+- если задач нет, `active_workers` будет пустым
+- проверьте логи воркера и доступность `SERVER_URL`
+
+### Медленная транскрибация
+
+- используйте модель `small` или `medium`
+- поставьте PyTorch с CUDA, если есть NVIDIA GPU
+- проверьте, что `torch.cuda.is_available()` возвращает `True`
+
+### Ошибки PowerShell при активации venv
+
+Если PowerShell блокирует `Activate.ps1`, запускайте через прямой путь к Python:
+
+```powershell
+.\.venv\Scripts\python tray_app.py
+```
+
+## Документация
+
+- [docs/FEATURES.md](docs/FEATURES.md)
+- [docs/PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md)
+- [docs/TECHNICAL_SUMMARY.md](docs/TECHNICAL_SUMMARY.md)
+- [docs/WORKER_GUIDE.md](docs/WORKER_GUIDE.md)
+- [worker/WORKER_RUN.md](worker/WORKER_RUN.md)
+
+## Кратко по запуску
+
+Если нужен самый короткий путь:
+
+```bash
+# 1. заполнить .env
+# 2. запустить полный стек
+docker compose up --build -d
+
+# или локально на Windows
+setup.bat
+run.bat
+```
+
+Воркер при этом запускается отдельно через `worker/tray_app.py`.

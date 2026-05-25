@@ -1305,18 +1305,18 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: 5,
-            padding: '5px 12px',
+            padding: '6px 14px',
             borderRadius: 999,
             fontSize: 12,
             fontFamily: 'Georgia, serif',
             cursor: 'pointer',
             border: 'none',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-            background: isLightTheme ? '#fffdf5' : '#1f1516',
-            color: isLightTheme ? '#44292b' : '#f0e6d8',
-            outline: '1px solid rgba(181,132,136,0.35)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.32)',
+            background: '#44292b',
+            color: '#fff7ec',
             userSelect: 'none',
             whiteSpace: 'nowrap',
+            fontWeight: 500,
           }}
         >
           <span className="material-symbols-outlined" style={{ fontSize: 14 }}>auto_awesome</span>
@@ -1364,11 +1364,11 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
           style={{
             position: 'fixed',
             left: Math.min(explainTooltip.x, window.innerWidth - 348),
-            top: Math.min(explainTooltip.y + 8, window.innerHeight - 300),
+            top: Math.min(explainTooltip.y + 8, window.innerHeight - 420),
             transform: 'translateX(-100%)',
             zIndex: 1000,
-            width: 320,
-            maxHeight: 340,
+            width: 340,
+            maxHeight: '55vh',
             display: 'flex',
             flexDirection: 'column',
             borderRadius: 14,
@@ -1376,7 +1376,6 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
             background: isLightTheme ? '#fffdf5' : '#1f1516',
             outline: '1px solid rgba(181,132,136,0.3)',
             fontFamily: 'Georgia, serif',
-            overflow: 'hidden',
           }}
         >
           {/* Panel header */}
@@ -1399,7 +1398,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
           </div>
 
           {/* Panel body */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px 12px' }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 14px 12px' }}>
             {explainError ? (
               <p style={{ fontSize: 12, color: '#B58488', margin: 0 }}>{explainError}</p>
             ) : (

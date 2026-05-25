@@ -1,184 +1,67 @@
-# Руководство по запуску воркера транскрибации
+# Worker Guide
 
-Воркер — это программа, которая запускается на **вашем компьютере** и выполняет транскрибацию аудио с помощью Whisper. Сервер сам по себе не транскрибирует — он только хранит очередь задач и ждёт, пока кто-то из воркеров их заберёт.
+The transcription worker runs on a workstation and processes queued audio tasks with Whisper.
 
----
+## What the worker does
 
-## Требования к компьютеру
+- polls the backend for pending tasks
+- downloads the audio file assigned to the task
+- runs Whisper locally on CPU or GPU
+- sends the transcription result back to the backend
+- sends heartbeat updates while a transcription is running
 
-| Параметр | Минимум | Рекомендация |
-|---|---|---|
-| ОС | Windows 10 / macOS / Linux | — |
-| Python | 3.10+ | 3.12 |
-| RAM | 8 ГБ | 16 ГБ |
-| GPU | Не обязателен (будет работать на CPU, но медленно) | NVIDIA с 6+ ГБ VRAM |
-| Интернет | Стабильный (скачивание/загрузка аудио) | — |
+## Server-side requirements
 
----
+The backend must expose a valid worker key through `WORKER_API_KEYS` in `.env`.
 
-## Шаг 1 — Получить API-ключ
+Example format:
 
-Попросите администратора добавить вас в список воркеров.
-
-Администратор открывает файл `.env` на сервере и добавляет строку:
-
-```
-WORKER_API_KEYS=Sol PC:придумайте_ключ,Другой ПК:другой_ключ
+```env
+WORKER_API_KEYS=Del PC:worker_key_1,Lab PC:worker_key_2
 ```
 
-Формат: `Имя воркера:секретный_ключ` через запятую. Имя будет отображаться в админ-панели.
+## Worker configuration
 
----
-
-## Шаг 2 — Установить зависимости
-
-Откройте терминал в папке `worker/` проекта.
-
-### Без GPU (только CPU):
-```bash
-pip install -r requirements.txt
-```
-
-### С NVIDIA GPU (CUDA 12.1):
-```bash
-pip install torch --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements.txt
-```
-
-### С NVIDIA GPU (CUDA 11.8):
-```bash
-pip install torch --index-url https://download.pytorch.org/whl/cu118
-pip install -r requirements.txt
-```
-
-**Проверить, что CUDA работает:**
-```bash
-python -c "import torch; print('CUDA:', torch.cuda.is_available())"
-```
-Если выведет `CUDA: True` — GPU будет использоваться автоматически.
-
----
-
-## Шаг 3 — Настроить воркер
-
-В папке `worker/` создайте файл `config.json`:
+The worker reads `worker/config.json`:
 
 ```json
 {
-  "SERVER_URL": "https://адрес-сервера",
-  "API_KEY": "ваш_секретный_ключ",
-  "WORKER_NAME": "Имя вашего ПК",
+  "SERVER_URL": "https://mindesync.ru",
+  "API_KEY": "your_worker_key",
+  "WORKER_NAME": "Your PC name",
   "WHISPER_MODEL": "medium",
-  "DEVICE": "auto"
+  "DEVICE": "auto",
+  "POLL_INTERVAL": 30
 }
 ```
 
-**Параметры:**
+## Recommended launch path
 
-| Параметр | Описание | Возможные значения |
-|---|---|---|
-| `SERVER_URL` | Адрес сервера | `http://localhost:8000` или `https://ваш-сайт.ru` |
-| `API_KEY` | Ключ из шага 1 | Строка |
-| `WORKER_NAME` | Имя в админ-панели | Любое, например `Sol PC` |
-| `WHISPER_MODEL` | Модель Whisper | `tiny`, `base`, `small`, `medium`, `large-v3` |
-| `DEVICE` | Устройство | `auto` (рекомендуется), `cpu`, `cuda` |
+Use the detailed Windows guide in [../worker/WORKER_RUN.md](../worker/WORKER_RUN.md).
 
-**Выбор модели Whisper:**
+Short version:
 
-| Модель | Качество | Скорость (GPU) | Скорость (CPU) | VRAM |
-|---|---|---|---|---|
-| `tiny` | Низкое | ~30x | ~3x | ~1 ГБ |
-| `base` | Среднее | ~20x | ~2x | ~1 ГБ |
-| `small` | Хорошее | ~10x | ~1x | ~2 ГБ |
-| `medium` | Очень хорошее | ~5x | ~0.3x | ~5 ГБ |
-| `large-v3` | Лучшее | ~2x | ~0.1x | ~10 ГБ |
-
-> "10x" означает: 10 минут аудио транскрибируется за 1 минуту.
-
----
-
-## Шаг 4 — Запустить воркер
-
-```bash
-python tray_app.py
+```powershell
+cd worker
+python -m venv .venv
+.\.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python tray_app.py
 ```
 
-В системном трее (рядом с часами) появится **зелёный кружок** — воркер работает и принимает задачи.
+## Tray icon states
 
----
+- green - worker is enabled and can take new tasks
+- gray - worker is paused and will not request new tasks
 
-## Управление через трей
+## Admin visibility
 
-Нажмите правой кнопкой мыши на иконку воркера:
+The admin dashboard shows active workers only when there are processing tasks with a worker name assigned. If the queue is empty, `active_workers` may also be empty even though the worker is running.
 
-| Пункт меню | Что делает |
-|---|---|
-| **Отключить воркер** | Перестаёт брать новые задачи. Текущая задача доделывается. Иконка становится серой. |
-| **Включить воркер** | Снова начинает брать задачи из очереди. Иконка становится зелёной. |
-| **Статус** | Показывает окно с информацией: имя, статус, модель, количество задач сегодня. |
-| **Настройки** | Открывает окно для изменения SERVER_URL, API_KEY, имени и модели. Изменения сохраняются в `config.json`. |
-| **Выход** | Полностью закрывает воркер. |
+## Troubleshooting
 
----
+- `Invalid worker API key` - check that `API_KEY` matches the server-side key exactly
+- worker is running but no tasks are taken - check that there are `pending` tasks in the queue and that the tray icon is green
+- Windows Tkinter error - set `TCL_LIBRARY` and `TK_LIBRARY` before launching the tray app
+- slow transcription - install CUDA-enabled PyTorch if you have an NVIDIA GPU
 
-## Как воркер работает
-
-```
-Каждые 30 секунд воркер спрашивает сервер: "Есть задачи?"
-        │
-        ▼
-  Если есть задача:
-    1. Скачивает аудиофайл с сервера
-    2. Транскрибирует через Whisper (на GPU или CPU)
-    3. Отправляет текст обратно на сервер
-    4. Задача помечается как "Завершено"
-    5. Пользователь видит результат на сайте
-        │
-        ▼
-  Если очередь пуста — ждёт 30 секунд и спрашивает снова
-```
-
-Во время транскрибации воркер каждые 20 секунд отправляет heartbeat (сигнал "я жив"). Если воркер упадёт или завис — сервер через 30 минут вернёт задачу в очередь автоматически.
-
----
-
-## Добавление нескольких воркеров
-
-Несколько компьютеров могут работать одновременно — каждый берёт свою задачу, они не пересекаются.
-
-В `.env` на сервере добавьте по одному ключу для каждого компьютера:
-
-```
-WORKER_API_KEYS=Sol PC:ключ1,Ivan Laptop:ключ2,Lab PC:ключ3
-```
-
-Каждый разработчик создаёт свой `config.json` со своим ключом и именем.
-
----
-
-## Наблюдение за воркерами (для администратора)
-
-Откройте сайт → Личный кабинет → Панель администратора → вкладка **"Воркеры"**.
-
-Там видно:
-- Какие воркеры сейчас активны
-- Сколько задач в очереди / обрабатывается / завершено
-
----
-
-## Частые проблемы
-
-**Ошибка "Invalid worker API key"**
-→ Проверьте `API_KEY` в `config.json` — он должен точно совпадать с тем, что в `.env` на сервере.
-
-**Воркер запустился, но не берёт задачи**
-→ Убедитесь что иконка **зелёная** (не серая). Если серая — нажмите "Включить воркер" в меню.
-
-**Whisper скачивает модель при первом запуске**
-→ Это нормально. Модель `medium` весит ~1.5 ГБ и скачивается один раз.
-
-**Очень медленная транскрибация**
-→ Вы используете CPU. Установите PyTorch с поддержкой CUDA (шаг 2) и убедитесь что `DEVICE: auto` в настройках.
-
-**Ошибка при скачивании аудио (timeout)**
-→ Файл слишком большой или медленное соединение. Увеличьте таймаут в `worker.py` (параметр `timeout=120`).
