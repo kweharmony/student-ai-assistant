@@ -14,6 +14,7 @@ import BoardSection from './BoardSection';
 import CatalogSection from './CatalogSection';
 import CatalogModerationSection from './CatalogModerationSection';
 import { useAuth } from '../../contexts/AuthContext';
+import { fixBrokenFormulas } from '../../utils/markdownUtils';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const ACCOUNT_ACTIVE_SECTION_KEY = 'mindesync_account_active_section';
@@ -329,7 +330,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
 
     // Extract math BEFORE marked processes it to prevent <br> injection inside LaTeX
     const mathStore: Array<{ type: 'block' | 'inline'; latex: string }> = [];
-    let text = value;
+    let text = fixBrokenFormulas(value);
 
     // De-indent $$ lines so marked doesn't treat them as code blocks.
     text = text.replace(/^[ \t]+(\$\$)/gm, '$1');
