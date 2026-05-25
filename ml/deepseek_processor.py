@@ -50,15 +50,6 @@ def _normalize_math_delimiters(text: str) -> str:
         return m.group(0)
     text = re.sub(r'(?m)^\[([^\[\]\n]+)\]$', _replace_bare_brackets_inline, text)
 
-    # (формула) → $формула$ когда внутри есть LaTeX-команды
-    # Паттерн допускает один уровень вложенных скобок: (M(X) = \frac{a}{b})
-    def _replace_bare_parens(m: re.Match) -> str:
-        inner = m.group(1)
-        if _has_latex.search(inner):
-            return f'${inner}$'
-        return m.group(0)
-    text = re.sub(r'\(([^()\n$]*(?:\([^()\n$]*\)[^()\n$]*)*)\)', _replace_bare_parens, text)
-
     # Backtick-обёрнутый LaTeX → $...$  (LLM иногда пишет `\frac{a}{b}` вместо $\frac{a}{b}$)
     def _backtick_to_math(m: re.Match) -> str:
         inner = m.group(1)
@@ -66,6 +57,43 @@ def _normalize_math_delimiters(text: str) -> str:
             return f'${inner}$'
         return m.group(0)
     text = re.sub(r'`([^`\n]+)`', _backtick_to_math, text)
+
+    # Оборачиваем голые LaTeX-строки в $$...$$
+    # Если строка содержит 3+ LaTeX-команд, не имеет $ делимитеров и минимум кириллицы —
+    # это скорее всего формула без обёртки. Склеиваем смежные такие строки в один блок.
+    # NOTE: _replace_bare_parens убран — он конвертировал (x-a_x) внутри формул
+    # в $x-a_x$, что разбивало LaTeX на куски и мешало рендерингу.
+    _cyrillic = re.compile(r'[а-яёА-ЯЁ]{3,}')
+    _latex_cmd = re.compile(r'\\[a-zA-Z]+')
+    _skip_starts = ('#', '|', '>', '-', '*', '+')
+
+    def _is_bare_latex_line(s: str) -> bool:
+        if not s or s.startswith(_skip_starts) or '$' in s:
+            return False
+        if len(_latex_cmd.findall(s)) < 3:
+            return False
+        if len(_cyrillic.findall(s)) > 1:
+            return False
+        return True
+
+    lines = text.split('\n')
+    out = []
+    i = 0
+    while i < len(lines):
+        trimmed = lines[i].strip()
+        if _is_bare_latex_line(trimmed):
+            # Собираем все смежные голые LaTeX-строки в один блок
+            block = [trimmed]
+            j = i + 1
+            while j < len(lines) and _is_bare_latex_line(lines[j].strip()):
+                block.append(lines[j].strip())
+                j += 1
+            out.append('$$\n' + '\n'.join(block) + '\n$$')
+            i = j
+        else:
+            out.append(lines[i])
+            i += 1
+    text = '\n'.join(out)
 
     return text
 
