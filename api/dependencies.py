@@ -3,20 +3,21 @@ FastAPI-зависимости: сессия БД, текущий пользов
 """
 
 from datetime import datetime
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .database import async_session
-from .auth import decode_access_token
+from .auth import decode_access_token, is_token_revoked
 from .models import User
 
-security = HTTPBearer()
+# auto_error=False — чтобы самостоятельно обработать отсутствие заголовка
+# и попробовать cookie как fallback
 optional_security = HTTPBearer(auto_error=False)
 
 
@@ -25,13 +26,31 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+def _extract_token(
+    request: Request,
+    creds: Optional[HTTPAuthorizationCredentials],
+) -> Optional[str]:
+    """Bearer header → приоритет. httpOnly cookie → fallback."""
+    if creds is not None:
+        return creds.credentials
+    return request.cookies.get("mindesync_token")
+
+
 async def get_current_user(
-    creds: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    payload = decode_access_token(creds.credentials)
+    token = _extract_token(request, creds)
+    if token is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Требуется авторизация")
+
+    payload = decode_access_token(token)
     if payload is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Невалидный токен")
+
+    if await is_token_revoked(payload):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Токен отозван, войдите снова")
 
     user_id = payload.get("sub")
     if user_id is None:
@@ -71,14 +90,19 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    creds: HTTPAuthorizationCredentials | None = Depends(optional_security),
+    request: Request,
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
     db: AsyncSession = Depends(get_db),
-) -> User | None:
-    if creds is None:
+) -> Optional[User]:
+    token = _extract_token(request, creds)
+    if token is None:
         return None
 
-    payload = decode_access_token(creds.credentials)
+    payload = decode_access_token(token)
     if payload is None:
+        return None
+
+    if await is_token_revoked(payload):
         return None
 
     user_id = payload.get("sub")

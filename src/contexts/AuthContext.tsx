@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 // ==================== Types ====================
 
@@ -59,7 +59,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (data: LoginData) => Promise<void>;
   register: (data: RegisterData) => Promise<string>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateUser: (user: User) => void;
 }
 
@@ -68,27 +68,22 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const TOKEN_KEY = 'mindesync_token';
 
 // ==================== Provider ====================
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Токен хранится только в памяти (не в localStorage) — защита от XSS.
+  // После перезагрузки страницы сессия восстанавливается через httpOnly cookie
+  // вызовом GET /api/auth/refresh.
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
-  const [isLoading, setIsLoading] = useState(!!localStorage.getItem(TOKEN_KEY));
-
-  const saveToken = (t: string) => {
-    localStorage.setItem(TOKEN_KEY, t);
-    setToken(t);
-  };
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true); // всегда true пока не проверили cookie
 
   const clearAuth = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
   }, []);
 
-  // Fetch current user by token on mount / token change
   const fetchMe = useCallback(async (t: string) => {
     try {
       const res = await fetch(`${API_BASE}/api/auth/me`, {
@@ -107,26 +102,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [clearAuth]);
 
+  // При монтировании пробуем восстановить сессию через httpOnly cookie.
+  // Если cookie валиден — получаем свежий токен и помещаем его в state.
   useEffect(() => {
-    if (token) {
-      fetchMe(token);
-    } else {
-      setIsLoading(false);
-    }
-  }, [token, fetchMe]);
+    const restoreSession = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+          credentials: 'include', // отправляет httpOnly cookie автоматически
+        });
+        if (!res.ok) {
+          setIsLoading(false);
+          return;
+        }
+        const { access_token } = await res.json();
+        setToken(access_token);
+        await fetchMe(access_token);
+      } catch {
+        setIsLoading(false);
+      }
+    };
+    restoreSession();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Actions ----
 
-  const login = async (data: LoginData) => {
+  const login = useCallback(async (data: LoginData) => {
     const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // получаем httpOnly cookie
       body: JSON.stringify(data),
     });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Ошибка сервера' }));
-      // detail может быть объектом (при блокировке) или строкой
       if (err.detail && typeof err.detail === 'object' && !Array.isArray(err.detail) && err.detail.message) {
         const e = new Error(err.detail.message) as any;
         e.blockInfo = err.detail;
@@ -136,14 +145,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const { access_token } = await res.json();
-    saveToken(access_token);
+    setToken(access_token);
     await fetchMe(access_token);
-  };
+  }, [fetchMe]);
 
-  const register = async (data: RegisterData): Promise<string> => {
+  const register = useCallback(async (data: RegisterData): Promise<string> => {
     const res = await fetch(`${API_BASE}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // получаем httpOnly cookie
       body: JSON.stringify(data),
     });
 
@@ -153,30 +163,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const { access_token, generated_login } = await res.json();
-    saveToken(access_token);
+    setToken(access_token);
     await fetchMe(access_token);
     return generated_login;
-  };
+  }, [fetchMe]);
 
-  const logout = () => {
+  const logout = useCallback(async () => {
+    // Сначала немедленно очищаем стейт, чтобы navigate('/') не вызывал
+    // setState на размонтированном компоненте
+    const currentToken = token;
     clearAuth();
-  };
+    // Затем в фоне отзываем токен на сервере (некритично при ошибке)
+    fetch(`${API_BASE}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: currentToken ? { Authorization: `Bearer ${currentToken}` } : {},
+    }).catch(() => undefined);
+  }, [clearAuth, token]);
 
-  const updateUser = (u: User) => setUser(u);
+  const updateUser = useCallback((u: User) => setUser(u), []);
+
+  // useMemo предотвращает пересоздание объекта value при каждом рендере провайдера,
+  // что устраняет каскадные ре-рендеры TipTap-редактора и других подписчиков.
+  const value = useMemo(() => ({
+    user,
+    token,
+    isAuthenticated: !!user,
+    isLoading,
+    login,
+    register,
+    logout,
+    updateUser,
+  }), [user, token, isLoading, login, register, logout, updateUser]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isAuthenticated: !!user,
-        isLoading,
-        login,
-        register,
-        logout,
-        updateUser,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

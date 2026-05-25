@@ -31,20 +31,26 @@ async def _timeout_recovery_loop() -> None:
     Каждые 5 минут сбрасывает зависшие задачи (processing > 30 мин) обратно в pending.
     Если исчерпаны попытки — переводит в failed.
     """
-    from sqlalchemy import update
+    from sqlalchemy import func, update
     from .database import async_session
     from .models import TranscriptionTask, TranscriptionTaskStatus
 
     while True:
         await asyncio.sleep(300)  # 5 минут
         cutoff = datetime.utcnow() - timedelta(minutes=30)
+        # Используем last_heartbeat_at — воркер обновляет его каждые 20 сек.
+        # Если heartbeat ещё не пришёл (только что взяли), fallback на started_at.
+        active_cutoff = func.coalesce(
+            TranscriptionTask.last_heartbeat_at,
+            TranscriptionTask.started_at,
+        )
         async with async_session() as db:
             # Задачи с исчерпанными попытками → failed
             await db.execute(
                 update(TranscriptionTask)
                 .where(
                     TranscriptionTask.status == TranscriptionTaskStatus.processing,
-                    TranscriptionTask.started_at < cutoff,
+                    active_cutoff < cutoff,
                     TranscriptionTask.retry_count >= 3,
                 )
                 .values(
@@ -58,7 +64,7 @@ async def _timeout_recovery_loop() -> None:
                 update(TranscriptionTask)
                 .where(
                     TranscriptionTask.status == TranscriptionTaskStatus.processing,
-                    TranscriptionTask.started_at < cutoff,
+                    active_cutoff < cutoff,
                     TranscriptionTask.retry_count < 3,
                 )
                 .values(
