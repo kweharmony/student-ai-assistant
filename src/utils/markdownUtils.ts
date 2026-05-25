@@ -18,9 +18,16 @@ export function fixBrokenFormulas(markdown: string): string {
   // LaTeX group delimiter with the math $ sign. Replace with \left\{ / \right\}.
   result = result.replace(/\\left\$/g, '\\left\\{').replace(/\\right\$/g, '\\right\\}');
 
-  // Type 1: strip $...$ inside $$...$$
+  // Pre-fix: $A$$B$ (two adjacent inline formulas with no space → fake $$) → (A)(B)
+  // Must run after Type 0 so \right$ is already \right\} and won't interfere.
+  result = result.replace(/\$([^$\n]+?)\$\$([^$\n]+?)\$/g, '($1)($2)');
+
+  // Type 1: fix and strip $...$ inside $$...$$
   result = result.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner) => {
-    const fixed = inner.replace(/\$([^$\n]+?)\$/g, '$1');
+    // Fix UppercaseLetter$args$ → UppercaseLetter(args) e.g. F$x,y$ → F(x,y), P$\alpha$ → P(\alpha)
+    let fixed = inner.replace(/([A-Z])\$([^$\n]+?)\$/g, '$1($2)');
+    // Strip any remaining inner $...$
+    fixed = fixed.replace(/\$([^$\n]+?)\$/g, '$1');
     return `$$${fixed}$$`;
   });
 

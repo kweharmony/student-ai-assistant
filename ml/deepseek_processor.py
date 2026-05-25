@@ -32,6 +32,17 @@ def _normalize_math_delimiters(text: str) -> str:
     # \(...\) → $...$
     text = re.sub(r'\\\((.+?)\\\)', lambda m: f'${m.group(1)}$', text)
 
+    # $A$$B$ (two adjacent inline formulas without space → fake $$) → (A)(B)
+    text = re.sub(r'\$([^$\n]+?)\$\$([^$\n]+?)\$', r'(\1)(\2)', text)
+
+    # Within $$...$$ blocks, fix UppercaseLetter$args$ → UppercaseLetter(args)
+    # Only modifies the block if the pattern is actually found (conservative).
+    def _fix_block(m: re.Match) -> str:
+        inner = m.group(1)
+        fixed = re.sub(r'([A-Z])\$([^$\n]+?)\$', r'\1(\2)', inner)
+        return f'$${fixed}$$' if fixed != inner else m.group(0)
+    text = re.sub(r'\$\$([\s\S]+?)\$\$', _fix_block, text)
+
     _has_latex = re.compile(r'\\[a-zA-Z]+|[\^_]')
 
     # Голые [ ] на отдельных строках → $$...$$ (многострочный блок)
