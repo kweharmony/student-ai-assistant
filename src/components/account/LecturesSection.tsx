@@ -1107,12 +1107,29 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
           </svg>
         </div>
       ) : lectures.length === 0 ? (
-        <div className="text-center py-16" style={{ color: mutedColor }}>
-          <span className="material-symbols-outlined text-5xl mb-4 block">library_books</span>
-          <>
-            <p>У вас ещё нет загруженных лекций.</p>
-            <p className="text-sm mt-1">Перейдите в раздел «Транскрибатор», чтобы загрузить первую.</p>
-          </>
+        <div className="py-12 px-4">
+          <div className="text-center mb-8">
+            <span className="material-symbols-outlined text-5xl mb-3 block" style={{ color: mutedColor }}>library_books</span>
+            <p className="text-lg font-medium mb-1" style={{ color: headingColor }}>Лекций пока нет</p>
+            <p className="text-sm" style={{ color: mutedColor }}>Загрузите аудиозапись, чтобы начать работу</p>
+          </div>
+          <div className="max-w-sm mx-auto space-y-3">
+            {[
+              { step: '1', icon: 'upload_file', title: 'Транскрибатор', desc: 'Загрузите аудиофайл лекции — до 100 МБ' },
+              { step: '2', icon: 'hourglass_empty', title: 'Дождитесь результата', desc: 'Текст появится здесь после обработки воркером' },
+              { step: '3', icon: 'auto_stories', title: 'Обработка текста', desc: 'Создайте конспект, шпаргалку или вопросы с помощью ИИ' },
+            ].map(({ step, icon, title, desc }) => (
+              <div key={step} className="flex items-start gap-4 p-4 rounded-xl" style={{ background: cardBg, border: cardBorder }}>
+                <span className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: 'rgba(181,132,136,0.2)', color: '#B58488' }}>{step}</span>
+                <div>
+                  <p className="text-sm font-medium flex items-center gap-1.5" style={{ color: headingColor }}>
+                    <span className="material-symbols-outlined text-base">{icon}</span>{title}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: mutedColor }}>{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="space-y-4">
@@ -1141,6 +1158,8 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                 : effectiveStatus === 'rejected' ? 'Отклонено'
                 : effectiveStatus === 'pending' ? 'На модерации'
                 : null;
+            const expiry = audioExpiryInfo(lecture.audio_expires_at);
+            const audioExpiresUrgently = !inProgress && !expiry.expired && expiry.daysLeft <= 2;
 
             return (
               <div key={lecture.id} className="rounded-xl transition-all duration-200" style={{ background: cardBg, border: cardBorder }}>
@@ -1170,6 +1189,19 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                     </span>
                   </div>
                 </div>
+
+                {/* ── Audio expiry urgent warning ── */}
+                {audioExpiresUrgently && (
+                  <div className="mx-5 mb-3 px-3 py-2.5 rounded-lg flex items-start gap-2 text-xs"
+                    style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.25)', color: '#ef4444' }}>
+                    <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 15, marginTop: 1 }}>warning</span>
+                    <span>
+                      {expiry.daysLeft === 1
+                        ? 'Аудиофайл удалится завтра — после этого повторная транскрибация станет невозможна.'
+                        : `Аудиофайл удалится через ${expiry.daysLeft} дня — успейте выполнить повторную транскрибацию.`}
+                    </span>
+                  </div>
+                )}
 
                 {/* ── Action row ── */}
                 <div className="flex flex-wrap items-center gap-2 px-5 pb-4">
@@ -1210,7 +1242,6 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
 
                   {/* Audio expiry info + re-transcribe / re-upload */}
                   {!inProgress && (() => {
-                    const expiry = audioExpiryInfo(lecture.audio_expires_at);
                     const isReUploading = reUploadingId === lecture.id;
                     if (!expiry.expired) {
                       // Audio still available — show countdown + re-transcribe button

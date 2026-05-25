@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { marked } from 'marked';
 import { useNavigate } from 'react-router-dom';
 import { AccountPageProps, ActiveSection } from './types';
@@ -95,6 +95,10 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [transcribedText, setTranscribedText] = useState('');
   const [isFiltering, setIsFiltering] = useState(false);
+  const [filterError, setFilterError] = useState<string | null>(null);
+  const [transcriptionDoneToast, setTranscriptionDoneToast] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const processingStartedAtRef = useRef<number | null>(null);
 
   // Lecture context for saving text back to DB
   const [currentLectureId, setCurrentLectureId] = useState<string | null>(null);
@@ -145,6 +149,13 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const handleThemeToggle = () => {
     onToggleTheme();
   };
+
+  // Auto-clear filter error after 8 seconds (Q5)
+  useEffect(() => {
+    if (!filterError) return;
+    const t = setTimeout(() => setFilterError(null), 8000);
+    return () => clearTimeout(t);
+  }, [filterError]);
 
   // Сохраняем выбранный раздел, чтобы после перезагрузки оставаться на той же вкладке.
   useEffect(() => {
@@ -202,6 +213,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
       // Polling статуса задачи каждые 5 секунд
       const lectureId = result.lecture_id;
       let pollCount = 0;
+      processingStartedAtRef.current = null;
       const intervalId = setInterval(async () => {
         try {
           pollCount += 1;
@@ -212,11 +224,14 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             headers: statusHeaders,
           });
 
-          if (!statusRes.ok) return;
+          if (!statusRes.ok) {
+            if (statusRes.status === 401) setSessionExpired(true);
+            return;
+          }
           const taskData = await statusRes.json();
 
           if (taskData.status === 'pending') {
-            // После 30 секунд (6 опросов) предупреждаем что воркеры не подключены
+            processingStartedAtRef.current = null;
             if (pollCount >= 6) {
               setTranscriptionProgress(
                 'Файл в очереди. Воркеры транскрибации сейчас не подключены — ' +
@@ -224,15 +239,20 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
               );
             }
           } else if (taskData.status === 'processing') {
-            setTranscriptionProgress('Обрабатывается воркером...');
+            if (!processingStartedAtRef.current) processingStartedAtRef.current = Date.now();
+            const elapsed = Math.floor((Date.now() - processingStartedAtRef.current) / 60000);
+            const elapsedText = elapsed > 0 ? ` ${elapsed} мин.` : '';
+            setTranscriptionProgress(`Обрабатывается воркером...${elapsedText} Обычно занимает 10–30 минут.`);
           } else if (taskData.status === 'completed') {
             clearInterval(intervalId);
+            processingStartedAtRef.current = null;
             setIsTranscribing(false);
             setTranscriptionProgress('');
-            // Переключаемся в раздел "Мои лекции"
-            setActiveSection('lectures');
+            setTranscriptionDoneToast(true);
+            setTimeout(() => setTranscriptionDoneToast(false), 10000);
           } else if (taskData.status === 'failed' || taskData.status === 'error') {
             clearInterval(intervalId);
+            processingStartedAtRef.current = null;
             setTranscriptionError(
               `Транскрибация завершилась с ошибкой: ${taskData.error_message || 'неизвестная ошибка'}`
             );
@@ -317,7 +337,8 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         return;
       }
       console.error('Ошибка фильтрации:', error);
-      alert('Ошибка AI-фильтрации. Текст будет вставлен без обработки.');
+      setFilterError('Не удалось выполнить AI-фильтрацию — текст вставлен без обработки.');
+      setIsFiltering(false);
 
       // В случае ошибки вставляем оригинальный текст
       handleSkipFilter();
@@ -417,6 +438,7 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
     setCurrentLectureId(lectureId);
 
     let pollCount = 0;
+    processingStartedAtRef.current = null;
     const intervalId = setInterval(async () => {
       try {
         pollCount += 1;
@@ -424,10 +446,14 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
         const statusRes = await fetch(`${API_BASE}/api/lectures/${lectureId}/task-status`, { headers });
-        if (!statusRes.ok) return;
+        if (!statusRes.ok) {
+          if (statusRes.status === 401) setSessionExpired(true);
+          return;
+        }
         const taskData = await statusRes.json();
 
         if (taskData.status === 'pending') {
+          processingStartedAtRef.current = null;
           if (pollCount >= 6) {
             setTranscriptionProgress(
               'Файл в очереди. Воркеры транскрибации сейчас не подключены — ' +
@@ -435,14 +461,20 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
             );
           }
         } else if (taskData.status === 'processing') {
-          setTranscriptionProgress('Обрабатывается воркером...');
+          if (!processingStartedAtRef.current) processingStartedAtRef.current = Date.now();
+          const elapsed = Math.floor((Date.now() - processingStartedAtRef.current) / 60000);
+          const elapsedText = elapsed > 0 ? ` ${elapsed} мин.` : '';
+          setTranscriptionProgress(`Обрабатывается воркером...${elapsedText} Обычно занимает 10–30 минут.`);
         } else if (taskData.status === 'completed') {
           clearInterval(intervalId);
+          processingStartedAtRef.current = null;
           setIsTranscribing(false);
           setTranscriptionProgress('');
-          setActiveSection('lectures');
+          setTranscriptionDoneToast(true);
+          setTimeout(() => setTranscriptionDoneToast(false), 10000);
         } else if (taskData.status === 'failed' || taskData.status === 'error') {
           clearInterval(intervalId);
+          processingStartedAtRef.current = null;
           setTranscriptionError(
             `Транскрибация завершилась с ошибкой: ${taskData.error_message || 'неизвестная ошибка'}`
           );
@@ -594,6 +626,89 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
         isFiltering={isFiltering}
         filterBenefits={filterBenefits}
       />
+
+      {/* ── Filter error toast (Q5) ── */}
+      {filterError && (
+        <div
+          className="fixed bottom-6 left-6 z-50 flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl"
+          style={{
+            background: isLightTheme ? 'rgba(255,255,240,.97)' : 'rgba(33,24,25,.97)',
+            border: '1px solid rgba(181,132,136,0.4)',
+            color: isLightTheme ? '#2a1918' : '#fff7ec',
+            maxWidth: '340px',
+          }}
+        >
+          <span className="material-symbols-outlined flex-shrink-0" style={{ color: '#B58488', fontSize: 20 }}>info</span>
+          <p className="text-sm flex-1">{filterError}</p>
+          <button
+            onClick={() => setFilterError(null)}
+            className="flex-shrink-0 p-1 opacity-50 hover:opacity-100 transition-opacity"
+            style={{ color: isLightTheme ? '#44292b' : '#f0e6d8' }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Transcription done toast (Q2) ── */}
+      {transcriptionDoneToast && (
+        <div
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl"
+          style={{
+            background: isLightTheme ? 'rgba(255,255,240,.97)' : 'rgba(33,24,25,.97)',
+            border: isLightTheme ? '1px solid rgba(68,41,43,.2)' : '1px solid rgba(255,255,240,.15)',
+            color: isLightTheme ? '#2a1918' : '#fff7ec',
+            maxWidth: '340px',
+          }}
+        >
+          <span className="material-symbols-outlined flex-shrink-0" style={{ color: '#22c55e', fontSize: 22 }}>check_circle</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold">Транскрибация завершена!</p>
+            <p className="text-xs opacity-70 mt-0.5">Текст лекции готов к обработке.</p>
+          </div>
+          <button
+            onClick={() => { setActiveSection('lectures'); setTranscriptionDoneToast(false); }}
+            className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg transition-all"
+            style={{ background: 'rgba(181,132,136,0.2)', color: isLightTheme ? '#44292b' : '#f0e6d8' }}
+          >
+            Перейти
+          </button>
+          <button
+            onClick={() => setTranscriptionDoneToast(false)}
+            className="flex-shrink-0 p-1 opacity-50 hover:opacity-100 transition-opacity"
+            style={{ color: isLightTheme ? '#44292b' : '#f0e6d8' }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Session expired banner (Q4) ── */}
+      {sessionExpired && (
+        <div
+          className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-3 px-4 py-3 text-sm"
+          style={{
+            background: isLightTheme ? '#44292b' : '#1a0d0e',
+            color: isLightTheme ? '#fff7ec' : '#f0e6d8',
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>lock</span>
+          <span>Сессия истекла. Пожалуйста, войдите снова.</span>
+          <button
+            onClick={() => navigate('/auth')}
+            className="ml-2 px-3 py-1 rounded-lg font-medium transition-all"
+            style={{ background: 'rgba(255,255,255,0.2)', color: 'inherit' }}
+          >
+            Войти
+          </button>
+          <button
+            onClick={() => setSessionExpired(false)}
+            className="ml-1 p-1 opacity-60 hover:opacity-100 transition-opacity"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

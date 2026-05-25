@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { saveAs } from 'file-saver';
 import RichTextEditor from '../RichTextEditor';
 import { useExport } from '../../hooks/useExport';
@@ -167,6 +167,35 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   const [showEditorHelp, setShowEditorHelp] = useState(false);
   // Исходный Markdown от LLM (до конвертации в HTML) — нужен для MD-экспорта и PDF
   const [rawMarkdown, setRawMarkdown] = useState('');
+  // История результатов ML по режиму (Q3)
+  const [mlResults, setMlResults] = useState<Record<string, { html: string; rawMd: string }>>({});
+
+  // При смене режима — восстанавливаем сохранённый результат (Q3)
+  const isMlModeFirstRender = useRef(true);
+  useEffect(() => {
+    if (isMlModeFirstRender.current) { isMlModeFirstRender.current = false; return; }
+    const saved = mlResults[selectedMLMode];
+    if (saved) {
+      setProcessedText(saved.html);
+      setRawMarkdown(saved.rawMd);
+      setEditorMode('processed');
+    } else {
+      setProcessedText('');
+      setEditorMode('original');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMLMode]);
+
+  // Сохраняем черновик в sessionStorage при изменении (Q4)
+  useEffect(() => {
+    if (editorContent) {
+      try {
+        sessionStorage.setItem('mindesync_editor_draft', editorContent);
+      } catch {
+        // ignore storage errors
+      }
+    }
+  }, [editorContent]);
 
   useEffect(() => {
     if (!lectureId || !onSaveLecture) {
@@ -364,47 +393,42 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     }
   };
 
+  // Встроенные ошибки ML (вместо alert)
+  const [mlInlineError, setMlInlineError] = useState<string | null>(null);
+
   // Функция обработки текста через ML API
   const handleMLProcess = async () => {
-    // Проверяем наличие редактора
+    setMlInlineError(null);
+
     if (!editorInstance) {
-      alert('❌ Редактор не инициализирован. Пожалуйста, перезагрузите страницу.');
+      setMlInlineError('Редактор не инициализирован. Перезагрузите страницу.');
       return;
     }
 
-    // Получаем текст из редактора
     const text = editorInstance.getText();
 
     if (!text.trim()) {
-      alert('⚠️ Введите текст для обработки в редактор');
+      setMlInlineError('Введите текст для обработки в редактор.');
       return;
     }
 
-    // Проверка длины текста (лимит API - 70000 символов)
     const MAX_TEXT_LENGTH = 70000;
     if (text.length > MAX_TEXT_LENGTH) {
-      alert(
-        `⚠️ Текст слишком длинный!\n\n` +
-        `Текущая длина: ${text.length.toLocaleString()} символов\n` +
-        `Максимум: ${MAX_TEXT_LENGTH.toLocaleString()} символов\n` +
-        `Превышение: ${(text.length - MAX_TEXT_LENGTH).toLocaleString()} символов\n\n` +
-        `Пожалуйста, сократите текст или разбейте на части.`
+      setMlInlineError(
+        `Текст слишком длинный: ${text.length.toLocaleString()} символов (максимум ${MAX_TEXT_LENGTH.toLocaleString()}). Сократите текст или разбейте на части.`
       );
       return;
     }
 
-    // Проверка темы для expand_topic
     if (selectedMLMode === 'expand_topic' && !topicInput.trim()) {
-      alert('⚠️ Для режима "Расширение темы" нужно указать тему');
+      setMlInlineError('Для режима "Расширение темы" необходимо указать тему.');
       return;
     }
 
-    // Сохраняем исходный текст
     setOriginalText(editorInstance.getHTML());
     setEditorMode('original');
 
     try {
-      // Вызов ML API
       const processedTextResult = await processText(
         text,
         selectedMLMode,
@@ -412,32 +436,19 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
       );
 
       if (processedTextResult) {
-        // Чиним сломанные формулы ($var$ внутри $$...$$) до сохранения
         const fixedMarkdown = fixBrokenFormulas(processedTextResult);
-        // Сохраняем исправленный Markdown для экспорта
         setRawMarkdown(fixedMarkdown);
-        // Конвертируем в HTML для отображения
         const htmlContent = convertMarkdownToHTML(fixedMarkdown);
         setProcessedText(htmlContent);
-
-        // Переключаемся на режим обработанного текста
+        // Сохраняем результат в историю по текущему режиму (Q3)
+        setMlResults(prev => ({ ...prev, [selectedMLMode]: { html: htmlContent, rawMd: fixedMarkdown } }));
         setEditorMode('processed');
       }
     } catch (error) {
       console.error('❌ Ошибка обработки:', error);
-
-      // Правильная обработка разных типов ошибок
-      let errorMessage = 'Неизвестная ошибка';
-
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      } else if (error && typeof error === 'object') {
-        errorMessage = JSON.stringify(error);
-      }
-
-      alert(`❌ Ошибка обработки текста: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message
+        : typeof error === 'string' ? error : 'Неизвестная ошибка';
+      setMlInlineError(`Ошибка обработки текста: ${errorMessage}`);
     }
   };
 
@@ -564,6 +575,27 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
         </div>
       </div>
 
+      {/* Онбординг: подсказка когда редактор не открыт (Q7) */}
+      {!showTextEditor && (
+        <div className="mb-8 p-5 rounded-2xl border" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+          <p className="text-xs font-semibold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+            <span className="material-symbols-outlined text-sm">lightbulb</span>Как это работает
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            {[
+              { step: '1', text: 'Выберите лекцию из списка или загрузите текстовый файл' },
+              { step: '2', text: 'Текст откроется в редакторе — отредактируйте при необходимости' },
+              { step: '3', text: 'Выберите режим ИИ-обработки и нажмите «Обработать»' },
+            ].map(({ step, text }) => (
+              <div key={step} className="flex items-start gap-2 flex-1">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: 'rgba(181,132,136,0.2)', color: '#B58488' }}>{step}</span>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Редактор текста */}
       {showTextEditor && (
         <div className="mt-8">
@@ -625,6 +657,92 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
               </p>
             </div>
           )}
+
+          {/* ── ML mode selector (Q6) ── */}
+          <div className="mt-8 p-5 rounded-2xl border" style={{ borderColor: 'var(--border-color)', background: 'var(--hover-bg)' }}>
+            <h4 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <span className="material-symbols-outlined text-base">auto_awesome</span>
+              Обработка с помощью ИИ
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+              {mlModes.map(mode => {
+                const savedResult = mlResults[mode.id];
+                return (
+                  <button
+                    key={mode.id}
+                    onClick={() => { setSelectedMLMode(mode.id as MLMode); setMlInlineError(null); }}
+                    className={`text-left px-3 py-2.5 rounded-xl border-2 transition-all duration-200 text-sm relative ${
+                      selectedMLMode === mode.id ? 'shadow-md' : ''
+                    }`}
+                    style={{
+                      borderColor: selectedMLMode === mode.id ? '#B58488' : 'var(--border-color)',
+                      background: selectedMLMode === mode.id ? 'rgba(181,132,136,0.1)' : 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <span className="material-symbols-outlined text-base block mb-1" style={{ color: selectedMLMode === mode.id ? '#B58488' : 'var(--text-secondary)' }}>{mode.icon}</span>
+                    <span className="font-medium leading-tight">{mode.name}</span>
+                    {savedResult && (
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ background: '#22c55e' }} title="Есть сохранённый результат" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Topic input for expand_topic */}
+            {selectedMLMode === 'expand_topic' && (
+              <div className="mb-3">
+                <input
+                  type="text"
+                  value={topicInput}
+                  onChange={e => { setTopicInput(e.target.value); setMlInlineError(null); }}
+                  placeholder="Укажите тему для расширения..."
+                  className="w-full px-4 py-2.5 rounded-lg border text-sm focus:outline-none transition-all"
+                  style={{
+                    borderColor: 'var(--border-color)',
+                    background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Inline error (Q6) */}
+            {mlInlineError && (
+              <div className="mb-3 px-3 py-2.5 rounded-lg flex items-start gap-2 text-sm"
+                style={{ background: 'rgba(181,132,136,0.12)', border: '1px solid rgba(181,132,136,0.3)', color: 'var(--text-primary)' }}>
+                <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 16, color: '#B58488', marginTop: 1 }}>error</span>
+                <span>{mlInlineError}</span>
+              </div>
+            )}
+
+            <button
+              onClick={handleMLProcess}
+              disabled={isProcessing || (selectedMLMode === 'expand_topic' && !topicInput.trim())}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5"
+              style={{
+                background: isProcessing ? 'var(--hover-bg)' : 'var(--text-primary)',
+                color: isProcessing ? 'var(--text-secondary)' : 'var(--bg-primary)',
+                border: '2px solid var(--text-primary)',
+              }}
+            >
+              {isProcessing ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  Обрабатывается...
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-base">auto_awesome</span>
+                  Обработать
+                </>
+              )}
+            </button>
+          </div>
 
           {/* Отображение ошибки и индикатора обработки */}
           <div className="mt-6 flex flex-col gap-4">

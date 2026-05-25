@@ -320,7 +320,7 @@ const TranscriberSection: React.FC<TranscriberSectionProps> = ({ handleAudioTran
                     Сделать лекцию публичной
                   </div>
                   <div className="text-xs opacity-50" style={{ color: 'var(--text-secondary)' }}>
-                    Другие пользователи смогут видеть эту лекцию
+                    После модерации лекция появится в публичном каталоге
                   </div>
                 </div>
               </div>
