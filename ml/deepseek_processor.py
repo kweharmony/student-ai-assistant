@@ -21,6 +21,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def _fmt(template: str, **kwargs) -> str:
+    """Safe template substitution: replaces only known {key} placeholders, leaves all other {..} intact."""
+    for key, val in kwargs.items():
+        template = template.replace('{' + key + '}', str(val))
+    return template
+
+
 def _normalize_math_delimiters(text: str) -> str:
     """
     Приводит все варианты LaTeX-делимитеров к стандарту $...$ / $$...$$,
@@ -219,7 +226,7 @@ class DeepSeekProcessor:
         """
         logger.info("📋 Шаг 1: Анализ структуры всей лекции...")
         
-        prompt = CHUNKING_PROMPTS['extract_themes'].format(text=text)  # ВСЯ лекция!
+        prompt = _fmt(CHUNKING_PROMPTS['extract_themes'], text=text)  # ВСЯ лекция!
         config = {'temperature': 0.2, 'max_tokens': 1000, 'top_p': 0.85}
         
         response = await self._make_async_request(
@@ -259,11 +266,7 @@ class DeepSeekProcessor:
         logger.info(f"📝 Шаг 2: Генерация по теме '{theme[:50]}...' (лимит: {max_tokens} токенов)")
         
         # Получаем промпт для конкретной темы
-        chunk_prompt = CHUNKING_PROMPTS['generate_chunk'].format(
-            text=text,  # ВСЯ лекция!
-            theme=theme,
-            mode=mode
-        )
+        chunk_prompt = _fmt(CHUNKING_PROMPTS['generate_chunk'], text=text, theme=theme, mode=mode)  # ВСЯ лекция!
         
         config = {**PROCESSING_CONFIGS.get(mode, PROCESSING_CONFIGS['summarize'])}
         config['max_tokens'] = max_tokens  # Применяем рассчитанный лимит
@@ -399,10 +402,11 @@ class DeepSeekProcessor:
         config = PROCESSING_CONFIGS.get(mode, PROCESSING_CONFIGS['summarize'])
         
         # Форматируем промпт
-        formatted_prompt = prompt_template.format(
+        formatted_prompt = _fmt(
+            prompt_template,
             text=text,
             max_tokens=config.get('max_tokens', 6500),
-            approx_words=int(config.get('max_tokens', 6500) * 0.6)
+            approx_words=int(config.get('max_tokens', 6500) * 0.6),
         )
         
         result = await self._make_async_request(
@@ -444,11 +448,12 @@ class DeepSeekProcessor:
                 raise ValueError("Для режима expand_topic требуется параметр 'topic'")
             
             context = kwargs.get('context', text[:1000])
-            formatted_prompt = PROMPTS['expand_topic'].format(
+            formatted_prompt = _fmt(
+                PROMPTS['expand_topic'],
                 topic=topic,
                 context=context,
                 max_tokens=PROCESSING_CONFIGS['expand_topic']['max_tokens'],
-                approx_words=int(PROCESSING_CONFIGS['expand_topic']['max_tokens'] * 0.6)
+                approx_words=int(PROCESSING_CONFIGS['expand_topic']['max_tokens'] * 0.6),
             )
             
             result = await self._make_async_request(
