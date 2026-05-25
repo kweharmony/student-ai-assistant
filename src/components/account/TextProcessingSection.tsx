@@ -6,7 +6,7 @@ import { useMLProcessor } from '../../hooks/useMLProcessor';
 import { useAuth } from '../../contexts/AuthContext';
 import { MLMode, MLModeInfo } from '../../types/ml';
 import { marked } from 'marked';
-import { fixBrokenFormulas } from '../../utils/markdownUtils';
+import { fixBrokenFormulas, safeMdParse } from '../../utils/markdownUtils';
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse');
 
@@ -170,6 +170,14 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   // История результатов ML по режиму (Q3)
   const [mlResults, setMlResults] = useState<Record<string, { html: string; rawMd: string }>>({});
 
+  // ── Inline explain on selection ────────────────────────────────────────────
+  const [explainTooltip, setExplainTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [explainResult, setExplainResult] = useState<string | null>(null);
+  const [explainLoading, setExplainLoading] = useState(false);
+  const [explainError, setExplainError] = useState<string | null>(null);
+  const editorWrapperRef = useRef<HTMLDivElement>(null);
+  const explainPanelRef = useRef<HTMLDivElement>(null);
+
   // При смене режима — восстанавливаем сохранённый результат (Q3)
   const isMlModeFirstRender = useRef(true);
   useEffect(() => {
@@ -196,6 +204,54 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
       }
     }
   }, [editorContent]);
+
+  // Close explain panel when clicking outside editor+panel
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (editorWrapperRef.current?.contains(t) || explainPanelRef.current?.contains(t)) return;
+      setExplainTooltip(null);
+      setExplainResult(null);
+      setExplainError(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
+  const handleEditorSelect = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) { setExplainTooltip(null); return; }
+    const text = sel.toString().trim();
+    if (text.length < 5) { setExplainTooltip(null); return; }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const x = Math.min(rect.right, window.innerWidth - 16);
+    const y = rect.bottom;
+    setExplainTooltip({ text, x, y });
+    setExplainResult(null);
+    setExplainError(null);
+  };
+
+  const handleExplainClick = async () => {
+    if (!explainTooltip) return;
+    setExplainLoading(true);
+    setExplainResult(null);
+    setExplainError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/ml/explain`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: explainTooltip.text }),
+      });
+      if (!res.ok) throw new Error('Не удалось получить объяснение');
+      const data = await res.json();
+      setExplainResult(data?.explanation || '');
+    } catch (e: any) {
+      setExplainError(e?.message || 'Ошибка');
+    } finally {
+      setExplainLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!lectureId || !onSaveLecture) {
@@ -630,21 +686,23 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
             </button>
           </div>
 
-          <RichTextEditor
-            initialContent={editorContent}
-            onContentChange={(content) => {
-              setEditorContent(content);
-            }}
-            onEditorReady={(editor) => {
-              setEditorInstance(editor);
-            }}
-            showModeSwitcher={true}
-            originalText={originalText}
-            processedText={processedText}
-            currentMode={editorMode}
-            onModeChange={setEditorMode}
-            isProcessing={isProcessing}
-          />
+          <div ref={editorWrapperRef} onMouseUp={handleEditorSelect} onKeyUp={handleEditorSelect}>
+            <RichTextEditor
+              initialContent={editorContent}
+              onContentChange={(content) => {
+                setEditorContent(content);
+              }}
+              onEditorReady={(editor) => {
+                setEditorInstance(editor);
+              }}
+              showModeSwitcher={true}
+              originalText={originalText}
+              processedText={processedText}
+              currentMode={editorMode}
+              onModeChange={setEditorMode}
+              isProcessing={isProcessing}
+            />
+          </div>
 
           {/* Предупреждение о превышении лимита */}
           {editorInstance && editorInstance.getText().length > 70000 && (
@@ -1233,6 +1291,129 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
           </div>
         </div>
       )}
+      {/* ── Explain tooltip ── */}
+      {explainTooltip && !explainResult && !explainLoading && (
+        <button
+          onMouseDown={e => e.stopPropagation()}
+          onClick={handleExplainClick}
+          style={{
+            position: 'fixed',
+            left: explainTooltip.x,
+            top: explainTooltip.y + 8,
+            transform: 'translateX(-100%)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '5px 12px',
+            borderRadius: 999,
+            fontSize: 12,
+            fontFamily: 'Georgia, serif',
+            cursor: 'pointer',
+            border: 'none',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+            background: isLightTheme ? '#fffdf5' : '#1f1516',
+            color: isLightTheme ? '#44292b' : '#f0e6d8',
+            outline: '1px solid rgba(181,132,136,0.35)',
+            userSelect: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>auto_awesome</span>
+          Объяснить
+        </button>
+      )}
+
+      {/* ── Explain loading pill ── */}
+      {explainTooltip && explainLoading && (
+        <div
+          style={{
+            position: 'fixed',
+            left: explainTooltip.x,
+            top: explainTooltip.y + 8,
+            transform: 'translateX(-100%)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '5px 12px',
+            borderRadius: 999,
+            fontSize: 12,
+            fontFamily: 'Georgia, serif',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+            background: isLightTheme ? '#fffdf5' : '#1f1516',
+            color: 'var(--text-secondary)',
+            outline: '1px solid rgba(181,132,136,0.35)',
+            userSelect: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <svg style={{ width: 13, height: 13, animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25"/>
+            <path fill="currentColor" opacity="0.75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          Объясняю...
+        </div>
+      )}
+
+      {/* ── Explain result panel ── */}
+      {explainTooltip && (explainResult !== null || explainError) && (
+        <div
+          ref={explainPanelRef}
+          onMouseDown={e => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            left: Math.min(explainTooltip.x, window.innerWidth - 348),
+            top: Math.min(explainTooltip.y + 8, window.innerHeight - 300),
+            transform: 'translateX(-100%)',
+            zIndex: 1000,
+            width: 320,
+            maxHeight: 340,
+            display: 'flex',
+            flexDirection: 'column',
+            borderRadius: 14,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+            background: isLightTheme ? '#fffdf5' : '#1f1516',
+            outline: '1px solid rgba(181,132,136,0.3)',
+            fontFamily: 'Georgia, serif',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Panel header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '10px 14px 8px',
+            borderBottom: '1px solid var(--border-color)',
+            flexShrink: 0,
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 15, color: '#B58488' }}>auto_awesome</span>
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>
+              «{explainTooltip.text.slice(0, 60)}{explainTooltip.text.length > 60 ? '…' : ''}»
+            </span>
+            <button
+              onClick={() => { setExplainTooltip(null); setExplainResult(null); setExplainError(null); }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0 }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+            </button>
+          </div>
+
+          {/* Panel body */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px 12px' }}>
+            {explainError ? (
+              <p style={{ fontSize: 12, color: '#B58488', margin: 0 }}>{explainError}</p>
+            ) : (
+              <div
+                className="prose prose-sm max-w-none"
+                style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--text-primary)' }}
+                dangerouslySetInnerHTML={{ __html: safeMdParse(explainResult || '') }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
   );
 };

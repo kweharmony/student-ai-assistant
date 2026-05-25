@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { AccountPageProps, ActiveSection } from './types';
 import Sidebar from './Sidebar';
 import ProfileSection from './ProfileSection';
-import ExplainSection from './ExplainSection';
 import TranscriberSection, { LectureMeta } from './TranscriberSection';
 import TextProcessingSection from './TextProcessingSection';
 import TranscriptionModals from './TranscriptionModals';
@@ -20,7 +19,6 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const ACCOUNT_ACTIVE_SECTION_KEY = 'mindesync_account_active_section';
 const ALLOWED_SECTIONS: ActiveSection[] = [
   'profile',
-  'explain',
   'transcriber',
   'text-processing',
   'lectures',
@@ -554,9 +552,6 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
           />
         )}
 
-        {activeSection === 'explain' && (
-          <ExplainSection isLightTheme={isLightTheme} />
-        )}
 
         {activeSection === 'transcriber' && (
           <TranscriberSection

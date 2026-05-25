@@ -5,7 +5,6 @@ export interface AccountPageProps {
 
 export type ActiveSection =
   | 'profile'
-  | 'explain'
   | 'transcriber'
   | 'text-processing'
   | 'lectures'

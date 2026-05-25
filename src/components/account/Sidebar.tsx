@@ -23,7 +23,6 @@ interface SidebarProps {
 
 const sidebarItems: SidebarItem[] = [
   { id: 'profile', label: 'Профиль', icon: 'account_circle' },
-  { id: 'explain', label: 'Разбор лекций', icon: 'psychology' },
   { id: 'transcriber', label: 'Транскрибатор', icon: 'mic' },
   { id: 'lectures', label: 'Лекции', icon: 'library_books' },
   { id: 'catalog', label: 'База лекций', icon: 'menu_book' },
