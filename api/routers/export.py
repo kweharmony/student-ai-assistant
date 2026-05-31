@@ -4,6 +4,7 @@
 
 import io
 import os
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -90,8 +91,10 @@ async def export_docx(request: ExportRequest):
             detail=f"PDF-сервис вернул ошибку при генерации DOCX: {resp.text}",
         )
 
+    ascii_name = filename.encode("ascii", errors="replace").decode("ascii")
+    encoded_name = quote(filename, safe="")
     return StreamingResponse(
         io.BytesIO(resp.content),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded_name}"},
     )
