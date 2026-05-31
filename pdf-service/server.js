@@ -104,19 +104,6 @@ app.post('/render-pdf', async (req, res) => {
       ],
       throwOnError: false,
     });
-
-    // Масштабируем блочные формулы, которые шире контейнера
-    document.querySelectorAll('.katex-display').forEach(el => {
-      const containerWidth = el.parentElement.getBoundingClientRect().width;
-      const formulaWidth = el.scrollWidth;
-      if (formulaWidth > containerWidth) {
-        const scale = containerWidth / formulaWidth;
-        el.style.transformOrigin = 'left center';
-        el.style.transform = 'scale(' + scale + ')';
-        // Компенсируем высоту после сжатия чтобы не было лишнего отступа
-        el.style.marginBottom = ((scale - 1) * el.getBoundingClientRect().height) + 'px';
-      }
-    });
   </script>
 </body>
 </html>`;
@@ -128,6 +115,25 @@ app.post('/render-pdf', async (req, res) => {
 
     // networkidle — ждём пока CDN-ресурсы (KaTeX) загрузятся и выполнятся
     await page.setContent(pageHtml, { waitUntil: 'networkidle' });
+
+    // Масштабируем блочные формулы, которые шире контейнера.
+    // Запускаем через page.evaluate после networkidle — KaTeX гарантированно отрисован.
+    // scrollWidth не подходит для KaTeX (абсолютное позиционирование),
+    // поэтому измеряем .katex-html — реальный внутренний контейнер формулы.
+    await page.evaluate(() => {
+      document.querySelectorAll('.katex-display').forEach(el => {
+        const inner = el.querySelector('.katex-html');
+        if (!inner) return;
+        const available = el.getBoundingClientRect().width;
+        const formulaWidth = inner.getBoundingClientRect().width;
+        if (formulaWidth > available && formulaWidth > 0) {
+          const scale = available / formulaWidth;
+          el.style.transformOrigin = 'left center';
+          el.style.transform = `scale(${scale})`;
+          el.style.marginBottom = `${(scale - 1) * el.getBoundingClientRect().height}px`;
+        }
+      });
+    });
 
     const pdfBuffer = await page.pdf({
       format: 'A4',
