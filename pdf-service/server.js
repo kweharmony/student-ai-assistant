@@ -178,8 +178,11 @@ app.post('/render-docx', async (req, res) => {
       }
       const docxBuffer = Buffer.concat(chunks);
       const outFilename = filename || 'document.docx';
+      // RFC 5987: filename* allows UTF-8 filenames; filename= fallback for old clients
+      const asciiName = outFilename.replace(/[^\x20-\x7E]/g, '_');
+      const encodedName = encodeURIComponent(outFilename);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`);
       res.send(docxBuffer);
     });
 
