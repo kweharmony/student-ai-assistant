@@ -1583,6 +1583,9 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                         try {
                           await exportNoteContent(noteActionMenu.content, noteActionMenu.note.mode, format.id);
                           closeNoteActionMenu();
+                        } catch (err) {
+                          console.error('[export] failed:', err);
+                          alert(`Ошибка экспорта: ${(err as Error).message}`);
                         } finally {
                           setNoteDownloadFormat(null);
                         }

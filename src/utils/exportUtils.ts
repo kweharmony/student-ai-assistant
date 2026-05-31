@@ -90,15 +90,14 @@ export async function exportMarkdownFile(
         saveAs(await resp.blob(), `${basename}.pdf`);
         return;
       }
-      console.error('[export] pdf-service вернул ошибку:', resp.status);
+      const detail = await resp.text().catch(() => resp.status.toString());
+      throw new Error(`pdf-service: ${resp.status} — ${detail}`);
     } catch (err) {
-      console.error('[export] pdf-service недоступен:', err);
+      console.error('[export] PDF generation failed:', err);
+      throw new Error(
+        `Не удалось создать PDF. Убедитесь, что pdf-service запущен.\n${(err as Error).message}`,
+      );
     }
-    saveAs(
-      new Blob([md], { type: 'text/markdown;charset=utf-8' }),
-      `${basename}.md`,
-    );
-    return;
   }
 
   if (format === 'docx') {
@@ -112,13 +111,13 @@ export async function exportMarkdownFile(
         saveAs(await resp.blob(), `${basename}.docx`);
         return;
       }
-      console.error('[export] pdf-service (docx) вернул ошибку:', resp.status);
+      const detail = await resp.text().catch(() => resp.status.toString());
+      throw new Error(`pdf-service: ${resp.status} — ${detail}`);
     } catch (err) {
-      console.error('[export] pdf-service (docx) недоступен:', err);
+      console.error('[export] DOCX generation failed:', err);
+      throw new Error(
+        `Не удалось создать DOCX. Убедитесь, что pdf-service запущен.\n${(err as Error).message}`,
+      );
     }
-    saveAs(
-      new Blob([md], { type: 'text/markdown;charset=utf-8' }),
-      `${basename}.md`,
-    );
   }
 }
