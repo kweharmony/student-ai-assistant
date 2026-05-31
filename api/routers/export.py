@@ -44,6 +44,8 @@ async def export_pdf(request: PdfExportRequest):
         )
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="PDF-сервис не ответил вовремя.")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Ошибка соединения с pdf-service: {e}")
 
     if resp.status_code != 200:
         raise HTTPException(
@@ -79,6 +81,8 @@ async def export_docx(request: ExportRequest):
         )
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="PDF-сервис не ответил вовремя.")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Ошибка соединения с pdf-service: {e}")
 
     if resp.status_code != 200:
         raise HTTPException(
