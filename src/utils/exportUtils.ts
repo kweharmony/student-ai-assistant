@@ -2,6 +2,32 @@ import { saveAs } from 'file-saver';
 
 export type ExportFormat = 'txt' | 'md' | 'pdf' | 'docx';
 
+// Приводим разделители LaTeX из любого LLM-формата к стандартным $$...$$ и $...$
+// Идемпотентна: уже чистый markdown проходит без изменений
+const normalizeLatexDelimiters = (text: string): string => {
+  const hasLatex = /\\[a-zA-Z]+|[\^_]/.test.bind(/\\[a-zA-Z]+|[\^_]/);
+
+  let out = text.replace(/(?<!\\)\\\[([\s\S]+?)\\\]/g, (_m, inner) => `$$${inner}$$`);
+  out = out.replace(/\\\((.+?)\\\)/g, (_m, inner) => `$${inner}$`);
+  out = out.replace(/^(\[([^\[\]\n]+)\])$/mg, (_m, _full, inner) =>
+    hasLatex(inner) ? `$$\n${inner.trim()}\n$$` : _m,
+  );
+
+  // Защищаем существующие $...$ и $$...$$ перед заменой (...)→$...$,
+  // иначе формулы со скобками внутри ломаются: $P(\alpha)$ → $P$\alpha$$
+  const saved: string[] = [];
+  out = out.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g, (m) => {
+    saved.push(m);
+    return `\x00M${saved.length - 1}\x00`;
+  });
+  out = out.replace(/\(([^()\n$]*(?:\([^()\n$]*\)[^()\n$]*)*)\)/g, (_m, inner) =>
+    hasLatex(inner) ? `$${inner}$` : _m,
+  );
+  out = out.replace(/\x00M(\d+)\x00/g, (_, i) => saved[parseInt(i, 10)]);
+
+  return out;
+};
+
 // Стрипаем Markdown-разметку и LaTeX для TXT-экспорта
 const mdToPlainText = (markdown: string): string =>
   markdown
@@ -31,9 +57,12 @@ export async function exportMarkdownFile(
   basename: string,
   format: ExportFormat,
 ): Promise<void> {
+  // Нормализуем разделители независимо от источника (редактор, каталог, лекции)
+  const md = normalizeLatexDelimiters(markdown);
+
   if (format === 'txt') {
     saveAs(
-      new Blob([mdToPlainText(markdown)], { type: 'text/plain;charset=utf-8' }),
+      new Blob([mdToPlainText(md)], { type: 'text/plain;charset=utf-8' }),
       `${basename}.txt`,
     );
     return;
@@ -41,7 +70,7 @@ export async function exportMarkdownFile(
 
   if (format === 'md') {
     saveAs(
-      new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
+      new Blob([md], { type: 'text/markdown;charset=utf-8' }),
       `${basename}.md`,
     );
     return;
@@ -52,7 +81,7 @@ export async function exportMarkdownFile(
       const resp = await fetch('/api/export/pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown }),
+        body: JSON.stringify({ markdown: md }),
       });
       if (resp.ok) {
         saveAs(await resp.blob(), `${basename}.pdf`);
@@ -62,9 +91,8 @@ export async function exportMarkdownFile(
     } catch (err) {
       console.error('[export] pdf-service недоступен:', err);
     }
-    // Fallback: отдаём MD — хоть что-то
     saveAs(
-      new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
+      new Blob([md], { type: 'text/markdown;charset=utf-8' }),
       `${basename}.md`,
     );
     return;
@@ -75,7 +103,7 @@ export async function exportMarkdownFile(
       const resp = await fetch('/api/export/docx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown, filename: `${basename}.docx` }),
+        body: JSON.stringify({ markdown: md, filename: `${basename}.docx` }),
       });
       if (resp.ok) {
         saveAs(await resp.blob(), `${basename}.docx`);
@@ -85,9 +113,8 @@ export async function exportMarkdownFile(
     } catch (err) {
       console.error('[export] pdf-service (docx) недоступен:', err);
     }
-    // Fallback: отдаём MD
     saveAs(
-      new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
+      new Blob([md], { type: 'text/markdown;charset=utf-8' }),
       `${basename}.md`,
     );
   }

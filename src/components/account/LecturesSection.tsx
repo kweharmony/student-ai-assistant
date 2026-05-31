@@ -519,27 +519,9 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     return h;
   }, [token]);
 
-  const normalizeLatexDelimiters = (text: string): string => {
-    const hasLatex = /\\[a-zA-Z]+|[\^_]/.test.bind(/\\[a-zA-Z]+|[\^_]/);
-    // \[...\] → $$...$$ (display math), skip \\[ (LaTeX line-break-with-spacing)
-    let out = text.replace(/(?<!\\)\\\[([\s\S]+?)\\\]/g, (_m, inner) => `$$${inner}$$`);
-    // \(...\) → $...$ (inline math)
-    out = out.replace(/\\\((.+?)\\\)/g, (_m, inner) => `$${inner}$`);
-    // [formula] on its own line → $$formula$$
-    out = out.replace(/^(\[([^\[\]\n]+)\])$/mg, (_m, _full, inner) =>
-      hasLatex(inner) ? `$$\n${inner.trim()}\n$$` : _m
-    );
-    // (formula with LaTeX) → $formula$, allows one level of nested parens like (M(X) = \frac{a}{b})
-    out = out.replace(/\(([^()\n$]*(?:\([^()\n$]*\)[^()\n$]*)*)\)/g, (_m, inner) =>
-      hasLatex(inner) ? `$${inner}$` : _m
-    );
-    return out;
-  };
-
   const exportNoteContent = useCallback(async (content: string, title: string, format: NoteExportFormat) => {
     const basename = title.replace(/[<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').trim() || 'note';
-    const normalized = normalizeLatexDelimiters(content);
-    await exportMarkdownFile(normalized, basename, format);
+    await exportMarkdownFile(content, basename, format);
   }, []);
 
   const openNoteActionMenu = useCallback(async (note: NoteInfo, lecture: LectureItem, anchorEl: HTMLElement) => {
