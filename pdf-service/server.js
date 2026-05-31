@@ -68,8 +68,9 @@ app.post('/render-pdf', async (req, res) => {
       line-height: 1.7;
       color: #1a1a1a;
       margin: 0;
-      padding: 40px 50px;
-      max-width: 800px;
+      padding: 20px;
+      max-width: 100%;
+      box-sizing: border-box;
     }
     h1 { font-size: 22px; margin: 28px 0 12px; }
     h2 { font-size: 18px; margin: 24px 0 10px; }
@@ -113,31 +114,27 @@ app.post('/render-pdf', async (req, res) => {
     browser = await chromium.launch();
     const page = await browser.newPage();
 
-    // networkidle — ждём пока CDN-ресурсы (KaTeX) загрузятся и выполнятся
+    // Viewport = ширина печатной области A4 (210mm − 2×15mm = 180mm ≈ 680px при 96dpi).
+    // Это заставляет тело страницы рендериться ровно в ту ширину, которая попадёт в PDF,
+    // и делает scrollWidth > clientWidth надёжным признаком переполнения.
+    await page.setViewportSize({ width: 680, height: 900 });
     await page.setContent(pageHtml, { waitUntil: 'networkidle' });
 
-    // Масштабируем блочные формулы, которые шире контейнера.
-    // Запускаем через page.evaluate после networkidle — KaTeX гарантированно отрисован.
-    // scrollWidth не подходит для KaTeX (абсолютное позиционирование),
-    // поэтому измеряем .katex-html — реальный внутренний контейнер формулы.
+    // Уменьшаем font-size формул, которые шире контейнера.
+    // font-size (не transform) меняет layout-размер, поэтому PDF не клипает.
+    // scrollWidth > clientWidth работает корректно при viewport = printable width.
     await page.evaluate(() => {
       document.querySelectorAll('.katex-display').forEach(el => {
-        const inner = el.querySelector('.katex-html');
-        if (!inner) return;
-        const available = el.getBoundingClientRect().width;
-        const formulaWidth = inner.getBoundingClientRect().width;
-        if (formulaWidth > available && formulaWidth > 0) {
-          const scale = available / formulaWidth;
-          el.style.transformOrigin = 'left center';
-          el.style.transform = `scale(${scale})`;
-          el.style.marginBottom = `${(scale - 1) * el.getBoundingClientRect().height}px`;
+        if (el.scrollWidth > el.clientWidth + 2) {
+          const ratio = el.clientWidth / el.scrollWidth;
+          el.style.fontSize = (ratio * 0.97 * 100).toFixed(1) + '%';
         }
       });
     });
 
     const pdfBuffer = await page.pdf({
       format: 'A4',
-      margin: { top: '40px', bottom: '40px', left: '50px', right: '50px' },
+      margin: { top: '15mm', bottom: '15mm', left: '15mm', right: '15mm' },
       printBackground: true,
     });
 
