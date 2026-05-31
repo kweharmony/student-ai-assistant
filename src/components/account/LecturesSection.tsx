@@ -1,15 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { saveAs } from 'file-saver';
-import htmlDocx from 'html-docx-js/dist/html-docx';
-import pdfMake from 'pdfmake/build/pdfmake';
-import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { useAuth } from '../../contexts/AuthContext';
+import { exportMarkdownFile } from '../../utils/exportUtils';
 import { safeMdParse } from '../../utils/markdownUtils';
 import 'katex/dist/katex.min.css';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
 
-(pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || {};
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -541,35 +537,9 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   };
 
   const exportNoteContent = useCallback(async (content: string, title: string, format: NoteExportFormat) => {
-    const safeTitle = title.replace(/[<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').trim() || 'note';
-    const filenameBase = `${safeTitle}`;
+    const basename = title.replace(/[<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').trim() || 'note';
     const normalized = normalizeLatexDelimiters(content);
-
-    if (format === 'txt') {
-      const text = mdParse(normalized).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-      saveAs(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${filenameBase}.txt`);
-      return;
-    }
-
-    if (format === 'md') {
-      saveAs(new Blob([normalized], { type: 'text/markdown;charset=utf-8' }), `${filenameBase}.md`);
-      return;
-    }
-
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title></head><body>${mdParse(normalized)}</body></html>`;
-
-    if (format === 'docx') {
-      saveAs(htmlDocx.asBlob(html), `${filenameBase}.docx`);
-      return;
-    }
-
-    const container = document.createElement('div');
-    container.innerHTML = mdParse(normalized);
-    const plainText = (container.textContent || '').replace(/\s+/g, ' ').trim();
-    pdfMake.createPdf({
-      content: [{ text: plainText || safeTitle, fontSize: 12, lineHeight: 1.5 }],
-      defaultStyle: { font: 'Roboto' },
-    }).download(`${filenameBase}.pdf`);
+    await exportMarkdownFile(normalized, basename, format);
   }, []);
 
   const openNoteActionMenu = useCallback(async (note: NoteInfo, lecture: LectureItem, anchorEl: HTMLElement) => {

@@ -1,12 +1,9 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { saveAs } from 'file-saver';
-import htmlDocx from 'html-docx-js/dist/html-docx';
-import pdfMake from 'pdfmake/build/pdfmake';
-import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { useAuth } from '../../contexts/AuthContext';
 import 'katex/dist/katex.min.css';
 
 import { safeMdParse } from '../../utils/markdownUtils';
+import { exportMarkdownFile } from '../../utils/exportUtils';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 type Semester = 'winter' | 'spring';
@@ -29,7 +26,6 @@ const EXPORT_FORMATS = [
 
 type ExportFormatId = (typeof EXPORT_FORMATS)[number]['id'];
 
-(pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || {};
 
 const NO_COURSE = '__no_course__';
 const NO_DISCIPLINE = '__no_discipline__';
@@ -635,95 +631,7 @@ const CatalogSection: React.FC<CatalogSectionProps> = ({ isLightTheme, onOpenInE
 
   const exportLectureText = async (text: string, lectureTitle: string, format: ExportFormatId): Promise<void> => {
     const baseName = buildExportFilename(lectureTitle);
-
-    if (format === 'txt') {
-      saveAs(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${baseName}.txt`);
-      return;
-    }
-
-    if (format === 'md') {
-      saveAs(new Blob([text], { type: 'text/markdown;charset=utf-8' }), `${baseName}.md`);
-      return;
-    }
-
-    if (format === 'docx') {
-      // Текст лекции уже в Markdown — отправляем на pdf-service (Pandoc) для нативных формул
-      try {
-        const resp = await fetch('/api/export/docx', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ markdown: text, filename: `${baseName}.docx` }),
-        });
-        if (resp.ok) {
-          const blob = await resp.blob();
-          saveAs(blob, `${baseName}.docx`);
-          return;
-        }
-      } catch {
-        // pdf-service недоступен — fallback на html-docx-js с LaTeX как текстом
-      }
-
-      // Fallback: конвертируем Markdown-блоки в HTML с LaTeX-текстом
-      const htmlBody = text
-        .split(/\n\s*\n/g)
-        .map((chunk) => {
-          const trimmed = chunk.trim();
-          const blockMath = trimmed.match(/^\$\$([\s\S]+)\$\$$/);
-          if (blockMath) {
-            return `<p style="font-family:'Courier New',monospace;font-size:11pt;text-align:center;margin:12px 0;background:#f5f5f5;padding:8px;">$$${escapeHtml(blockMath[1])}$$</p>`;
-          }
-          if (/^#{1,6} /.test(trimmed)) {
-            const level = trimmed.match(/^(#+) /)?.[1].length ?? 1;
-            const content = escapeHtml(trimmed.replace(/^#+\s+/, ''));
-            const sizes: Record<number, string> = { 1: '22pt', 2: '18pt', 3: '16pt', 4: '14pt', 5: '13pt', 6: '12pt' };
-            return `<h${level} style="font-size:${sizes[level] ?? '12pt'}">${content}</h${level}>`;
-          }
-          const escapedChunk = escapeHtml(chunk)
-            .replace(/\$([^$\n]+)\$/g, '<code style="font-family:\'Courier New\',monospace;">$$$1$$</code>');
-          return `<p>${escapedChunk.replace(/\n/g, '<br/>')}</p>`;
-        })
-        .join('');
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(lectureTitle || 'Lecture')}</title></head><body style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.6;">${htmlBody || '<p></p>'}</body></html>`;
-      saveAs(htmlDocx.asBlob(html), `${baseName}.docx`);
-      return;
-    }
-
-    // Текст лекции уже в Markdown — отправляем на pdf-service для рендеринга KaTeX
-    try {
-      const resp = await fetch('/api/export/pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: text }),
-      });
-      if (resp.ok) {
-        const blob = await resp.blob();
-        saveAs(blob, `${baseName}.pdf`);
-        return;
-      }
-    } catch {
-      // pdf-service недоступен — fallback на pdfMake с LaTeX как текстом
-    }
-
-    const lines = text.split(/\r?\n/);
-    const content = lines.map((line) => ({
-      text: line || ' ',
-      margin: [0, 0, 0, 4],
-    }));
-    const docDefinition = {
-      pageSize: 'A4',
-      pageMargins: [40, 50, 40, 50],
-      content,
-      defaultStyle: { font: 'Roboto', fontSize: 12, lineHeight: 1.45 },
-      fonts: {
-        Roboto: {
-          normal: 'Roboto-Regular.ttf',
-          bold: 'Roboto-Regular.ttf',
-          italics: 'Roboto-Regular.ttf',
-          bolditalics: 'Roboto-Regular.ttf',
-        },
-      },
-    };
-    (pdfMake as any).createPdf(docDefinition).download(`${baseName}.pdf`);
+    await exportMarkdownFile(text, baseName, format);
   };
 
   const handleOpenCleanTextInEditor = async (lecture: CatalogItem) => {
