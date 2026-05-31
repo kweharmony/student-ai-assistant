@@ -104,6 +104,19 @@ app.post('/render-pdf', async (req, res) => {
       ],
       throwOnError: false,
     });
+
+    // Масштабируем блочные формулы, которые шире контейнера
+    document.querySelectorAll('.katex-display').forEach(el => {
+      const containerWidth = el.parentElement.getBoundingClientRect().width;
+      const formulaWidth = el.scrollWidth;
+      if (formulaWidth > containerWidth) {
+        const scale = containerWidth / formulaWidth;
+        el.style.transformOrigin = 'left center';
+        el.style.transform = 'scale(' + scale + ')';
+        // Компенсируем высоту после сжатия чтобы не было лишнего отступа
+        el.style.marginBottom = ((scale - 1) * el.getBoundingClientRect().height) + 'px';
+      }
+    });
   </script>
 </body>
 </html>`;
