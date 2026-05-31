@@ -1,11 +1,13 @@
 /**
- * MindeSync PDF Service
- * Принимает Markdown (с LaTeX $$...$$), рендерит через Playwright + KaTeX, отдаёт PDF.
+ * MindeSync PDF/DOCX Service
+ * /render-pdf  — Playwright + KaTeX → PDF
+ * /render-docx — Pandoc → DOCX (с нативными Word-формулами через OMML)
  */
 
 const express = require('express');
 const { chromium } = require('playwright');
 const { marked } = require('marked');
+const { spawn } = require('child_process');
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -95,6 +97,54 @@ app.post('/render-pdf', async (req, res) => {
     res.status(500).json({ error: 'PDF generation failed', detail: err.message });
   } finally {
     if (browser) await browser.close();
+  }
+});
+
+app.post('/render-docx', async (req, res) => {
+  const { markdown, filename } = req.body;
+  if (!markdown) {
+    return res.status(400).json({ error: 'markdown is required' });
+  }
+
+  try {
+    // pandoc читает Markdown из stdin, пишет DOCX в stdout
+    // --mathml конвертирует LaTeX-формулы в MathML → Word открывает как нативные OMML-формулы
+    const pandoc = spawn('pandoc', [
+      '--from=markdown+tex_math_dollars+tex_math_single_backslash',
+      '--to=docx',
+      '--mathml',
+      '--output=-',
+    ]);
+
+    const chunks = [];
+    pandoc.stdout.on('data', (chunk) => chunks.push(chunk));
+
+    pandoc.stderr.on('data', (data) => {
+      console.error('[pdf-service] pandoc stderr:', data.toString());
+    });
+
+    pandoc.on('close', (code) => {
+      if (code !== 0) {
+        return res.status(500).json({ error: 'pandoc exited with code ' + code });
+      }
+      const docxBuffer = Buffer.concat(chunks);
+      const outFilename = filename || 'document.docx';
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
+      res.send(docxBuffer);
+    });
+
+    pandoc.on('error', (err) => {
+      console.error('[pdf-service] Не удалось запустить pandoc:', err);
+      res.status(500).json({ error: 'pandoc not available', detail: err.message });
+    });
+
+    // Подаём Markdown в stdin и закрываем поток
+    pandoc.stdin.write(markdown);
+    pandoc.stdin.end();
+  } catch (err) {
+    console.error('[pdf-service] Ошибка генерации DOCX:', err);
+    res.status(500).json({ error: 'DOCX generation failed', detail: err.message });
   }
 });
 

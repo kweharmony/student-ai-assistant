@@ -1,5 +1,5 @@
 """
-Роутер экспорта: проксирует запрос на генерацию PDF в отдельный pdf-service.
+Роутер экспорта: проксирует запросы на генерацию PDF и DOCX в pdf-service.
 """
 
 import io
@@ -15,8 +15,13 @@ router = APIRouter(prefix="/export", tags=["export"])
 PDF_SERVICE_URL = os.getenv("PDF_SERVICE_URL", "http://pdf-service:3001")
 
 
-class PdfExportRequest(BaseModel):
+class ExportRequest(BaseModel):
     markdown: str
+    filename: str | None = None
+
+
+# Обратная совместимость: оставляем старый класс как алиас
+PdfExportRequest = ExportRequest
 
 
 @router.post("/pdf")
@@ -50,4 +55,39 @@ async def export_pdf(request: PdfExportRequest):
         io.BytesIO(resp.content),
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=document.pdf"},
+    )
+
+
+@router.post("/docx")
+async def export_docx(request: ExportRequest):
+    """
+    Принимает Markdown-текст (с LaTeX $$...$$),
+    отправляет в pdf-service для конвертации через Pandoc,
+    возвращает DOCX с нативными Word-формулами (OMML).
+    """
+    filename = request.filename or "document.docx"
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{PDF_SERVICE_URL}/render-docx",
+                json={"markdown": request.markdown, "filename": filename},
+            )
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail="PDF-сервис недоступен. Проверьте, запущен ли pdf-service.",
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="PDF-сервис не ответил вовремя.")
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"PDF-сервис вернул ошибку при генерации DOCX: {resp.text}",
+        )
+
+    return StreamingResponse(
+        io.BytesIO(resp.content),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

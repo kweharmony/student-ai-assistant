@@ -26,6 +26,9 @@ COPY --from=deps /app/node_modules ./node_modules
 # --with-deps автоматически запускает apt-get для нужных системных либ
 RUN ./node_modules/.bin/playwright install --with-deps chromium
 
+# Pandoc для конвертации Markdown → DOCX с нативными формулами (OMML)
+RUN apt-get update && apt-get install -y --no-install-recommends pandoc && rm -rf /var/lib/apt/lists/*
+
 # Копируем исходник сервиса
 COPY pdf-service/server.js .
 
