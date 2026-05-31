@@ -15,14 +15,45 @@ app.use(express.json({ limit: '10mb' }));
 // Healthcheck для docker-compose / nginx
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
+// Защищаем math-блоки от marked: заменяем на плейсхолдеры до парсинга,
+// восстанавливаем в HTML после — иначе marked ломает $$ и < внутри формул.
+function extractMath(markdown) {
+  const blocks = [];
+
+  let result = markdown.replace(/\$\$([\s\S]+?)\$\$/g, (_m, math) => {
+    const idx = blocks.length;
+    blocks.push({ display: true, math: math.trim() });
+    return `MATH_PLACEHOLDER_${idx}_END`;
+  });
+
+  result = result.replace(/\$([^$\n]+?)\$/g, (_m, math) => {
+    const idx = blocks.length;
+    blocks.push({ display: false, math: math.trim() });
+    return `MATH_PLACEHOLDER_${idx}_END`;
+  });
+
+  return { result, blocks };
+}
+
+function restoreMath(html, blocks) {
+  return html.replace(/MATH_PLACEHOLDER_(\d+)_END/g, (_m, idx) => {
+    const { display, math } = blocks[parseInt(idx, 10)];
+    return display
+      ? `<span class="math-display">$$${math}$$</span>`
+      : `<span class="math-inline">$${math}$</span>`;
+  });
+}
+
 app.post('/render-pdf', async (req, res) => {
   const { markdown } = req.body;
   if (!markdown) {
     return res.status(400).json({ error: 'markdown is required' });
   }
 
-  // Конвертируем Markdown → HTML на сервере (marked работает в Node.js)
-  const bodyHtml = marked.parse(markdown, { gfm: true, breaks: true });
+  // Защищаем формулы до marked, восстанавливаем после
+  const { result: safeMd, blocks } = extractMath(markdown);
+  const rawHtml = marked.parse(safeMd, { gfm: true, breaks: true });
+  const bodyHtml = restoreMath(rawHtml, blocks);
 
   // Полная HTML-страница: KaTeX загружается с CDN, auto-render обходит body
   const pageHtml = `<!DOCTYPE html>
@@ -51,6 +82,8 @@ app.post('/render-pdf', async (req, res) => {
     pre  { background: #f4f4f4; padding: 12px; border-radius: 4px; overflow-x: auto; }
     blockquote { border-left: 3px solid #ccc; margin: 0 0 10px; padding-left: 16px; color: #555; font-style: italic; }
     .katex-display { margin: 16px 0; overflow-x: auto; }
+    .math-display { display: block; text-align: center; margin: 16px 0; }
+    .math-inline { display: inline; }
     hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
     table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
     th, td { border: 1px solid #ddd; padding: 6px 10px; }
