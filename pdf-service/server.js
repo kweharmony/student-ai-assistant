@@ -156,12 +156,12 @@ app.post('/render-docx', async (req, res) => {
   }
 
   try {
-    // pandoc читает Markdown из stdin, пишет DOCX в stdout
-    // --mathml конвертирует LaTeX-формулы в MathML → Word открывает как нативные OMML-формулы
+    // pandoc читает Markdown из stdin, пишет DOCX в stdout.
+    // Для DOCX pandoc сам конвертирует $...$ и $$...$$ в нативные OMML-формулы Word.
+    // --mathml нужен только для HTML/EPUB — для docx он ломает формулы.
     const pandoc = spawn('pandoc', [
-      '--from=markdown+tex_math_dollars+tex_math_single_backslash',
+      '--from=markdown+tex_math_dollars+tex_math_single_backslash+pipe_tables',
       '--to=docx',
-      '--mathml',
       '--output=-',
     ]);
 
