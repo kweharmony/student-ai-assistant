@@ -1,4 +1,5 @@
 import { saveAs } from 'file-saver';
+import { fixBrokenFormulas } from './markdownUtils';
 
 export type ExportFormat = 'txt' | 'md' | 'pdf' | 'docx';
 
@@ -57,8 +58,10 @@ export async function exportMarkdownFile(
   basename: string,
   format: ExportFormat,
 ): Promise<void> {
-  // Нормализуем разделители независимо от источника (редактор, каталог, лекции)
-  const md = normalizeLatexDelimiters(markdown);
+  // Полный пайплайн нормализации — тот же что при отображении в UI:
+  // 1. normalizeLatexDelimiters: \[...\] → $$...$$, \(...\) → $...$, (LaTeX) → $...$
+  // 2. fixBrokenFormulas: детектирует голый LaTeX без разделителей, чинит AI-артефакты
+  const md = fixBrokenFormulas(normalizeLatexDelimiters(markdown));
 
   if (format === 'txt') {
     saveAs(
