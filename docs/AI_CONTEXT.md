@@ -464,19 +464,21 @@ defaults, см. [worker/config.py](../worker/config.py)): `SERVER_URL`, `API_KEY
 
 | Секция (`ActiveSection`) | Компонент | Реально вызываемые API |
 |--------------------------|-----------|------------------------|
-| `profile` | [ProfileSection.tsx](../src/components/account/ProfileSection.tsx) | `/api/users/me`, `/me/password`, `/me/role`, `/me/stream`, `/me/avatar-emoji`; `/api/catalog/{faculties,directions,streams}` |
+| `profile` | [ProfileSection.tsx](../src/components/account/ProfileSection.tsx) | `/api/users/me`, `/me/quota` (карточка «Тариф»: план, прогресс-бары остатка по обоим пулам и дни до освобождения ближайшего слота из `next_reset_at`), `/me/password`, `/me/role`, `/me/stream`, `/me/avatar-emoji`; `/api/catalog/{faculties,directions,streams}` |
 | `transcriber` | [TranscriberSection.tsx](../src/components/account/TranscriberSection.tsx) (UI) + логика в [AccountPage.tsx](../src/components/account/AccountPage.tsx) | `/api/transcribe/upload`, `/api/transcribe/filter`, `/api/lectures/{id}/task-status`, `/api/lectures/{id}/save-text` |
 | `text-processing` | [TextProcessingSection.tsx](../src/components/account/TextProcessingSection.tsx) | `/api/lectures/my`, `/api/lectures/{id}`, `/api/ml/explain`, `/api/lectures/{id}/save-text-permission` |
-| `lectures` | [LecturesSection.tsx](../src/components/account/LecturesSection.tsx) | `/api/lectures/*` (`notes`, `notes/generate`+polling, `apply-filter`, `re-transcribe`, `audio`); `/api/catalog/{my-lecture-statuses,material-requests,requests,publish}` |
+| `lectures` | [LecturesSection.tsx](../src/components/account/LecturesSection.tsx) | `/api/lectures/*` (`notes`, `notes/generate`+polling, `apply-filter`, `re-transcribe`, `audio`); `/api/catalog/{my-lecture-statuses,material-requests,requests,publish}`; бейдж лимита `generation` ([QuotaBadge](../src/components/account/QuotaBadge.tsx)) + 429-обработка |
 | `catalog` | [CatalogSection.tsx](../src/components/account/CatalogSection.tsx) | `/api/catalog/{items,semesters,faculties,directions,streams,material-requests}`, `/api/lectures/{id}/notes` |
 | `catalog-moderation` | [CatalogModerationSection.tsx](../src/components/account/CatalogModerationSection.tsx) | `/api/catalog/*` CRUD + `requests/{id}/{approve\|reject}`, `material-requests/{id}/{approve\|reject}`, `bulk-update`, `disciplines`, `lecturers` |
-| `admin` | [AdminDashboard.tsx](../src/components/account/AdminDashboard.tsx) | `/api/admin/*` (stats, users+block/unblock/group-head, lectures, boards, worker-stats), `/api/catalog/{streams,faculties,directions}` |
+| `admin` | [AdminDashboard.tsx](../src/components/account/AdminDashboard.tsx) | `/api/admin/*` (stats, users+block/unblock/group-head/**subscription**, lectures, boards, worker-stats), `/api/catalog/{streams,faculties,directions}` |
 | `board` | [BoardSection.tsx](../src/components/account/BoardSection.tsx) | `/api/boards/*` (+ WebSocket `/{id}/ws`), `/api/lectures/my`, `/api/catalog/items` |
 
 Вспомогательное: [ExplainSection.tsx](../src/components/account/ExplainSection.tsx)
-(`/api/ml/explain`, `/api/lectures/my`, `/api/catalog/items`),
+(`/api/ml/explain`, `/api/lectures/my`, `/api/catalog/items`; бейдж лимита `explain`),
 [TranscriptionModals.tsx](../src/components/account/TranscriptionModals.tsx),
 [RichTextEditor.tsx](../src/components/RichTextEditor.tsx) (TipTap),
+[QuotaBadge.tsx](../src/components/account/QuotaBadge.tsx) + [src/utils/quota.ts](../src/utils/quota.ts)
+(бейдж остатка лимитов, обработка 429, шина обновления `mindesync:quota-changed`),
 [types.ts](../src/components/account/types.ts).
 
 **Хуки** [src/hooks/](../src/hooks/): `useMLProcessor` (вызов `/api/ml/process` с

@@ -22,6 +22,20 @@ const roleLabels: Record<string, string> = {
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
+// Русское склонение слова «день» (1 день, 2 дня, 5 дней).
+const daysWord = (n: number): string => {
+  const mod100 = n % 100;
+  const mod10 = n % 10;
+  if (mod100 >= 11 && mod100 <= 14) return 'дней';
+  if (mod10 === 1) return 'день';
+  if (mod10 >= 2 && mod10 <= 4) return 'дня';
+  return 'дней';
+};
+
+// Сколько целых дней осталось до ISO-времени (минимум 0).
+const daysUntil = (iso: string): number =>
+  Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000));
+
 const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate }) => {
   const { user, token, logout, updateUser } = useAuth();
 
@@ -581,6 +595,7 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
                   const reset = b.next_reset_at
                     ? new Date(b.next_reset_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
                     : null;
+                  const resetDays = b.next_reset_at ? daysUntil(b.next_reset_at) : null;
                   const barColor = remaining <= 0 ? '#ef4444' : remaining <= 1 ? '#f59e0b' : '#6366f1';
                   return (
                     <div key={key}>
@@ -595,7 +610,9 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
                       </div>
                       {reset && remaining < limit && (
                         <p className="text-[11px] mt-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>
-                          Ближайший слот освободится {reset}
+                          {resetDays !== null && resetDays <= 0
+                            ? 'Ближайший слот освободится сегодня'
+                            : `Ближайший слот освободится ${reset}${resetDays !== null ? ` (через ${resetDays} ${daysWord(resetDays)})` : ''}`}
                         </p>
                       )}
                     </div>
