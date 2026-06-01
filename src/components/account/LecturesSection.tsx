@@ -433,9 +433,12 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
 
   // Add-note dropdown
   const [addNoteDropdown, setAddNoteDropdown]       = useState<string | null>(null); // lectureId
-  const [generatingNote, setGeneratingNote]         = useState<{ lectureId: string; mode: string; jobId?: string } | null>(null);
+  // Несколько одновременных генераций: каждая задача отслеживается по job_id.
+  type GenJob = { lectureId: string; mode: string; jobId: string };
+  const [generatingJobs, setGeneratingJobs]         = useState<GenJob[]>([]);
+  const generatingJobsRef = useRef<GenJob[]>([]);
+  useEffect(() => { generatingJobsRef.current = generatingJobs; }, [generatingJobs]);
   const [topicInput, setTopicInput]                 = useState('');
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [pendingTopicMode, setPendingTopicMode]     = useState<{ lectureId: string; mode: string } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [openCatalogDropdown, setOpenCatalogDropdown] = useState<string | null>(null);
@@ -612,66 +615,81 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
     return () => document.removeEventListener('mousedown', handler);
   }, [addNoteDropdown, openCatalogDropdown]);
 
-  // Restore pending generation job from sessionStorage on page load
+  // Restore pending generation jobs from sessionStorage on page load
   useEffect(() => {
-    const saved = sessionStorage.getItem('noteGenJob');
-    if (!saved) return;
-    try {
-      const job = JSON.parse(saved);
-      if (job?.lectureId && job?.mode && job?.jobId) {
-        setGeneratingNote(job);
-      }
-    } catch {
+    const restored: GenJob[] = [];
+    const valid = (j: any): j is GenJob => j?.lectureId && j?.mode && j?.jobId;
+    const saved = sessionStorage.getItem('noteGenJobs');
+    if (saved) {
+      try {
+        const arr = JSON.parse(saved);
+        if (Array.isArray(arr)) restored.push(...arr.filter(valid));
+      } catch { /* ignore */ }
+    }
+    // Миграция со старого одиночного ключа.
+    const legacy = sessionStorage.getItem('noteGenJob');
+    if (legacy) {
+      try { const j = JSON.parse(legacy); if (valid(j)) restored.push(j); } catch { /* ignore */ }
       sessionStorage.removeItem('noteGenJob');
     }
+    if (restored.length) setGeneratingJobs(restored);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Poll job status when a jobId is active
+  // Один интервал опрашивает все активные задачи параллельно.
   useEffect(() => {
-    const jobId = generatingNote?.jobId;
-    const lectureId = generatingNote?.lectureId;
-    if (!jobId || !lectureId) return;
+    const persist = (jobs: GenJob[]) => {
+      if (jobs.length) sessionStorage.setItem('noteGenJobs', JSON.stringify(jobs));
+      else sessionStorage.removeItem('noteGenJobs');
+    };
 
     const poll = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/lectures/${lectureId}/notes/generate/${jobId}`, {
-          headers: authHeaders(),
+      const jobs = generatingJobsRef.current;
+      if (jobs.length === 0) return;
+
+      const finishedIds: string[] = [];
+      const failures: string[] = [];
+      let anyDone = false;
+
+      await Promise.all(jobs.map(async (j) => {
+        try {
+          const res = await fetch(`${API_BASE}/api/lectures/${j.lectureId}/notes/generate/${j.jobId}`, {
+            headers: authHeaders(),
+          });
+          if (!res.ok) {
+            // Сервер перезапущен — задача потеряна; снимаем с отслеживания и обновим список.
+            finishedIds.push(j.jobId);
+            anyDone = true;
+            return;
+          }
+          const job = await res.json();
+          if (job.status === 'done') {
+            finishedIds.push(j.jobId);
+            anyDone = true;
+          } else if (job.status === 'failed') {
+            finishedIds.push(j.jobId);
+            failures.push(job.error || 'Неизвестная ошибка');
+            notifyQuotaChanged();  // слот квоты возвращён на бэкенде
+          }
+        } catch {
+          // Сетевая ошибка — продолжаем опрашивать на следующем тике.
+        }
+      }));
+
+      if (finishedIds.length) {
+        setGeneratingJobs(prev => {
+          const next = prev.filter(j => !finishedIds.includes(j.jobId));
+          persist(next);
+          return next;
         });
-        if (!res.ok) {
-          // Server restarted — job lost; refresh to pick up any saved note
-          clearInterval(pollingRef.current!);
-          pollingRef.current = null;
-          setGeneratingNote(null);
-          sessionStorage.removeItem('noteGenJob');
-          await fetchLectures();
-          return;
-        }
-        const job = await res.json();
-        if (job.status === 'done') {
-          clearInterval(pollingRef.current!);
-          pollingRef.current = null;
-          setGeneratingNote(null);
-          sessionStorage.removeItem('noteGenJob');
-          await fetchLectures();
-        } else if (job.status === 'failed') {
-          clearInterval(pollingRef.current!);
-          pollingRef.current = null;
-          setGeneratingNote(null);
-          sessionStorage.removeItem('noteGenJob');
-          notifyQuotaChanged();  // слот квоты возвращён на бэкенде
-          alert(`Ошибка генерации: ${job.error || 'Неизвестная ошибка'}`);
-        }
-      } catch {
-        // Network error — keep polling
       }
+      if (anyDone) await fetchLectures();
+      failures.forEach(msg => alert(`Ошибка генерации: ${msg}`));
     };
 
-    pollingRef.current = setInterval(poll, 5000);
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, [generatingNote?.jobId, generatingNote?.lectureId, authHeaders, fetchLectures]);
+    const id = setInterval(poll, 5000);
+    return () => clearInterval(id);
+  }, [authHeaders, fetchLectures]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -784,9 +802,13 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
       }
       notifyQuotaChanged();
       const { job_id } = await res.json();
-      const jobInfo = { lectureId, mode, jobId: job_id };
-      sessionStorage.setItem('noteGenJob', JSON.stringify(jobInfo));
-      setGeneratingNote(jobInfo);
+      const jobInfo: GenJob = { lectureId, mode, jobId: job_id };
+      setGeneratingJobs(prev => {
+        // одна задача на (лекция+режим): перезапуск того же режима заменяет старую
+        const next = [...prev.filter(j => !(j.lectureId === lectureId && j.mode === mode)), jobInfo];
+        sessionStorage.setItem('noteGenJobs', JSON.stringify(next));
+        return next;
+      });
     } catch (e: any) {
       alert(`Ошибка: ${e.message}`);
     }
@@ -1100,9 +1122,12 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
             const inProgress      = isInProgress(lecture);
             const isFiltering     = filteringId === lecture.id;
             const isReTranscribing = reTranscribingId === lecture.id;
-            const isGenerating    = generatingNote?.lectureId === lecture.id;
+            const generatingModes = new Set(
+              generatingJobs.filter(j => j.lectureId === lecture.id).map(j => j.mode)
+            );
+            const isGenerating    = generatingModes.size > 0;
             const existingModes   = new Set(lecture.notes.map(n => n.mode));
-            const availableModes  = ML_MODES.filter(m => !existingModes.has(m.id));
+            const availableModes  = ML_MODES.filter(m => !existingModes.has(m.id) && !generatingModes.has(m.id));
             const showAddDropdown = addNoteDropdown === lecture.id;
             const pub = publicationStatuses[lecture.id];
             const inCatalog = Boolean(lecture.catalog_stream_id);
@@ -1356,19 +1381,19 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
                           </button>
                         ))}
 
-                        {/* Generating spinner */}
-                        {isGenerating && (
-                          <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs" style={{ color: mutedColor }}>
+                        {/* Generating spinners — по одному на каждый запущенный режим */}
+                        {Array.from(generatingModes).map(gm => (
+                          <span key={gm} className="flex items-center gap-1.5 px-3 py-1.5 text-xs" style={{ color: mutedColor }}>
                             <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                             </svg>
-                            Генерация...
+                            {modeLabel(gm)}...
                           </span>
-                        )}
+                        ))}
 
-                        {/* Add note button */}
-                        {availableModes.length > 0 && !isGenerating && (
+                        {/* Add note button — доступна даже во время генераций */}
+                        {availableModes.length > 0 && (
                           <div className="relative" ref={showAddDropdown ? dropdownRef : undefined}>
                             <button
                               onClick={() => setAddNoteDropdown(showAddDropdown ? null : lecture.id)}
