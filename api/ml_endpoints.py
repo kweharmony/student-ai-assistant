@@ -373,6 +373,18 @@ async def explain_fragment(
         explanation = response.choices[0].message.content or ""
         processing_time = (datetime.now() - start_time).total_seconds()
 
+        # Пустой ответ модели — не списываем слот квоты.
+        if not explanation.strip():
+            await quota.refund(db, usage_id)
+            return ExplainResponse(
+                success=False,
+                explanation="",
+                model=POLZA_MODEL,
+                processing_time=processing_time,
+                timestamp=datetime.now(),
+                error="Модель вернула пустой ответ",
+            )
+
         return ExplainResponse(
             success=True,
             explanation=explanation,

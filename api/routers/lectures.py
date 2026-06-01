@@ -591,6 +591,11 @@ async def apply_ai_filter(
         await quota.refund(db, usage_id)
         raise HTTPException(status_code=500, detail=f"Ошибка фильтрации: {str(e)}")
 
+    # Пустой результат фильтрации — слот не списываем.
+    if not (filtered or "").strip():
+        await quota.refund(db, usage_id)
+        raise HTTPException(status_code=500, detail="Фильтрация вернула пустой результат")
+
     latest.processed_text = filtered
     latest.is_ai_filtered = True
     latest.filtered_at = datetime.utcnow()
@@ -842,6 +847,10 @@ async def _run_note_gen_job(
             content = await proc.expand_topic(topic=topic, context=text)
         else:
             content = await proc.process_text(text, mode)
+
+        # Пустой ответ модели — это не результат: считаем провалом и вернём слот квоты.
+        if not (content or "").strip():
+            raise RuntimeError("Модель вернула пустой ответ")
 
         lecture_uuid = PyUUID(lecture_id_str)
         async with async_session() as db:
