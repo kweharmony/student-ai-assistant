@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext';
 import { exportMarkdownFile } from '../../utils/exportUtils';
 import { safeMdParse } from '../../utils/markdownUtils';
-import { notifyQuotaChanged, quotaMessageFromResponse } from '../../utils/quota';
+import { notifyQuotaChanged, quotaDetailFromResponse, QuotaExceededDetail } from '../../utils/quota';
 import QuotaBadge from './QuotaBadge';
+import QuotaLimitModal from './QuotaLimitModal';
 import 'katex/dist/katex.min.css';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
@@ -439,6 +440,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
   const generatingJobsRef = useRef<GenJob[]>([]);
   useEffect(() => { generatingJobsRef.current = generatingJobs; }, [generatingJobs]);
   const [topicInput, setTopicInput]                 = useState('');
+  const [quotaModal, setQuotaModal]                 = useState<QuotaExceededDetail | null>(null);
   const [pendingTopicMode, setPendingTopicMode]     = useState<{ lectureId: string; mode: string } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [openCatalogDropdown, setOpenCatalogDropdown] = useState<string | null>(null);
@@ -701,8 +703,8 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
         headers: authHeaders(),
       });
       if (!res.ok) {
-        const quotaMsg = await quotaMessageFromResponse(res.clone());
-        if (quotaMsg) throw new Error(quotaMsg);
+        const quotaDetail = await quotaDetailFromResponse(res.clone());
+        if (quotaDetail) { setQuotaModal(quotaDetail); return; }
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Ошибка фильтрации');
       }
@@ -795,8 +797,8 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
         body: JSON.stringify({ mode, topic }),
       });
       if (!res.ok) {
-        const quotaMsg = await quotaMessageFromResponse(res.clone());
-        if (quotaMsg) throw new Error(quotaMsg);
+        const quotaDetail = await quotaDetailFromResponse(res.clone());
+        if (quotaDetail) { setQuotaModal(quotaDetail); return; }
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Не удалось запустить генерацию');
       }
@@ -1492,6 +1494,15 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Quota limit modal ── */}
+      {quotaModal && (
+        <QuotaLimitModal
+          detail={quotaModal}
+          isLightTheme={isLightTheme}
+          onClose={() => setQuotaModal(null)}
+        />
       )}
 
       {/* ── Delete confirmation modal ── */}

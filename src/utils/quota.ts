@@ -80,6 +80,19 @@ export async function quotaMessageFromResponse(res: Response): Promise<string | 
   return null;
 }
 
+// Возвращает структурные детали 429-квоты (для красивой модалки), иначе null.
+export async function quotaDetailFromResponse(res: Response): Promise<QuotaExceededDetail | null> {
+  if (res.status !== 429) return null;
+  const body = await res.json().catch(() => null);
+  const detail = body?.detail;
+  return isQuotaExceeded(detail) ? detail : null;
+}
+
+// Человекочитаемая дата сброса (или null).
+export function formatResetDate(iso: string | null): string | null {
+  return iso ? fmtDate(iso) || null : null;
+}
+
 // Простой шина-событие, чтобы бейджи обновлялись после расхода/возврата слота.
 const QUOTA_EVENT = 'mindesync:quota-changed';
 export function notifyQuotaChanged(): void {
