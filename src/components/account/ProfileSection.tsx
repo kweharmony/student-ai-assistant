@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { fetchQuota, onQuotaChanged, QuotaInfo } from '../../utils/quota';
 
 const EMOJI_LIST = [
   '😀','😎','🤓','🧑‍💻','👨‍🎓','👩‍🎓','🧑‍🏫','👨‍🔬','👩‍🔬','🧙','🦊','🐼','🐨','🦁','🐯',
@@ -52,6 +53,17 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
   // Emoji picker
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiLoading, setEmojiLoading] = useState(false);
+
+  // Subscription / quota
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
+  const refreshQuota = useCallback(async () => {
+    const q = await fetchQuota(token);
+    if (q) setQuota(q);
+  }, [token]);
+  useEffect(() => {
+    refreshQuota();
+    return onQuotaChanged(refreshQuota);
+  }, [refreshQuota]);
 
   const handleSelectEmoji = async (emoji: string) => {
     setEmojiLoading(true);
@@ -519,6 +531,83 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({ isLightTheme, navigate 
                   После сохранения изменить роль сможет только администратор.
                 </p>
               </div>
+            )}
+          </div>
+
+          {/* Subscription / plan block */}
+          <div className="border rounded-lg p-4 md:p-5" style={{ background: 'var(--hover-bg)', borderColor: 'var(--border-color)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined" style={{ color: '#6366f1' }}>workspace_premium</span>
+              <h4 className="text-base md:text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Тариф</h4>
+            </div>
+
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-xs md:text-sm opacity-70" style={{ color: 'var(--text-secondary)' }}>Текущий план:</span>
+              <span
+                className="text-xs md:text-sm font-semibold px-2.5 py-0.5 rounded-full"
+                style={
+                  user.role === 'admin'
+                    ? { background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }
+                    : user.subscription_tier === 'pro'
+                    ? { background: 'rgba(99,102,241,0.12)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.3)' }
+                    : { background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }
+                }
+              >
+                {user.role === 'admin' ? 'Без лимитов' : user.subscription_tier === 'pro' ? 'Pro' : 'Free'}
+              </span>
+            </div>
+
+            {user.role !== 'admin' && user.subscription_tier === 'pro' && user.subscription_expires_at && (
+              <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+                Действует до {new Date(user.subscription_expires_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </p>
+            )}
+
+            {user.role === 'admin' ? (
+              <p className="text-xs opacity-70" style={{ color: 'var(--text-secondary)' }}>
+                Администратор генерирует материалы и объяснения без ограничений.
+              </p>
+            ) : quota ? (
+              <div className="space-y-3">
+                {([
+                  { key: 'generation' as const, label: 'Генерации материалов (заметки + AI-фильтр)' },
+                  { key: 'explain' as const, label: 'Объяснения фрагментов' },
+                ]).map(({ key, label }) => {
+                  const b = quota[key];
+                  const limit = b.limit ?? 0;
+                  const remaining = b.remaining ?? 0;
+                  const used = b.used;
+                  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+                  const reset = b.next_reset_at
+                    ? new Date(b.next_reset_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+                    : null;
+                  const barColor = remaining <= 0 ? '#ef4444' : remaining <= 1 ? '#f59e0b' : '#6366f1';
+                  return (
+                    <div key={key}>
+                      <div className="flex justify-between items-baseline mb-1">
+                        <span className="text-xs md:text-sm" style={{ color: 'var(--text-primary)' }}>{label}</span>
+                        <span className="text-xs font-semibold" style={{ color: barColor }}>
+                          осталось {remaining} из {limit}
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
+                      </div>
+                      {reset && remaining < limit && (
+                        <p className="text-[11px] mt-1 opacity-60" style={{ color: 'var(--text-secondary)' }}>
+                          Ближайший слот освободится {reset}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+                <p className="text-[11px] opacity-60" style={{ color: 'var(--text-secondary)' }}>
+                  Лимиты считаются за последние 30 дней (скользящее окно).
+                  {user.subscription_tier === 'free' && ' Для повышения лимита обратитесь к администратору за тарифом Pro.'}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>Загрузка лимитов…</p>
             )}
           </div>
 
