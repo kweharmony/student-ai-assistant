@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..dependencies import can_moderate_stream, get_current_user, get_db, require_catalog_moderator
-from ..models import AudioFile, Lecture, LectureAiFilterRequest, LectureAiFilterRequestStatus, LectureCatalogItem, LectureNote, LectureStatus, Transcription, TranscriptionTask, User
+from .. import quota
+from ..models import AudioFile, GenerationUsageKind, Lecture, LectureAiFilterRequest, LectureAiFilterRequestStatus, LectureCatalogItem, LectureNote, LectureStatus, Transcription, TranscriptionTask, User
 import asyncio
 from uuid import UUID as PyUUID
 
@@ -575,11 +576,19 @@ async def apply_ai_filter(
     latest = sorted(active_transcriptions, key=lambda t: t.created_at, reverse=True)[0]
     source_text = latest.raw_text
 
+    # AI-фильтр личной лекции расходует общий пул генераций (кроме админа).
+    usage_id = None
+    if user.role != "admin":
+        usage_id = await quota.check_and_record(
+            db, user, GenerationUsageKind.generation, lecture_id=lecture_id, mode="ai_filter"
+        )
+
     try:
         from ml.transcription_filter import TranscriptionFilter
         fltr = TranscriptionFilter()
         filtered = await fltr.filter_text_async(source_text, chunk_size=8000)
     except Exception as e:
+        await quota.refund(db, usage_id)
         raise HTTPException(status_code=500, detail=f"Ошибка фильтрации: {str(e)}")
 
     latest.processed_text = filtered
@@ -823,6 +832,7 @@ async def _run_note_gen_job(
     mode: str,
     text: str,
     topic: Optional[str],
+    usage_id: Optional[str] = None,
 ) -> None:
     _note_gen_jobs[job_id]["status"] = "processing"
     try:
@@ -855,6 +865,13 @@ async def _run_note_gen_job(
     except Exception as exc:
         _note_gen_jobs[job_id]["status"] = "failed"
         _note_gen_jobs[job_id]["error"] = str(exc)[:500]
+        # Возврат слота квоты: генерация не удалась — деньги на API не потрачены.
+        if usage_id is not None:
+            try:
+                async with async_session() as db:
+                    await quota.refund(db, PyUUID(usage_id))
+            except Exception:
+                pass
 
 
 @router.post("/{lecture_id}/notes/generate", status_code=202)
@@ -879,6 +896,15 @@ async def start_note_generation(
     if body.mode == "expand_topic" and not body.topic:
         raise HTTPException(status_code=400, detail="Для expand_topic нужна тема")
 
+    # Лимит расходуется только при генерации в СВОЕЙ личной лекции.
+    # Модераторская генерация в опубликованной чужой лекции и админ — без списания.
+    usage_id = None
+    if lecture.uploaded_by == user.id and user.role != "admin":
+        reserved = await quota.check_and_record(
+            db, user, GenerationUsageKind.generation, lecture_id=lecture_id, mode=body.mode
+        )
+        usage_id = str(reserved) if reserved is not None else None
+
     job_id = str(_uuid_mod.uuid4())
     _note_gen_jobs[job_id] = {
         "job_id": job_id,
@@ -890,7 +916,7 @@ async def start_note_generation(
         "user_id": str(user.id),
     }
     background_tasks.add_task(
-        _run_note_gen_job, job_id, str(lecture_id), str(user.id), body.mode, text, body.topic
+        _run_note_gen_job, job_id, str(lecture_id), str(user.id), body.mode, text, body.topic, usage_id
     )
     return {"job_id": job_id, "status": "pending"}
 

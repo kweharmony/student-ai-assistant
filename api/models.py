@@ -30,6 +30,16 @@ class LectureStatus(str, enum.Enum):
     error = "error"
 
 
+class SubscriptionTier(str, enum.Enum):
+    free = "free"
+    pro = "pro"
+
+
+class GenerationUsageKind(str, enum.Enum):
+    generation = "generation"   # генерация заметок + AI-фильтр личной лекции (общий пул)
+    explain = "explain"         # объяснение фрагмента (/api/ml/explain)
+
+
 # ---------- helpers ----------
 
 def _uuid():
@@ -55,6 +65,13 @@ class User(Base):
     is_group_head = Column(Boolean, default=False, nullable=False, index=True)
     stream_id = Column(UUID(as_uuid=True), ForeignKey("streams.id"), nullable=True, index=True)
     can_choose_role = Column(Boolean, default=False, nullable=False, server_default="false")
+    subscription_tier = Column(
+        Enum(SubscriptionTier, name="subscription_tier", native_enum=False),
+        default=SubscriptionTier.free,
+        server_default="free",
+        nullable=False,
+    )
+    subscription_expires_at = Column(DateTime, nullable=True)  # None у free; срок действия pro
     is_active = Column(Boolean, default=True, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     blocked_reason = Column(String(300), nullable=True)
@@ -511,3 +528,31 @@ class LectureMaterialGenerationRequest(Base):
     stream = relationship("Stream")
     requester = relationship("User", foreign_keys=[requested_by])
     reviewer = relationship("User", foreign_keys=[reviewed_by])
+
+
+# ========== generation_usage (учёт расхода квоты, скользящее окно 30 дней) ==========
+
+class GenerationUsage(Base):
+    """Журнал расхода квоты генераций/объяснений.
+
+    Одна строка = один израсходованный слот. Остаток считается как
+    COUNT(*) за последние 30 дней (см. api/quota.py). Строки старше окна
+    подчищает фоновый цикл в app.py.
+    """
+    __tablename__ = "generation_usage"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    kind = Column(
+        Enum(GenerationUsageKind, name="generation_usage_kind", native_enum=False),
+        nullable=False,
+    )
+    lecture_id = Column(UUID(as_uuid=True), ForeignKey("lectures.id", ondelete="SET NULL"), nullable=True)
+    mode = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
+
+    __table_args__ = (
+        Index("ix_generation_usage_user_kind_created", "user_id", "kind", "created_at"),
+    )

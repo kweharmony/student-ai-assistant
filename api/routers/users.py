@@ -15,7 +15,8 @@ import re
 
 from ..auth import hash_password, verify_password
 from ..dependencies import get_current_user, get_db
-from ..models import Direction, Faculty, Stream, User
+from .. import quota
+from ..models import Direction, Faculty, GenerationUsageKind, Stream, User
 from ..schemas import ChangePasswordRequest, SetEmojiRequest, StreamCreateForUserIn, UserOut, UserRoleUpdateIn, UserUpdateRequest
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
@@ -28,6 +29,19 @@ AVATARS_DIR = DATA_DIR / "avatars"
 async def get_my_profile(user: User = Depends(get_current_user)):
     """Мой профиль с данными student_profile / teacher_profile."""
     return user
+
+
+@router.get("/me/quota")
+async def get_my_quota(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Остаток квоты по двум пулам: генерации (заметки+фильтр) и объяснения."""
+    return {
+        "tier": quota.effective_tier(user).value,
+        "generation": await quota.snapshot(db, user, GenerationUsageKind.generation),
+        "explain": await quota.snapshot(db, user, GenerationUsageKind.explain),
+    }
 
 
 @router.put("/me", response_model=UserOut)

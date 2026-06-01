@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { MLMode, MLModeInfo } from '../../types/ml';
 import { marked } from 'marked';
 import { fixBrokenFormulas, safeMdParse } from '../../utils/markdownUtils';
+import { notifyQuotaChanged, quotaMessageFromResponse } from '../../utils/quota';
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse');
 
@@ -243,7 +244,11 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: explainTooltip.text }),
       });
-      if (!res.ok) throw new Error('Не удалось получить объяснение');
+      if (!res.ok) {
+        const quotaMsg = await quotaMessageFromResponse(res.clone());
+        throw new Error(quotaMsg || 'Не удалось получить объяснение');
+      }
+      notifyQuotaChanged();
       const data = await res.json();
       setExplainResult(data?.explanation || '');
     } catch (e: any) {

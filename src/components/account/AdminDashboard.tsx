@@ -22,6 +22,8 @@ interface AdminUser {
   email: string;
   role: string;
   is_group_head: boolean;
+  subscription_tier: 'free' | 'pro';
+  subscription_expires_at: string | null;
   stream_id: string | null;
   stream: { id: string; name: string } | null;
   full_name: string | null;
@@ -501,6 +503,25 @@ const AdminDashboard: React.FC = () => {
     setAssignLoading(false);
   };
 
+  const handleSetSubscription = async (userId: string, tier: 'free' | 'pro') => {
+    try {
+      // Pro по умолчанию на 30 дней; free — без срока.
+      const expires_at = tier === 'pro'
+        ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+      const res = await fetch(`${API_BASE}/api/admin/users/${userId}/subscription`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier, expires_at }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Ошибка изменения подписки');
+      }
+      fetchUsers();
+    } catch (e: any) { setError(e.message); }
+  };
+
   const handleRemoveGroupHead = async (userId: string, keepStreamId?: string | null) => {
     try {
       const res = await fetch(`${API_BASE}/api/admin/users/${userId}/group-head`, {
@@ -681,6 +702,11 @@ const AdminDashboard: React.FC = () => {
                         Староста потока {user.stream?.name || user.stream_id || '—'}
                       </div>
                     )}
+                    {user.role !== 'admin' && user.subscription_tier === 'pro' && (
+                      <div className="text-xs mt-1" style={{ color: '#6366f1' }}>
+                        Тариф Pro{user.subscription_expires_at ? ` · до ${formatDate(user.subscription_expires_at)}` : ''}
+                      </div>
+                    )}
                     {user.role === 'teacher' && user.teacher_profile && (
                       <div className="text-xs opacity-50 mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                         {[user.teacher_profile.department, user.teacher_profile.position, user.teacher_profile.academic_degree].filter(Boolean).join(' \u00b7 ')}
@@ -699,7 +725,24 @@ const AdminDashboard: React.FC = () => {
 
                   {/* Actions */}
                   {user.role !== 'admin' && (
-                    <div className="flex gap-2 shrink-0">
+                    <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+                      {user.subscription_tier === 'pro' ? (
+                        <button
+                          onClick={() => handleSetSubscription(user.id, 'free')}
+                          className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
+                          style={{ borderColor: 'rgba(99,102,241,0.35)', color: '#6366f1' }}
+                        >
+                          Снять Pro
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleSetSubscription(user.id, 'pro')}
+                          className="px-3 py-1.5 text-xs rounded-lg border transition-all hover:opacity-80"
+                          style={{ borderColor: 'rgba(99,102,241,0.35)', color: '#6366f1' }}
+                        >
+                          Выдать Pro
+                        </button>
+                      )}
                       {user.role === 'student' && (
                         user.is_group_head ? (
                           <button

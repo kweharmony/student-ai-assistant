@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { safeMdParse } from '../../utils/markdownUtils';
+import { notifyQuotaChanged, quotaMessageFromResponse } from '../../utils/quota';
+import QuotaBadge from './QuotaBadge';
 import 'katex/dist/katex.min.css';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -211,9 +213,12 @@ const ExplainSection: React.FC<ExplainSectionProps> = ({ isLightTheme }) => {
         }),
       });
       if (!res.ok) {
+        const quotaMsg = await quotaMessageFromResponse(res.clone());
+        if (quotaMsg) throw new Error(quotaMsg);
         const detail = await res.json().catch(() => ({}));
         throw new Error(detail?.detail || 'Не удалось получить объяснение');
       }
+      notifyQuotaChanged();
       const data = await res.json();
       setExplanation(data?.explanation || '');
     } catch (err: any) {
@@ -328,13 +333,16 @@ const ExplainSection: React.FC<ExplainSectionProps> = ({ isLightTheme }) => {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h2 className="text-2xl md:text-3xl font-semibold" style={{ color: headingColor }}>
-          Разбор лекций
-        </h2>
-        <p className="mt-2 text-sm md:text-base" style={{ color: mutedColor }}>
-          Выберите лекцию, выделите фрагмент и получите понятное объяснение от ИИ.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-semibold" style={{ color: headingColor }}>
+            Разбор лекций
+          </h2>
+          <p className="mt-2 text-sm md:text-base" style={{ color: mutedColor }}>
+            Выберите лекцию, выделите фрагмент и получите понятное объяснение от ИИ.
+          </p>
+        </div>
+        <QuotaBadge kind="explain" />
       </div>
 
       <div className="rounded-2xl p-4 md:p-5 space-y-4" style={{ background: panelBg, border: panelBorder }}>

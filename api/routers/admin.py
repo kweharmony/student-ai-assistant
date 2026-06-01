@@ -17,11 +17,12 @@ from sqlalchemy.orm import selectinload
 
 from ..dependencies import get_db, require_admin
 from ..models import (
-    AdminAction, AudioFile, Lecture, LectureStatus, Transcription, TranscriptionTask,
+    AdminAction, AudioFile, Lecture, LectureStatus, SubscriptionTier, Transcription, TranscriptionTask,
     TranscriptionTaskStatus, User, UserRole, StudentProfile, TeacherProfile, Board, Stream,
 )
 from ..schemas import (
     AdminSetGroupHeadIn,
+    AdminSetSubscriptionIn,
     AdminActionOut,
     AdminLectureUpdateRequest,
     AdminUserOut,
@@ -315,6 +316,36 @@ async def set_group_head(
     await db.commit()
     await db.refresh(target)
     return {"detail": "Права старосты обновлены"}
+
+
+@router.put("/users/{user_id}/subscription", status_code=status.HTTP_200_OK)
+async def set_subscription(
+    user_id: UUID,
+    body: AdminSetSubscriptionIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Выдать/снять платный тариф (pro) и задать срок действия."""
+    result = await db.execute(select(User).where(User.id == user_id, User.is_deleted == False))
+    target = result.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    tier = SubscriptionTier(body.tier)
+    target.subscription_tier = tier
+    # Срок имеет смысл только для pro; для free сбрасываем.
+    target.subscription_expires_at = body.expires_at if tier == SubscriptionTier.pro else None
+
+    await _log_action(
+        db, admin, "set_subscription", "user", user_id,
+        details={
+            "tier": body.tier,
+            "expires_at": body.expires_at.isoformat() if body.expires_at else None,
+        },
+    )
+    await db.commit()
+    await db.refresh(target)
+    return {"detail": "Подписка обновлена"}
 
 
 # ---------- Content deletion ----------

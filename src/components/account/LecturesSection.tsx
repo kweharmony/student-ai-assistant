@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext';
 import { exportMarkdownFile } from '../../utils/exportUtils';
 import { safeMdParse } from '../../utils/markdownUtils';
+import { notifyQuotaChanged, quotaMessageFromResponse } from '../../utils/quota';
+import QuotaBadge from './QuotaBadge';
 import 'katex/dist/katex.min.css';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mdParse = (require('marked') as { parse: (s: string) => string }).parse;
@@ -657,6 +659,7 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
           pollingRef.current = null;
           setGeneratingNote(null);
           sessionStorage.removeItem('noteGenJob');
+          notifyQuotaChanged();  // слот квоты возвращён на бэкенде
           alert(`Ошибка генерации: ${job.error || 'Неизвестная ошибка'}`);
         }
       } catch {
@@ -680,9 +683,12 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
         headers: authHeaders(),
       });
       if (!res.ok) {
+        const quotaMsg = await quotaMessageFromResponse(res.clone());
+        if (quotaMsg) throw new Error(quotaMsg);
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Ошибка фильтрации');
       }
+      notifyQuotaChanged();
       setLectures(prev => prev.map(l =>
         l.id === lecture.id ? { ...l, is_ai_filtered: true } : l
       ));
@@ -771,9 +777,12 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
         body: JSON.stringify({ mode, topic }),
       });
       if (!res.ok) {
+        const quotaMsg = await quotaMessageFromResponse(res.clone());
+        if (quotaMsg) throw new Error(quotaMsg);
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Не удалось запустить генерацию');
       }
+      notifyQuotaChanged();
       const { job_id } = await res.json();
       const jobInfo = { lectureId, mode, jobId: job_id };
       sessionStorage.setItem('noteGenJob', JSON.stringify(jobInfo));
@@ -1040,10 +1049,11 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
         </h1>
       </div>
 
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
+        <QuotaBadge kind="generation" />
         <button
           onClick={fetchLectures}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ml-auto"
           style={{ background: btnBg, color: btnColor }}
         >
           <span className="material-symbols-outlined text-base">refresh</span>

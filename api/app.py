@@ -109,13 +109,33 @@ async def _audio_cleanup_loop() -> None:
                 await db.commit()
 
 
+async def _usage_cleanup_loop() -> None:
+    """
+    Раз в сутки удаляет записи расхода квоты старше 35 дней.
+    Скользящее окно — 30 дней, держим небольшой запас и подчищаем хвост,
+    чтобы таблица generation_usage не росла бесконечно.
+    """
+    from sqlalchemy import delete
+    from .database import async_session
+    from .models import GenerationUsage
+
+    while True:
+        await asyncio.sleep(86400)  # раз в сутки
+        cutoff = datetime.utcnow() - timedelta(days=35)
+        async with async_session() as db:
+            await db.execute(delete(GenerationUsage).where(GenerationUsage.created_at < cutoff))
+            await db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     recovery_task = asyncio.create_task(_timeout_recovery_loop())
     cleanup_task = asyncio.create_task(_audio_cleanup_loop())
+    usage_cleanup_task = asyncio.create_task(_usage_cleanup_loop())
     yield
     recovery_task.cancel()
     cleanup_task.cancel()
+    usage_cleanup_task.cancel()
 
 
 app = FastAPI(title="MindeSync — Student AI Assistant API", lifespan=lifespan)

@@ -77,6 +77,8 @@ class UserOut(BaseModel):
     avatar_emoji: Optional[str] = None
     is_group_head: bool = False
     can_choose_role: bool = False
+    subscription_tier: str = "free"
+    subscription_expires_at: Optional[datetime] = None
     stream_id: Optional[UUID] = None
     stream: Optional[UserStreamOut] = None
     is_active: bool
@@ -546,6 +548,12 @@ class CatalogBulkUpdateIn(BaseModel):
 class AdminSetGroupHeadIn(BaseModel):
     is_group_head: bool
     stream_id: Optional[UUID] = None
+
+
+class AdminSetSubscriptionIn(BaseModel):
+    tier: str = Field(..., pattern="^(free|pro)$")
+    # None = бессрочно (или неактуально для free)
+    expires_at: Optional[datetime] = None
 
 
 class SaveTextIn(BaseModel):

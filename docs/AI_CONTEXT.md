@@ -226,12 +226,14 @@ student-ai-assistant/
 - `TranscriptionTaskStatus`: pending / processing / completed / error / failed
 - `LectureAiFilterRequestStatus`: pending / approved / rejected / failed
 - `PublicationRequestStatus`, `MaterialGenerationRequestStatus`: pending / approved / rejected
+- `SubscriptionTier`: free / pro
+- `GenerationUsageKind`: generation / explain (учёт квоты, см. BUSINESS_LOGIC §7А)
 
 ### Таблицы (модель → таблица → ключевое)
 
 | Модель | Таблица | Назначение / ключевые поля |
 |--------|---------|----------------------------|
-| `User` | `users` | login, email, password_hash, `role`, `is_group_head`, `stream_id`, `can_choose_role`, поля блокировки (`blocked_reason/by/at/until`), `avatar_url/emoji` |
+| `User` | `users` | login, email, password_hash, `role`, `is_group_head`, `stream_id`, `can_choose_role`, `subscription_tier`/`subscription_expires_at` (тариф), поля блокировки (`blocked_reason/by/at/until`), `avatar_url/emoji` |
 | `StudentProfile` | `student_profiles` | 1:1 с user; group_name, course, faculty |
 | `TeacherProfile` | `teacher_profiles` | 1:1 с user; department, position, academic_degree |
 | `Lecture` | `lectures` | title, subject, `uploaded_by`, `status`, `is_public`, мягкое удаление |
@@ -251,6 +253,7 @@ student-ai-assistant/
 | `LecturePublicationRequest` | `lecture_publication_requests` | заявка на публикацию лекции в каталог (модерация) |
 | `LectureCatalogItem` | `lecture_catalog_items` | опубликованная лекция в каталоге (1:1 с lecture) |
 | `LectureMaterialGenerationRequest` | `lecture_material_generation_requests` | заявка на генерацию материала с модерацией + регенерация |
+| `GenerationUsage` | `generation_usage` | журнал расхода квоты (`kind`, `lecture_id?`, `mode?`, `created_at`); скользящее окно 30 дней — см. BUSINESS_LOGIC §7А |
 
 ### Связи (упрощённо)
 ```
@@ -282,7 +285,8 @@ Pydantic-схемы запросов/ответов — в [api/schemas.py](../a
 | GET | `/me` | текущий пользователь (`UserOut`) |
 
 ### `/api/users` — [routers/users.py](../api/routers/users.py)
-`GET/PUT /me` (профиль), `PUT /me/role`, `POST /me/stream` (создать+назначить поток),
+`GET/PUT /me` (профиль), `GET /me/quota` (остаток лимитов генераций/объяснений),
+`PUT /me/role`, `POST /me/stream` (создать+назначить поток),
 `POST /me/password`, `PUT/DELETE /me/avatar-emoji`, `POST/DELETE /me/avatar` (файл).
 
 ### `/api/lectures` — [routers/lectures.py](../api/routers/lectures.py)
@@ -322,7 +326,8 @@ pub/sub** (канал `boards:{board_id}`); периодически persist'и�
 ### `/api/admin` — [routers/admin.py](../api/routers/admin.py) (требует `require_admin`)
 Пользователи: `GET /users`, `DELETE /users/{id}` (hard delete),
 `POST /users/{id}/block|unblock`, `DELETE /users/{id}/avatar`,
-`PUT /users/{id}/group-head`. Контент: `DELETE/PUT /lectures/{id}`,
+`PUT /users/{id}/group-head`, `PUT /users/{id}/subscription` (выдать/снять Pro).
+Контент: `DELETE/PUT /lectures/{id}`,
 `DELETE /audio/{id}`, `DELETE /transcriptions/{id}`. Мониторинг: `GET /actions`
 (аудит), `GET /stats`, `GET /queue`, `GET /worker-stats`, `GET /lectures`,
 `GET /lectures/audio/with-expiry`, `GET /boards`.
@@ -338,9 +343,10 @@ pub/sub** (канал `boards:{board_id}`); периодически persist'и�
 | POST | `/heartbeat` | продлить `last_heartbeat_at` |
 | GET | `/status` | счётчики очереди + активные воркеры |
 
-### `/api/ml` — [ml_endpoints.py](../api/ml_endpoints.py) (без auth)
+### `/api/ml` — [ml_endpoints.py](../api/ml_endpoints.py) (в основном без auth)
 `GET /health`, `POST /process` (основная обработка по `mode`), `POST /batch-process`,
-`POST /explain` (объяснить фрагмент — через Polza-клиент), `POST /diagram`
+`POST /explain` (объяснить фрагмент — через Polza-клиент; **требует auth** и
+расходует квоту `explain`, см. BUSINESS_LOGIC §7А), `POST /diagram`
 (текст → Excalidraw/диаграмма), `GET /modes`, `POST /quick-summary`.
 
 ### `/api/transcribe` — [transcribe.py](../api/transcribe.py) (legacy «всё-в-одном»)
@@ -519,6 +525,7 @@ Markdown туда через `httpx` (адрес сервиса — env `PDF_SER
 | `CORS_ORIGINS` | разрешённые домены фронта |
 | `REACT_APP_API_URL` | базовый URL API (вшивается в сборку React) |
 | `WORKER_API_KEYS` | ключи воркеров: `Имя:ключ,Имя2:ключ2` |
+| `QUOTA_GEN_FREE/PRO`, `QUOTA_EXPLAIN_FREE/PRO` | лимиты генераций/объяснений по тарифу (дефолты 5/15 и 10/30, см. [api/quota.py](../api/quota.py)) |
 | `DEBUG`, `LOG_LEVEL` | отладка/логи |
 
 Воркер конфигурируется отдельно через [worker/config.json](../worker/config.json).
@@ -559,6 +566,7 @@ templates, semester, material generation, regeneration, can_choose_role и т.д
 | Изменить правила доступа | [api/dependencies.py](../api/dependencies.py) (`require_admin`, `require_catalog_moderator`, `can_moderate_stream`) |
 | Поведение/срок жизни токена, logout | [api/auth.py](../api/auth.py) |
 | Новый режим обработки текста | [ml/prompts.py](../ml/prompts.py) (`PROMPTS` + `PROCESSING_CONFIGS`) + ветка в [ml/deepseek_processor.py](../ml/deepseek_processor.py); фронт-тип `MLMode` в [src/types/ml.ts](../src/types/ml.ts) |
+| Лимиты генераций / тарифы | [api/quota.py](../api/quota.py) (лимиты, окно, учёт); точки списания — [lectures.py](../api/routers/lectures.py) (`notes/generate`, `apply-filter`) и [ml_endpoints.py](../api/ml_endpoints.py) (`explain`); фронт — [src/utils/quota.ts](../src/utils/quota.ts), [QuotaBadge.tsx](../src/components/account/QuotaBadge.tsx) |
 | Сменить LLM-провайдера/модель | env `DEEPSEEK_*` (основной) или `POLZA_*`/`DIAGRAM_*` (explain/diagram, см. [ml_endpoints.py](../api/ml_endpoints.py)) |
 | Логика очереди транскрибации | [api/routers/worker.py](../api/routers/worker.py) (сервер) + [worker/worker.py](../worker/worker.py) (клиент); recovery-цикл в [api/app.py](../api/app.py) |
 | Новая секция кабинета | компонент в [src/components/account/](../src/components/account/) + регистрация в `ActiveSection` ([types.ts](../src/components/account/types.ts)), [AccountPage.tsx](../src/components/account/AccountPage.tsx), [Sidebar.tsx](../src/components/account/Sidebar.tsx) |
@@ -574,9 +582,13 @@ templates, semester, material generation, regeneration, can_choose_role и т.д
   `GET /api/auth/refresh`. Не переносите токен в localStorage.
 - **Два LLM-провайдера**: `/api/ml/process` использует `DEEPSEEK_*`, а
   `/api/ml/explain` и `/diagram` — `POLZA_*`/`DIAGRAM_*`. Это разные клиенты.
-- **Часть эндпоинтов без auth**: весь `/api/ml/*`, а также `/api/transcribe/filter`
-  и `/api/transcribe/health` не требуют токена. Но `/api/transcribe/upload` —
-  **требует** auth (`get_current_user`). Учитывайте при изменениях безопасности.
+- **Часть эндпоинтов без auth**: `/api/ml/process|batch-process|diagram|modes|quick-summary`,
+  а также `/api/transcribe/filter` и `/api/transcribe/health` не требуют токена.
+  Но `/api/transcribe/upload` и **`/api/ml/explain`** — **требуют** auth
+  (`get_current_user`); explain вдобавок расходует квоту. Учитывайте при изменениях безопасности.
+- **Лимиты генераций (подписки)**: личная генерация заметок/AI-фильтр и объяснения
+  ограничены квотой со скользящим окном 30 дней (`generation_usage` + [api/quota.py](../api/quota.py)).
+  При исчерпании — **429 `quota_exceeded`**. Тариф (`free`/`pro`) ставит админ. Полностью — BUSINESS_LOGIC §7А.
 - **`export_router` имеет двойной префикс**: `prefix="/export"` в роутере +
   `prefix="/api"` при подключении → реальный путь `/api/export/*`.
 - **Транскрибация только через воркеры**: у сервера нет GPU; задачи живут в

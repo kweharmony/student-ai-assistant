@@ -21,6 +21,8 @@ export interface User {
   role: 'student' | 'teacher' | 'admin';
   is_group_head: boolean;
   can_choose_role: boolean;
+  subscription_tier: 'free' | 'pro';
+  subscription_expires_at: string | null;
   stream_id: string | null;
   stream: { id: string; name: string } | null;
   full_name: string | null;

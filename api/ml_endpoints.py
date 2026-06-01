@@ -3,7 +3,7 @@ FastAPI эндпоинты для ML обработки текста
 Интеграция DeepSeek API через VseLLM провайдер
 """
 
-from fastapi import APIRouter, HTTPException, Request, FastAPI
+from fastapi import APIRouter, Depends, HTTPException, Request, FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
@@ -14,6 +14,11 @@ from datetime import datetime
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .dependencies import get_current_user, get_db
+from . import quota
+from .models import GenerationUsageKind, User
 
 # Импортируем DeepSeek процессор
 try:
@@ -329,8 +334,18 @@ async def batch_process_text(request: BatchProcessRequest):
 
 
 @router.post("/explain", response_model=ExplainResponse)
-async def explain_fragment(request: ExplainRequest):
+async def explain_fragment(
+    request: ExplainRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     start_time = datetime.now()
+
+    # Лимит «объяснений» (отдельный пул от генераций); админ — без списания.
+    usage_id = None
+    if user.role != "admin":
+        usage_id = await quota.check_and_record(db, user, GenerationUsageKind.explain, mode="explain")
+
     try:
         client = get_polza_client()
         title = request.lecture_title or "Без названия"
@@ -366,8 +381,10 @@ async def explain_fragment(request: ExplainRequest):
             timestamp=datetime.now(),
         )
     except HTTPException:
+        await quota.refund(db, usage_id)
         raise
     except Exception as e:
+        await quota.refund(db, usage_id)
         processing_time = (datetime.now() - start_time).total_seconds()
         logger.error(f"Ошибка explain: {str(e)}")
         return ExplainResponse(
