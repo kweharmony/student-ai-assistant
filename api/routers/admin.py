@@ -5,7 +5,7 @@
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
@@ -334,13 +334,19 @@ async def set_subscription(
     tier = SubscriptionTier(body.tier)
     target.subscription_tier = tier
     # Срок имеет смысл только для pro; для free сбрасываем.
-    target.subscription_expires_at = body.expires_at if tier == SubscriptionTier.pro else None
+    # Колонки в БД — наивный UTC (как и весь проект на datetime.utcnow()),
+    # а клиент шлёт tz-aware ISO (toISOString с 'Z'). Приводим к наивному UTC,
+    # иначе asyncpg падает на записи tz-aware в TIMESTAMP WITHOUT TIME ZONE.
+    expires_at = body.expires_at
+    if expires_at is not None and expires_at.tzinfo is not None:
+        expires_at = expires_at.astimezone(timezone.utc).replace(tzinfo=None)
+    target.subscription_expires_at = expires_at if tier == SubscriptionTier.pro else None
 
     await _log_action(
         db, admin, "set_subscription", "user", user_id,
         details={
             "tier": body.tier,
-            "expires_at": body.expires_at.isoformat() if body.expires_at else None,
+            "expires_at": expires_at.isoformat() if expires_at else None,
         },
     )
     await db.commit()
