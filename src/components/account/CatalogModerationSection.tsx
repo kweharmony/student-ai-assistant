@@ -1106,6 +1106,7 @@ const CatalogModerationSection: React.FC<CatalogModerationSectionProps> = ({ isL
       setNewDisciplineName('');
       await loadCatalogItems();
       window.dispatchEvent(new Event('catalog:refresh'));
+      setCatalogNotice({ type: 'success', message: `Дисциплина «${name}» добавлена.` });
     } catch (e: any) {
       setCatalogNotice({ type: 'error', message: e.message || 'Не удалось добавить дисциплину' });
     } finally {

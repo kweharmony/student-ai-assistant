@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -367,7 +368,12 @@ async def create_catalog_discipline_node(
     )
     db.add(node)
     await _ensure_catalog_semesters(db, stream.id, course_text)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Гонка: параллельный запрос успел создать ту же дисциплину — отдаём 409, а не 500
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Дисциплина уже существует")
     await db.refresh(node)
     return node
 
