@@ -114,8 +114,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
-  // Постоянный статус автосохранения (п.3) и признак пустого холста (п.2).
-  const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  // Признак пустого холста — для подсказки-плейсхолдера (п.2).
   const [canvasEmpty, setCanvasEmpty] = useState(true);
 
   // ── share panel ──────────────────────────────────────────────────────────────
@@ -278,7 +277,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // ── auto-save (real-time via WebSocket) ─────────────────────────────────────
   const handleChange = useCallback(() => {
     if (!activeBoardId || !boardCanEdit || !excalidrawAPI.current) return;
-    setAutoSaveState('saving');
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
       const api = excalidrawAPI.current;
@@ -289,7 +287,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         api.getFiles(),
         'local',
       );
-      if (lastSentData.current === data) { setAutoSaveState('saved'); return; }
+      if (lastSentData.current === data) return;
       lastSentData.current = data;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
@@ -301,7 +299,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       } else {
         persistBoardData(data);
       }
-      setAutoSaveState('saved');
     }, SEND_DEBOUNCE_MS);
   }, [activeBoardId, boardCanEdit, persistBoardData]);
 
@@ -857,45 +854,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
           </div>
         )}
 
-        {/* ── Постоянный статус автосохранения (десктоп) ── */}
-        {!isMobile && activeBoardId && boardCanEdit && autoSaveState !== 'idle' && (
-          <div
-            style={{
-              position: 'fixed',
-              left: 12,
-              bottom: 12,
-              zIndex: 300,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '5px 11px',
-              borderRadius: 999,
-              fontFamily: 'Georgia, serif',
-              fontSize: 12,
-              background: isLightTheme ? 'rgba(255,253,245,0.95)' : 'rgba(20,15,17,0.95)',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text-secondary)',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-            }}
-          >
-            {autoSaveState === 'saving' ? (
-              <>
-                <svg style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25" />
-                  <path fill="currentColor" opacity="0.8" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Сохранение…
-              </>
-            ) : (
-              <>
-                <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82' }}>cloud_done</span>
-                Сохранено
-              </>
-            )}
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          </div>
-        )}
-
         {/* ── Mobile panel — bottom center ── */}
         {isMobile && (
           <div style={{
@@ -1440,20 +1398,13 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               </div>
               <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.6 }}>
                 {boardCanEdit
-                  ? 'Несохранённые изменения будут потеряны.'
+                  ? 'Изменения будут сохранены автоматически.'
                   : 'Вы просматривали полотно в режиме только для чтения.'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {activeBoardId && boardCanEdit && (
-                  <button style={{ ...btnPrimary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(true)}>
-                    Сохранить и выйти
-                  </button>
-                )}
-                {activeBoardId && boardCanEdit && (
-                  <button style={{ ...btnSecondary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(false)}>
-                    Выйти
-                  </button>
-                )}
+                <button style={{ ...btnPrimary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(true)}>
+                  Выйти
+                </button>
                 <button style={{ ...btnSecondary, width: '100%', textAlign: 'center', opacity: 0.7 }} onClick={() => setExitPrompt(false)}>
                   Отмена
                 </button>
