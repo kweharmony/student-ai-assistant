@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useReducer, useRef, useState } from 'react';
 import { saveAs } from 'file-saver';
 import RichTextEditor from '../RichTextEditor';
 import { useExport } from '../../hooks/useExport';
@@ -30,6 +30,17 @@ interface TextProcessingSectionProps {
   lectureId?: string;
   lectureTitle?: string;
   onSaveLecture?: (text: string) => Promise<void>;
+}
+
+// Объяснение фрагмента: «якорь»-кружок остаётся в тексте, а результат
+// показывается в общей панели справа от редактора.
+interface ExplainItem {
+  id: string;
+  text: string;
+  range: Range;          // клон Range для пересчёта позиции кружка при скролле
+  result: string | null;
+  error: string | null;
+  loading: boolean;
 }
 
 // Описания режимов ML для UI
@@ -172,17 +183,16 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   const [mlResults, setMlResults] = useState<Record<string, { html: string; rawMd: string }>>({});
 
   // ── Inline explain on selection ────────────────────────────────────────────
-  const [explainTooltip, setExplainTooltip] = useState<{ text: string; x: number; y: number; rectTop: number; visible: boolean } | null>(null);
-  const [explainResult, setExplainResult] = useState<string | null>(null);
-  const [explainLoading, setExplainLoading] = useState(false);
-  const [explainError, setExplainError] = useState<string | null>(null);
-  // Свёрнуто ли окно результата в кружок-иконку у выделенного текста.
-  const [explainCollapsed, setExplainCollapsed] = useState(false);
+  // Транзитивная кнопка-подсказка «Объяснить» у текущего выделения.
+  const [explainSel, setExplainSel] = useState<{ text: string; visible: boolean } | null>(null);
+  const explainSelRangeRef = useRef<Range | null>(null);
+  // Постоянные объяснения: кружок-якорь в тексте + запись в общей панели справа.
+  const [explainItems, setExplainItems] = useState<ExplainItem[]>([]);
+  const [activeExplainId, setActiveExplainId] = useState<string | null>(null);
   const editorWrapperRef = useRef<HTMLDivElement>(null);
   const explainPanelRef = useRef<HTMLDivElement>(null);
-  // Клонированный Range выделения — чтобы пересчитывать позицию при скролле,
-  // даже если живое выделение уже снято.
-  const explainRangeRef = useRef<Range | null>(null);
+  // Тик пересчёта позиций якорей и панели при скролле/ресайзе.
+  const [, bumpExplainTick] = useReducer((x: number) => x + 1, 0);
 
   // При смене режима — восстанавливаем сохранённый результат (Q3)
   const isMlModeFirstRender = useRef(true);
@@ -211,72 +221,55 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     }
   }, [editorContent]);
 
-  // Клик снаружи убирает только «голую» кнопку-подсказку. Если открыто окно
-  // с результатом/ошибкой или идёт загрузка — оно закрывается только крестиком.
+  // Клик снаружи убирает только «голую» кнопку-подсказку. Постоянные кружки и
+  // панель справа так не закрываются — только своими кнопками.
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (editorWrapperRef.current?.contains(t) || explainPanelRef.current?.contains(t)) return;
-      if (explainResult !== null || explainError || explainLoading) return;
-      setExplainTooltip(null);
+      setExplainSel(null);
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, [explainResult, explainError, explainLoading]);
+  }, []);
 
   const handleEditorSelect = () => {
     const sel = window.getSelection();
-    // Пустой клик не должен закрывать уже открытое окно с результатом — только крестик.
-    const keepOpen = explainResult !== null || explainError !== null || explainLoading;
-    if (!sel || sel.isCollapsed) { if (!keepOpen) setExplainTooltip(null); return; }
+    if (!sel || sel.isCollapsed) { setExplainSel(null); return; }
     const text = sel.toString().trim();
-    if (text.length < 5) { if (!keepOpen) setExplainTooltip(null); return; }
-    const range = sel.getRangeAt(0).cloneRange();
-    explainRangeRef.current = range;
-    const rect = range.getBoundingClientRect();
-    const x = Math.min(rect.right, window.innerWidth - 16);
-    const y = rect.bottom;
-    setExplainTooltip({ text, x, y, rectTop: rect.top, visible: true });
-    setExplainResult(null);
-    setExplainError(null);
-    setExplainCollapsed(false);
+    if (text.length < 5) { setExplainSel(null); return; }
+    explainSelRangeRef.current = sel.getRangeAt(0).cloneRange();
+    setExplainSel({ text, visible: true });
   };
 
-  // Пока активна подсказка/окно — держим их «приклеенными» к выделенному тексту:
-  // пересчитываем координаты из сохранённого Range на каждый скролл (в т.ч.
-  // внутренний скролл редактора — отсюда capture: true) и ресайз.
-  const explainActive = explainTooltip !== null;
+  // Пока есть подсказка, кружки или панель — держим их «приклеенными» к тексту:
+  // на каждый скролл (в т.ч. внутренний скролл редактора — отсюда capture: true)
+  // и ресайз форсим перерасчёт позиций из сохранённых Range.
+  const explainAnchored = explainSel !== null || explainItems.length > 0;
   useEffect(() => {
-    if (!explainActive) return;
-    const recompute = () => {
-      const r = explainRangeRef.current;
-      if (!r) return;
-      const rect = r.getBoundingClientRect();
-      const ed = editorWrapperRef.current?.getBoundingClientRect();
-      // Видно, пока фрагмент пересекается с видимой областью редактора.
-      const visible = !ed || (rect.bottom > ed.top + 4 && rect.top < ed.bottom - 4);
-      setExplainTooltip(prev => prev
-        ? { ...prev, x: Math.min(rect.right, window.innerWidth - 16), y: rect.bottom, rectTop: rect.top, visible }
-        : prev);
-    };
-    window.addEventListener('scroll', recompute, true);
-    window.addEventListener('resize', recompute);
+    if (!explainAnchored) return;
+    const onMove = () => bumpExplainTick();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
     return () => {
-      window.removeEventListener('scroll', recompute, true);
-      window.removeEventListener('resize', recompute);
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
     };
-  }, [explainActive]);
+  }, [explainAnchored]);
 
   const handleExplainClick = async () => {
-    if (!explainTooltip) return;
-    setExplainLoading(true);
-    setExplainResult(null);
-    setExplainError(null);
+    const sel = explainSel;
+    const range = explainSelRangeRef.current;
+    if (!sel || !range) return;
+    const id = `exp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setExplainItems(prev => [...prev, { id, text: sel.text, range, result: null, error: null, loading: true }]);
+    setActiveExplainId(id);
+    setExplainSel(null);
     try {
       const res = await fetch(`${API_BASE}/api/ml/explain`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: explainTooltip.text }),
+        body: JSON.stringify({ text: sel.text }),
       });
       if (!res.ok) {
         const quotaMsg = await quotaMessageFromResponse(res.clone());
@@ -284,12 +277,18 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
       }
       notifyQuotaChanged();
       const data = await res.json();
-      setExplainResult(data?.explanation || '');
+      setExplainItems(prev => prev.map(it => it.id === id
+        ? { ...it, loading: false, result: data?.explanation || '' } : it));
     } catch (e: any) {
-      setExplainError(e?.message || 'Ошибка');
-    } finally {
-      setExplainLoading(false);
+      setExplainItems(prev => prev.map(it => it.id === id
+        ? { ...it, loading: false, error: e?.message || 'Ошибка' } : it));
     }
+  };
+
+  const closeExplainPanel = () => setActiveExplainId(null);
+  const removeExplainItem = (id: string) => {
+    setExplainItems(prev => prev.filter(it => it.id !== id));
+    setActiveExplainId(prev => (prev === id ? null : prev));
   };
 
   useEffect(() => {
@@ -1330,20 +1329,25 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
           </div>
         </div>
       )}
-      {/* ── Explain tooltip ── */}
-      {explainTooltip && explainTooltip.visible && !explainResult && !explainLoading && (() => {
-        const spaceBelow = window.innerHeight - explainTooltip.y - 16;
+      {/* ── Кнопка-подсказка «Объяснить» у текущего выделения ── */}
+      {explainSel && (() => {
+        const r = explainSelRangeRef.current;
+        if (!r) return null;
+        const rect = r.getBoundingClientRect();
+        const ed = editorWrapperRef.current?.getBoundingClientRect();
+        if (ed && !(rect.bottom > ed.top + 4 && rect.top < ed.bottom - 4)) return null;
+        const spaceBelow = window.innerHeight - rect.bottom - 16;
         const showBelow = spaceBelow >= 48;
         const posStyle: React.CSSProperties = showBelow
-          ? { top: explainTooltip.y + 8 }
-          : { bottom: window.innerHeight - explainTooltip.rectTop + 8 };
+          ? { top: rect.bottom + 8 }
+          : { bottom: window.innerHeight - rect.top + 8 };
         return (
           <button
             onMouseDown={e => e.stopPropagation()}
             onClick={handleExplainClick}
             style={{
               position: 'fixed',
-              left: explainTooltip.x,
+              left: Math.min(rect.right, window.innerWidth - 16),
               ...posStyle,
               transform: 'translateX(-100%)',
               zIndex: 1000,
@@ -1370,94 +1374,70 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
         );
       })()}
 
-      {/* ── Explain loading pill ── */}
-      {explainTooltip && explainTooltip.visible && explainLoading && (() => {
-        const spaceBelow = window.innerHeight - explainTooltip.y - 16;
-        const showBelow = spaceBelow >= 40;
-        const posStyle: React.CSSProperties = showBelow
-          ? { top: explainTooltip.y + 8 }
-          : { bottom: window.innerHeight - explainTooltip.rectTop + 8 };
+      {/* ── Постоянные кружки-якори у объяснённых фрагментов ── */}
+      {explainItems.map(item => {
+        const rect = item.range.getBoundingClientRect();
+        const ed = editorWrapperRef.current?.getBoundingClientRect();
+        if (ed && !(rect.bottom > ed.top + 4 && rect.top < ed.bottom - 4)) return null;
+        const active = item.id === activeExplainId;
         return (
-          <div
+          <button
+            key={item.id}
+            onMouseDown={e => e.stopPropagation()}
+            onClick={() => setActiveExplainId(item.id)}
+            title={item.loading ? 'Объясняю…' : 'Показать объяснение'}
             style={{
               position: 'fixed',
-              left: explainTooltip.x,
-              ...posStyle,
-              transform: 'translateX(-100%)',
+              left: Math.min(rect.right, window.innerWidth - 16),
+              top: rect.top - 14,
+              transform: 'translateX(-50%)',
               zIndex: 1000,
+              width: 24,
+              height: 24,
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '5px 12px',
+              justifyContent: 'center',
               borderRadius: 999,
-              fontSize: 12,
-              fontFamily: 'Georgia, serif',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-              background: isLightTheme ? '#fffdf5' : '#1f1516',
-              color: 'var(--text-secondary)',
-              outline: '1px solid rgba(181,132,136,0.35)',
-              userSelect: 'none',
-              whiteSpace: 'nowrap',
+              border: active ? '2px solid #B58488' : '2px solid #fff7ec',
+              boxShadow: active ? '0 0 0 3px rgba(181,132,136,0.35), 0 3px 12px rgba(0,0,0,0.32)' : '0 3px 12px rgba(0,0,0,0.32)',
+              background: '#44292b',
+              color: '#fff7ec',
+              cursor: 'pointer',
+              padding: 0,
             }}
           >
-            <svg style={{ width: 13, height: 13, animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25"/>
-              <path fill="currentColor" opacity="0.75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-            </svg>
-            Объясняю...
-          </div>
+            {item.loading ? (
+              <svg style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.3"/>
+                <path fill="currentColor" opacity="0.85" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+            ) : (
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>auto_awesome</span>
+            )}
+          </button>
         );
-      })()}
+      })}
 
-      {/* ── Explain result: свёрнутый кружок у текста ── */}
-      {explainTooltip && explainTooltip.visible && explainCollapsed && (explainResult !== null || explainError) && (
-        <button
-          onMouseDown={e => e.stopPropagation()}
-          onClick={() => setExplainCollapsed(false)}
-          title="Развернуть объяснение"
-          style={{
-            position: 'fixed',
-            left: explainTooltip.x,
-            top: explainTooltip.rectTop - 14,
-            transform: 'translateX(-50%)',
-            zIndex: 1000,
-            width: 28,
-            height: 28,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 999,
-            border: '2px solid #fff7ec',
-            boxShadow: '0 3px 12px rgba(0,0,0,0.32)',
-            background: '#44292b',
-            color: '#fff7ec',
-            cursor: 'pointer',
-            padding: 0,
-          }}
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: 15 }}>auto_awesome</span>
-        </button>
-      )}
-
-      {/* ── Explain result panel ── */}
-      {explainTooltip && !explainCollapsed && (explainResult !== null || explainError) && (() => {
-        const panelW = 340;
-        const panelH = Math.min(320, window.innerHeight - 32);
-        const spaceBelow = window.innerHeight - explainTooltip.y - 16;
-        const showBelow = spaceBelow >= panelH;
-        const posStyle: React.CSSProperties = showBelow
-          ? { top: explainTooltip.y + 8 }
-          : { bottom: window.innerHeight - explainTooltip.rectTop + 8 };
-        const leftPos = Math.min(explainTooltip.x, window.innerWidth - 16);
+      {/* ── Общая панель справа от редактора (активный кружок) ── */}
+      {activeExplainId && (() => {
+        const item = explainItems.find(it => it.id === activeExplainId);
+        if (!item) return null;
+        const panelW = Math.min(360, window.innerWidth - 24);
+        const panelH = Math.min(420, window.innerHeight - 24);
+        const ed = editorWrapperRef.current?.getBoundingClientRect();
+        let left = ed ? ed.right + 16 : window.innerWidth - panelW - 16;
+        if (left + panelW > window.innerWidth - 8) left = window.innerWidth - panelW - 8;
+        if (left < 8) left = 8;
+        let top = ed ? ed.top : 12;
+        top = Math.max(12, Math.min(top, window.innerHeight - panelH - 12));
         return (
           <div
             ref={explainPanelRef}
             onMouseDown={e => e.stopPropagation()}
             style={{
               position: 'fixed',
-              left: leftPos,
-              ...posStyle,
-              transform: 'translateX(-100%)',
+              left,
+              top,
               zIndex: 1000,
               width: panelW,
               height: panelH,
@@ -1477,19 +1457,20 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
               borderBottom: '1px solid var(--border-color)',
               flexShrink: 0,
             }}>
-              <button
-                onClick={() => setExplainCollapsed(true)}
-                title="Свернуть в кружок"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B58488', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0 }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>auto_awesome</span>
-              </button>
+              <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#B58488', flexShrink: 0 }}>auto_awesome</span>
               <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>
-                «{explainTooltip.text.slice(0, 60)}{explainTooltip.text.length > 60 ? '…' : ''}»
+                «{item.text.slice(0, 60)}{item.text.length > 60 ? '…' : ''}»
               </span>
               <button
-                onClick={() => { setExplainTooltip(null); setExplainResult(null); setExplainError(null); setExplainCollapsed(false); }}
-                title="Закрыть"
+                onClick={() => removeExplainItem(item.id)}
+                title="Удалить объяснение"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0 }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
+              </button>
+              <button
+                onClick={closeExplainPanel}
+                title="Скрыть панель (кружок останется)"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0 }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
@@ -1498,13 +1479,21 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
 
             {/* Panel body */}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 14px 12px' }}>
-              {explainError ? (
-                <p style={{ fontSize: 12, color: '#B58488', margin: 0 }}>{explainError}</p>
+              {item.loading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                  <svg style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25"/>
+                    <path fill="currentColor" opacity="0.75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  Объясняю…
+                </div>
+              ) : item.error ? (
+                <p style={{ fontSize: 12, color: '#B58488', margin: 0 }}>{item.error}</p>
               ) : (
                 <div
                   className="prose prose-sm max-w-none"
                   style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--text-primary)' }}
-                  dangerouslySetInnerHTML={{ __html: safeMdParse(explainResult || '') }}
+                  dangerouslySetInnerHTML={{ __html: safeMdParse(item.result || '') }}
                 />
               )}
             </div>
