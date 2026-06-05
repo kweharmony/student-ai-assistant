@@ -5,6 +5,7 @@ import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import excalidrawStyles from './excalidrawStyles';
+import { mergeExcalidrawElements } from '../utils/boardSync';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http(s?):\/\//, (_, secure) => (secure ? 'wss://' : 'ws://'));
@@ -40,6 +41,8 @@ const PublicBoardPage: React.FC = () => {
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const lastSentData = useRef<string | null>(null);
+  const collaboratorsRef = useRef<Map<string, any>>(new Map());
+  const lastPointerSent = useRef<number>(0);
   const [saveMsg, setSaveMsg] = useState('');
 
   const authHeaders = useCallback(
@@ -106,12 +109,7 @@ const PublicBoardPage: React.FC = () => {
       if (lastSentData.current === data) return;
       lastSentData.current = data;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'update',
-          elements: api.getSceneElements(),
-          appState: api.getAppState(),
-          data,
-        }));
+        wsRef.current.send(JSON.stringify({ type: 'update', data }));
       } else {
         persistBoardData(data);
       }
@@ -129,6 +127,7 @@ const PublicBoardPage: React.FC = () => {
 
   const applyRemoteUpdate = useCallback((msg: any) => {
     if (!excalidrawAPI.current) return;
+    const api = excalidrawAPI.current;
     let nextElements = msg.elements;
     let nextAppState = msg.appState;
     let nextFiles = undefined;
@@ -142,12 +141,18 @@ const PublicBoardPage: React.FC = () => {
         // ignore
       }
     }
-    excalidrawAPI.current.updateScene({
-      elements: nextElements,
-      appState: nextAppState,
-    });
-    if (nextFiles && excalidrawAPI.current.addFiles) {
-      excalidrawAPI.current.addFiles(nextFiles);
+    // Не перехватываем прокрутку/зум зрителя — берём только цвет фона.
+    const localState = api.getAppState();
+    const safeAppState = {
+      viewBackgroundColor: nextAppState?.viewBackgroundColor ?? localState.viewBackgroundColor,
+    };
+    // Сливаем по версиям, чтобы не затирать параллельные правки (п.4).
+    const merged = Array.isArray(nextElements)
+      ? mergeExcalidrawElements(api.getSceneElements(), nextElements)
+      : api.getSceneElements();
+    api.updateScene({ elements: merged, appState: safeAppState });
+    if (nextFiles && api.addFiles) {
+      api.addFiles(nextFiles);
     }
   }, []);
 
@@ -159,7 +164,7 @@ const PublicBoardPage: React.FC = () => {
     setSaveMsg('Сохранение…');
     // real-time push
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'update', elements: api.getSceneElements(), appState: api.getAppState(), data }));
+      wsRef.current.send(JSON.stringify({ type: 'update', data }));
     }
     // persist to DB
     const res = await fetch(`${API_BASE}/api/boards/${boardDetail.id}`, {
@@ -177,35 +182,93 @@ const PublicBoardPage: React.FC = () => {
   };
 
   // ── WebSocket subscription ──────────────────────────────────────────────────
+  const applyCollaborators = useCallback(() => {
+    excalidrawAPI.current?.updateScene({ collaborators: new Map(collaboratorsRef.current) } as any);
+  }, []);
+
   useEffect(() => {
     if (!boardDetail?.id) return;
-    const tokenQuery = authToken ? `?token=${authToken}` : '';
-    const ws = new WebSocket(`${WS_BASE}/api/boards/${boardDetail.id}/ws${tokenQuery}`);
-    wsRef.current = ws;
+    const boardId = boardDetail.id;
+    let closedByCleanup = false;
+    let reconnectDelay = 1000;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-    ws.onopen = () => {};
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'update' && excalidrawAPI.current) {
-          if (isUserInteracting()) {
-            pendingRemoteUpdate.current = msg;
-            return;
+    const connect = async () => {
+      if (closedByCleanup) return;
+      // Аутентификация: одноразовый тикет (п.10) для вошедших; аноним — без query.
+      let query = '';
+      if (authToken) {
+        query = `?token=${authToken}`;
+        try {
+          const res = await fetch(`${API_BASE}/api/boards/${boardId}/ws-ticket`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+          });
+          if (res.ok) {
+            const { ticket } = await res.json();
+            if (ticket) query = `?ticket=${ticket}`;
           }
-          applyRemoteUpdate(msg);
-        }
-      } catch {
-        // ignore
+        } catch { /* fallback to token */ }
       }
+      if (closedByCleanup) return;
+
+      const ws = new WebSocket(`${WS_BASE}/api/boards/${boardId}/ws${query}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => { reconnectDelay = 1000; };
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'update' && excalidrawAPI.current) {
+            if (isUserInteracting()) { pendingRemoteUpdate.current = msg; return; }
+            applyRemoteUpdate(msg);
+          } else if (msg.type === 'pointer' && msg.sender_id) {
+            collaboratorsRef.current.set(msg.sender_id, {
+              pointer: (typeof msg.x === 'number' && typeof msg.y === 'number') ? { x: msg.x, y: msg.y } : undefined,
+              username: msg.username,
+              color: { background: msg.color || '#888', stroke: msg.color || '#888' },
+            });
+            applyCollaborators();
+          } else if (msg.type === 'leave' && msg.sender_id) {
+            collaboratorsRef.current.delete(msg.sender_id);
+            applyCollaborators();
+          }
+        } catch {
+          // ignore
+        }
+      };
+      ws.onerror = () => {};
+      ws.onclose = () => {
+        wsRef.current = null;
+        collaboratorsRef.current.clear();
+        applyCollaborators();
+        if (closedByCleanup) return;
+        reconnectTimer = setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+      };
     };
-    ws.onerror = () => {};
-    ws.onclose = () => { wsRef.current = null; };
+
+    connect();
 
     return () => {
-      ws.close();
-      wsRef.current = null;
+      closedByCleanup = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      collaboratorsRef.current.clear();
+      if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     };
-  }, [boardDetail?.id, authToken, applyRemoteUpdate, isUserInteracting]);
+  }, [boardDetail?.id, authToken, applyRemoteUpdate, isUserInteracting, applyCollaborators]);
+
+  // Отправка позиции курсора соавторам (throttled) для presence (п.9).
+  const handlePointerUpdate = useCallback((payload: any) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const now = Date.now();
+    if (now - lastPointerSent.current < 60) return;
+    lastPointerSent.current = now;
+    const p = payload?.pointer;
+    if (!p) return;
+    ws.send(JSON.stringify({ type: 'pointer', x: p.x, y: p.y }));
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -259,6 +322,8 @@ const PublicBoardPage: React.FC = () => {
           excalidrawAPI={(api) => { excalidrawAPI.current = api; }}
           initialData={initialData}
           onChange={viewMode ? undefined : handleChange}
+          onPointerUpdate={handlePointerUpdate}
+          isCollaborating
           viewModeEnabled={viewMode}
           theme="light"
           langCode="ru-RU"
