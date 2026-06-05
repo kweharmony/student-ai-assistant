@@ -7,10 +7,10 @@ uvicorn[standard]==0.24.0
 
 # Обработка данных
 pydantic[email]==2.9.0
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 
 # Загрузка файлов через FastAPI
-python-multipart==0.0.6
+python-multipart==0.0.27
 
 # PostgreSQL + ORM
 sqlalchemy[asyncio]==2.0.36
@@ -19,7 +19,7 @@ alembic==1.14.1
 
 # Аутентификация
 bcrypt>=4.0.0
-python-jose[cryptography]==3.3.0
+python-jose[cryptography]==3.4.0
 
 # Утилиты
 aiofiles==24.1.0
