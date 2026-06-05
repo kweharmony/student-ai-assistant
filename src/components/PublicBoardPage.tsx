@@ -16,6 +16,7 @@ interface BoardPublicDetail {
   title: string;
   data: string | null;
   share_mode: 'view' | 'edit';
+  show_cursors?: boolean;
   can_edit: boolean;
   owner: {
     id: string;
@@ -43,6 +44,8 @@ const PublicBoardPage: React.FC = () => {
   const lastSentData = useRef<string | null>(null);
   const collaboratorsRef = useRef<Map<string, any>>(new Map());
   const lastPointerSent = useRef<number>(0);
+  // Показ курсоров — настройка доски (меняет только владелец в своей панели).
+  const showCursorsRef = useRef(true);
   const [saveMsg, setSaveMsg] = useState('');
 
   const authHeaders = useCallback(
@@ -74,6 +77,7 @@ const PublicBoardPage: React.FC = () => {
         }
 
         setBoardDetail(detail);
+        showCursorsRef.current = detail.show_cursors !== false;
         let parsed: any = { elements: [], appState: {} };
         if (detail.data) { try { parsed = JSON.parse(detail.data); } catch {} }
         setInitialData(parsed);
@@ -223,6 +227,7 @@ const PublicBoardPage: React.FC = () => {
             if (isUserInteracting()) { pendingRemoteUpdate.current = msg; return; }
             applyRemoteUpdate(msg);
           } else if (msg.type === 'pointer' && msg.sender_id) {
+            if (!showCursorsRef.current) return;
             collaboratorsRef.current.set(msg.sender_id, {
               pointer: (typeof msg.x === 'number' && typeof msg.y === 'number') ? { x: msg.x, y: msg.y } : undefined,
               username: msg.username,
@@ -232,6 +237,9 @@ const PublicBoardPage: React.FC = () => {
           } else if (msg.type === 'leave' && msg.sender_id) {
             collaboratorsRef.current.delete(msg.sender_id);
             applyCollaborators();
+          } else if (msg.type === 'settings') {
+            showCursorsRef.current = msg.show_cursors !== false;
+            if (!showCursorsRef.current) { collaboratorsRef.current.clear(); applyCollaborators(); }
           }
         } catch {
           // ignore
@@ -260,6 +268,7 @@ const PublicBoardPage: React.FC = () => {
 
   // Отправка позиции курсора соавторам (throttled) для presence (п.9).
   const handlePointerUpdate = useCallback((payload: any) => {
+    if (!showCursorsRef.current) return;
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const now = Date.now();

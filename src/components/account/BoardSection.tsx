@@ -40,6 +40,7 @@ interface BoardMeta {
   is_public: boolean;
   share_token: string | null;
   share_mode: 'view' | 'edit';
+  show_cursors?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -113,6 +114,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // Presence-курсоры соавторов (п.9) и троттлинг отправки курсора.
   const collaboratorsRef = useRef<Map<string, any>>(new Map());
   const lastPointerSent = useRef<number>(0);
+  // Показ курсоров соавторов — настройка доски, меняет только владелец.
+  const [showCursors, setShowCursors] = useState(true);
+  const showCursorsRef = useRef(true);
 
   // ── save panel ───────────────────────────────────────────────────────────────
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
@@ -214,6 +218,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setBoardCanEdit(detail.can_edit);
     setBoardIsOwner(!!detail.owner && detail.owner.id === user?.id);
     setShareModeDraft(detail.share_mode);
+    { const sc = detail.show_cursors !== false; setShowCursors(sc); showCursorsRef.current = sc; }
     setCanvasBg(parsed?.appState?.viewBackgroundColor || 'transparent');
     setMode('canvas');
     onCanvasMode?.(true);
@@ -240,6 +245,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setBoardCanEdit(detail.can_edit);
     setBoardIsOwner(!!detail.owner && detail.owner.id === user?.id);
     setShareModeDraft(detail.share_mode);
+    { const sc = detail.show_cursors !== false; setShowCursors(sc); showCursorsRef.current = sc; }
     setMode('canvas');
     onCanvasMode?.(true);
     setSearchParams({ board: detail.id });
@@ -409,6 +415,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             if (isUserInteracting()) { pendingRemoteUpdate.current = msg; return; }
             applyRemoteUpdate(msg);
           } else if (msg.type === 'pointer' && msg.sender_id) {
+            if (!showCursorsRef.current) return;
             collaboratorsRef.current.set(msg.sender_id, {
               pointer: (typeof msg.x === 'number' && typeof msg.y === 'number') ? { x: msg.x, y: msg.y } : undefined,
               username: msg.username,
@@ -418,6 +425,12 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
           } else if (msg.type === 'leave' && msg.sender_id) {
             collaboratorsRef.current.delete(msg.sender_id);
             applyCollaborators();
+          } else if (msg.type === 'settings') {
+            const sc = msg.show_cursors !== false;
+            setShowCursors(sc);
+            showCursorsRef.current = sc;
+            if (!sc) { collaboratorsRef.current.clear(); applyCollaborators(); }
+            setActiveBoard(prev => (prev ? { ...prev, show_cursors: sc } : prev));
           }
         } catch {
           // ignore
@@ -447,6 +460,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
   // Отправка позиции курсора соавторам (throttled) для presence (п.9).
   const handlePointerUpdate = useCallback((payload: any) => {
+    if (!showCursorsRef.current) return;
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const now = Date.now();
@@ -550,6 +564,29 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     navigator.clipboard.writeText(link);
     setSaveMsg('Ссылка скопирована');
     setTimeout(() => setSaveMsg(''), 2000);
+  };
+
+  // Включить/выключить показ курсоров соавторов — настройка доски (только владелец).
+  const toggleCursors = async () => {
+    if (!activeBoardId || !boardIsOwner) return;
+    const next = !showCursorsRef.current;
+    setShowCursors(next);
+    showCursorsRef.current = next;
+    if (!next) {
+      collaboratorsRef.current.clear();
+      excalidrawAPI.current?.updateScene({ collaborators: new Map() } as any);
+    }
+    // Живое применение у всех подключённых.
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'settings', show_cursors: next }));
+    }
+    // Сохранение настройки на сервере.
+    try {
+      await fetch(`${API_BASE}/api/boards/${activeBoardId}`, {
+        method: 'PUT', headers: authHeaders(), body: JSON.stringify({ show_cursors: next }),
+      });
+    } catch { /* ignore */ }
+    setActiveBoard(prev => (prev ? { ...prev, show_cursors: next } : prev));
   };
 
   // Сгенерировать новую ссылку — старая сразу перестаёт работать (п.2).
@@ -1086,6 +1123,14 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
             {activeBoardId && boardCanEdit && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
             {activeBoardId && boardCanEdit && <MobileIconButton icon="text_fields" label="Текст-блок" onClick={insertBoundedTextBlock} />}
             {activeBoardId && <MobileIconButton icon="fit_screen" label="Показать всё" onClick={fitToContent} />}
+            {activeBoardId && boardIsOwner && (
+              <MobileIconButton
+                icon={showCursors ? 'visibility' : 'visibility_off'}
+                label="Курсоры"
+                onClick={toggleCursors}
+                active={showCursors}
+              />
+            )}
 
             {/* Download menu for view-only visitors */}
             {activeBoardId && !boardCanEdit && (
@@ -1392,6 +1437,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 {activeBoardId && boardCanEdit && <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />}
                 {activeBoardId && boardCanEdit && <PanelButton icon="text_fields" label="Текст-блок" onClick={insertBoundedTextBlock} isLightTheme={isLightTheme} />}
                 {activeBoardId && <PanelButton icon="fit_screen" label="Показать всё" onClick={fitToContent} isLightTheme={isLightTheme} />}
+                {activeBoardId && boardIsOwner && (
+                  <PanelButton
+                    icon={showCursors ? 'visibility' : 'visibility_off'}
+                    label={showCursors ? 'Курсоры: вкл' : 'Курсоры: выкл'}
+                    onClick={toggleCursors}
+                    isLightTheme={isLightTheme}
+                    active={showCursors}
+                  />
+                )}
 
                 {/* Download for view-only visitors */}
                 {activeBoardId && !boardCanEdit && (

@@ -308,12 +308,16 @@ async def update_board(
         raise HTTPException(status_code=403, detail="Нет доступа на редактирование")
     if body.is_public is not None and board.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Только автор может менять режим публикации")
+    if body.show_cursors is not None and board.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только автор может менять показ курсоров")
     if body.title is not None:
         board.title = body.title
     if body.data is not None:
         board.data = body.data
     if body.is_public is not None:
         board.is_public = body.is_public
+    if body.show_cursors is not None:
+        board.show_cursors = body.show_cursors
     await db.commit()
     await db.refresh(board)
     return board
@@ -351,6 +355,7 @@ async def board_ws(
     ticket = websocket.query_params.get("ticket")
     token = websocket.query_params.get("token")
     can_edit = False
+    is_owner = False
     user = None
     async with async_session() as db:
         board = await db.get(Board, board_id)
@@ -365,6 +370,8 @@ async def board_ws(
         if user is None and token:
             user = await _authenticate_ws_token(token, db)
 
+        if user is not None and board.owner_id == user.id:
+            is_owner = True
         if user is not None and _can_edit_board(board, user):
             can_edit = True
         elif not board.is_public:
@@ -409,6 +416,17 @@ async def board_ws(
                     "y": msg.get("y"),
                     "username": username,
                     "color": color,
+                }
+                await _publish_or_broadcast(bid, redis_client, websocket, payload)
+
+            elif mtype == "settings":
+                # Менять настройки доски (показ курсоров) может только владелец.
+                if not is_owner:
+                    continue
+                payload = {
+                    "type": "settings",
+                    "show_cursors": bool(msg.get("show_cursors", True)),
+                    "sender_id": client_id,
                 }
                 await _publish_or_broadcast(bid, redis_client, websocket, payload)
     except WebSocketDisconnect:
@@ -580,6 +598,7 @@ def _serialize_board_detail(board: Board, current_user: User | None):
         "is_public": board.is_public,
         "share_token": board.share_token,
         "share_mode": board.share_mode,
+        "show_cursors": board.show_cursors,
         "created_at": board.created_at,
         "updated_at": board.updated_at,
         "data": board.data,
@@ -595,6 +614,7 @@ def _serialize_recent_board(board: Board, visit: BoardVisit):
         "is_public": board.is_public,
         "share_token": board.share_token,
         "share_mode": board.share_mode,
+        "show_cursors": board.show_cursors,
         "created_at": board.created_at,
         "updated_at": board.updated_at,
         "owner": _serialize_owner(board),
