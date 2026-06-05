@@ -114,6 +114,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  // Постоянный статус автосохранения (п.3) и признак пустого холста (п.2).
+  const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [canvasEmpty, setCanvasEmpty] = useState(true);
 
   // ── share panel ──────────────────────────────────────────────────────────────
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
@@ -144,10 +147,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // ── lecture search ────────────────────────────────────────────────────────
   const [lectureSearch, setLectureSearch] = useState('');
 
-  // ── text block placement ──────────────────────────────────────────────────
-  const [textBlockPlacing, setTextBlockPlacing] = useState(false);
-  const [textBlockCursor, setTextBlockCursor] = useState<{ x: number; y: number } | null>(null);
-
   // ── mobile detection ─────────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   useEffect(() => {
@@ -155,18 +154,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
-
-  useEffect(() => {
-    if (!textBlockPlacing) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setTextBlockPlacing(false);
-        setTextBlockCursor(null);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [textBlockPlacing]);
 
   const authHeaders = useCallback(
     () => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }),
@@ -291,6 +278,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // ── auto-save (real-time via WebSocket) ─────────────────────────────────────
   const handleChange = useCallback(() => {
     if (!activeBoardId || !boardCanEdit || !excalidrawAPI.current) return;
+    setAutoSaveState('saving');
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
       const api = excalidrawAPI.current;
@@ -301,7 +289,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         api.getFiles(),
         'local',
       );
-      if (lastSentData.current === data) return;
+      if (lastSentData.current === data) { setAutoSaveState('saved'); return; }
       lastSentData.current = data;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
@@ -313,6 +301,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       } else {
         persistBoardData(data);
       }
+      setAutoSaveState('saved');
     }, SEND_DEBOUNCE_MS);
   }, [activeBoardId, boardCanEdit, persistBoardData]);
 
@@ -599,6 +588,38 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     await loadLectures('my');
   };
 
+  // Координаты левого-верхнего угла блока так, чтобы он оказался по центру
+  // текущего вьюпорта пользователя (без изменения его зума/прокрутки).
+  // Формула Excalidraw: sceneX = localX / zoom - scrollX; центр → localX = width/2.
+  const sceneCenterForBox = (api: any, boxWidth: number, boxHeight: number) => {
+    const appState = api.getAppState();
+    const z = appState.zoom?.value || 1;
+    const vw = appState.width || window.innerWidth;
+    const vh = appState.height || window.innerHeight;
+    const centerX = (vw / 2) / z - appState.scrollX;
+    const centerY = (vh / 2) / z - appState.scrollY;
+    return { x: centerX - boxWidth / 2, y: centerY - boxHeight / 2 };
+  };
+
+  // Оценка высоты блока под объём текста, чтобы он не обрезался (п.4).
+  const estimateTextBoxHeight = (text: string, width: number, fontSize = 16) => {
+    const charsPerLine = Math.max(10, Math.floor(width / (fontSize * 0.55)));
+    const lineHeight = fontSize * 1.25;
+    const lines = text.split('\n').reduce(
+      (acc, ln) => acc + Math.max(1, Math.ceil(ln.length / charsPerLine)), 0,
+    );
+    return Math.min(4000, Math.max(120, Math.round(lines * lineHeight + 32)));
+  };
+
+  // Вернуть вид ко всем элементам холста (п.6).
+  const fitToContent = () => {
+    const api = excalidrawAPI.current;
+    if (!api) return;
+    const els = api.getSceneElements();
+    if (!els.length) return;
+    api.scrollToContent?.(els, { fitToViewport: true, viewportZoomFactor: 0.9 });
+  };
+
   const quickInsertLecture = async (item: LectureMeta) => {
     const api = excalidrawAPI.current;
     if (!api || !boardCanEdit) return;
@@ -612,19 +633,16 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       const text = best ? (best.processed_text || best.raw_text) : '';
       if (!text.trim()) return;
 
-      const appState = api.getAppState();
-      const zoom = appState.zoom.value;
-      const x = (-appState.scrollX + window.innerWidth / 2) / zoom - 300;
-      const y = (-appState.scrollY + window.innerHeight / 2) / zoom - 100;
+      const boxHeight = estimateTextBoxHeight(text, 560);
+      const { x, y } = sceneCenterForBox(api, 560, boxHeight);
       const newElements = convertToExcalidrawElements([{
-        type: 'rectangle', x, y, width: 560, height: 260,
+        type: 'rectangle', x, y, width: 560, height: boxHeight,
         backgroundColor: 'transparent', fillStyle: 'solid',
         strokeColor: isLightTheme ? '#44292b' : '#fffff0',
         strokeWidth: 1, strokeStyle: 'dashed',
         label: { text, textAlign: 'left', verticalAlign: 'top', fontSize: 16, strokeColor: isLightTheme ? '#44292b' : '#fffff0' },
       }]);
       api.updateScene({ elements: [...api.getSceneElements(), ...newElements] });
-      api.scrollToContent?.(newElements[0], { fitToViewport: true });
     } finally {
       setLecturePickerOpen(false);
       setSelectedLecture(null);
@@ -652,12 +670,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const api = excalidrawAPI.current;
     if (!api || !boardCanEdit || !insertText.trim()) return;
 
-    const appState = api.getAppState();
-    const zoom = appState.zoom.value;
-    const x = (-appState.scrollX + window.innerWidth / 2) / zoom - 300;
-    const y = (-appState.scrollY + window.innerHeight / 2) / zoom - 100;
     const boxWidth = 560;
-    const boxHeight = 260;
+    const boxHeight = estimateTextBoxHeight(insertText, boxWidth);
+    const { x, y } = sceneCenterForBox(api, boxWidth, boxHeight);
 
     const newElements = convertToExcalidrawElements([
       {
@@ -684,41 +699,19 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     api.updateScene({
       elements: [...api.getSceneElements(), ...newElements],
     });
-    api.scrollToContent?.(newElements[0], { fitToViewport: true });
     setLecturePickerOpen(false);
     setSelectedLecture(null);
     setInsertText('');
   };
 
 
+  // Текст-блок добавляется сразу в центр текущего экрана (п.5) — без режима клика.
   const insertBoundedTextBlock = () => {
     const api = excalidrawAPI.current;
     if (!api || !boardCanEdit) return;
-    setTextBlockCursor(null);
-    setTextBlockPlacing(true);
-    setDesktopPanelOpen(false);
-  };
-
-  const placeTextBlockAt = (clientX: number, clientY: number) => {
-    const api = excalidrawAPI.current;
-    if (!api || !boardCanEdit) return;
-
-    const appState = api.getAppState();
-    const zoom = appState.zoom.value;
-    const viewportWidth = appState.width || window.innerWidth;
-    const viewportHeight = appState.height || window.innerHeight;
-    const container = document.querySelector('.excalidraw') as HTMLElement | null;
-    const rect = container?.getBoundingClientRect();
-    const offsetLeft = rect?.left ?? (appState as any).offsetLeft ?? 0;
-    const offsetTop = rect?.top ?? (appState as any).offsetTop ?? 0;
-    const localX = clientX - offsetLeft;
-    const localY = clientY - offsetTop;
-    const sceneX = (localX - viewportWidth / 2) / zoom - appState.scrollX;
-    const sceneY = (localY - viewportHeight / 2) / zoom - appState.scrollY;
     const boxWidth = 440;
     const boxHeight = 180;
-    const x = sceneX - boxWidth / 2;
-    const y = sceneY - boxHeight / 2;
+    const { x, y } = sceneCenterForBox(api, boxWidth, boxHeight);
 
     const newElements = convertToExcalidrawElements([
       {
@@ -745,8 +738,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     api.updateScene({
       elements: [...api.getSceneElements(), ...newElements],
     });
-    setTextBlockPlacing(false);
-    setTextBlockCursor(null);
+    setDesktopPanelOpen(false);
   };
 
   // ── exit ──────────────────────────────────────────────────────────────────────
@@ -818,7 +810,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
           <Excalidraw
             excalidrawAPI={(api) => { excalidrawAPI.current = api; }}
             initialData={initialData}
-            onChange={handleChange}
+            onChange={(elements) => {
+              setCanvasEmpty((elements?.filter(el => !el.isDeleted).length ?? 0) === 0);
+              handleChange();
+            }}
             viewModeEnabled={!boardCanEdit}
             theme="light"
             langCode="ru-RU"
@@ -836,65 +831,68 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
           />
         )}
 
-        {textBlockPlacing && (
+        {/* ── Подсказка на пустом холсте ── */}
+        {canvasEmpty && boardCanEdit && (
           <div
             style={{
               position: 'fixed',
               inset: 0,
-              zIndex: 320,
-              cursor: 'crosshair',
-              background: 'rgba(0,0,0,0.02)',
+              zIndex: 210,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              textAlign: 'center',
+              padding: 24,
             }}
-            onPointerMove={(event) => setTextBlockCursor({ x: event.clientX, y: event.clientY })}
-            onPointerDown={(event) => placeTextBlockAt(event.clientX, event.clientY)}
           >
-            <style>{`
-              @keyframes textBlockPulse {
-                0% { transform: translate(-50%, -50%) scale(0.7); opacity: 0.55; }
-                70% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.2; }
-                100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
-              }
-            `}</style>
-            <div
-              style={{
-                position: 'absolute',
-                top: 16,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: isLightTheme ? 'rgba(255,253,245,0.95)' : 'rgba(24,18,19,0.92)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 12,
-                padding: '8px 14px',
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                fontFamily: 'Georgia, serif',
-                boxShadow: '0 10px 24px rgba(0,0,0,0.2)',
-              }}
-            >
-              Кликните по холсту, чтобы вставить текстовый блок. Esc — отмена.
+            <span className="material-symbols-outlined" style={{ fontSize: 44, color: 'var(--text-secondary)', opacity: 0.45 }}>gesture</span>
+            <div style={{ marginTop: 10, fontFamily: 'Georgia, serif', fontSize: 16, color: 'var(--text-secondary)', opacity: 0.7 }}>
+              Полотно пока пустое
             </div>
-            {textBlockCursor && (
-              <div style={{ position: 'absolute', left: textBlockCursor.x, top: textBlockCursor.y, pointerEvents: 'none' }}>
-                <div style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: '50%',
-                  background: isLightTheme ? 'rgba(68,41,43,0.5)' : 'rgba(255,255,240,0.6)',
-                  border: `1px solid ${isLightTheme ? 'rgba(68,41,43,0.6)' : 'rgba(255,255,240,0.8)'}`,
-                  transform: 'translate(-50%, -50%)',
-                }} />
-                <div style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: '50%',
-                  border: `2px solid ${isLightTheme ? 'rgba(68,41,43,0.35)' : 'rgba(255,255,240,0.45)'}`,
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  animation: 'textBlockPulse 1.4s ease-out infinite',
-                }} />
-              </div>
+            <div style={{ marginTop: 4, fontFamily: 'Georgia, serif', fontSize: 13, color: 'var(--text-secondary)', opacity: 0.5, maxWidth: 320 }}>
+              Добавьте текст из лекции, поставьте текст-блок или начните рисовать
+            </div>
+          </div>
+        )}
+
+        {/* ── Постоянный статус автосохранения (десктоп) ── */}
+        {!isMobile && activeBoardId && boardCanEdit && autoSaveState !== 'idle' && (
+          <div
+            style={{
+              position: 'fixed',
+              left: 12,
+              bottom: 12,
+              zIndex: 300,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 11px',
+              borderRadius: 999,
+              fontFamily: 'Georgia, serif',
+              fontSize: 12,
+              background: isLightTheme ? 'rgba(255,253,245,0.95)' : 'rgba(20,15,17,0.95)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-secondary)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+            }}
+          >
+            {autoSaveState === 'saving' ? (
+              <>
+                <svg style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25" />
+                  <path fill="currentColor" opacity="0.8" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Сохранение…
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#82AA82' }}>cloud_done</span>
+                Сохранено
+              </>
             )}
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         )}
 
@@ -1038,6 +1036,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
             {activeBoardId && boardCanEdit && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
             {activeBoardId && boardCanEdit && <MobileIconButton icon="text_fields" label="Текст-блок" onClick={insertBoundedTextBlock} />}
+            {activeBoardId && <MobileIconButton icon="fit_screen" label="Показать всё" onClick={fitToContent} />}
 
             {/* Download menu for view-only visitors */}
             {activeBoardId && !boardCanEdit && (
@@ -1134,7 +1133,26 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
         {/* ── Desktop panel — hamburger style top-left ── */}
         {!isMobile && (
-          <div style={{ position: 'fixed', right: 12, top: 12, zIndex: 300 }}>
+          <div style={{ position: 'fixed', right: 12, top: 12, zIndex: 300, display: 'flex', gap: 8 }}>
+            {/* Всегда видимая кнопка выхода с холста (п.7) */}
+            <button
+              onClick={handleExitRequest}
+              title="Выйти с полотна"
+              aria-label="Выйти с полотна"
+              style={{
+                width: 40, height: 40,
+                background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 10,
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                backdropFilter: 'blur(16px)',
+                color: '#c2756f',
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>logout</span>
+            </button>
             <button
               onClick={() => setDesktopPanelOpen(o => !o)}
               title="Меню полотна"
@@ -1310,6 +1328,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 {/* Lecture + text */}
                 {activeBoardId && boardCanEdit && <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />}
                 {activeBoardId && boardCanEdit && <PanelButton icon="text_fields" label="Текст-блок" onClick={insertBoundedTextBlock} isLightTheme={isLightTheme} />}
+                {activeBoardId && <PanelButton icon="fit_screen" label="Показать всё" onClick={fitToContent} isLightTheme={isLightTheme} />}
 
                 {/* Download for view-only visitors */}
                 {activeBoardId && !boardCanEdit && (

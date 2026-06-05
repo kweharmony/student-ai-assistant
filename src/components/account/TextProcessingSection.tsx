@@ -186,9 +186,13 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   // Транзитивная кнопка-подсказка «Объяснить» у текущего выделения.
   const [explainSel, setExplainSel] = useState<{ text: string; visible: boolean } | null>(null);
   const explainSelRangeRef = useRef<Range | null>(null);
+  // Подсказка при слишком коротком выделении (< 5 символов).
+  const [explainHint, setExplainHint] = useState(false);
   // Постоянные объяснения: кружок-якорь в тексте + запись в общей панели справа.
   const [explainItems, setExplainItems] = useState<ExplainItem[]>([]);
   const [activeExplainId, setActiveExplainId] = useState<string | null>(null);
+  // Индикатор автосохранения черновика.
+  const [draftSaved, setDraftSaved] = useState(false);
   const editorWrapperRef = useRef<HTMLDivElement>(null);
   const explainPanelRef = useRef<HTMLDivElement>(null);
   // Тик пересчёта позиций якорей и панели при скролле/ресайзе.
@@ -215,6 +219,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     if (editorContent) {
       try {
         sessionStorage.setItem('mindesync_editor_draft', editorContent);
+        setDraftSaved(true);
       } catch {
         // ignore storage errors
       }
@@ -228,6 +233,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
       const t = e.target as Node;
       if (editorWrapperRef.current?.contains(t) || explainPanelRef.current?.contains(t)) return;
       setExplainSel(null);
+      setExplainHint(false);
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -235,17 +241,24 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
 
   const handleEditorSelect = () => {
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed) { setExplainSel(null); return; }
+    if (!sel || sel.isCollapsed) { setExplainSel(null); setExplainHint(false); return; }
     const text = sel.toString().trim();
-    if (text.length < 5) { setExplainSel(null); return; }
+    if (!text) { setExplainSel(null); setExplainHint(false); return; }
     explainSelRangeRef.current = sel.getRangeAt(0).cloneRange();
+    if (text.length < 5) {
+      // Слишком короткий фрагмент — мягко подсказываем выделить фразу целиком.
+      setExplainHint(true);
+      setExplainSel(null);
+      return;
+    }
+    setExplainHint(false);
     setExplainSel({ text, visible: true });
   };
 
   // Пока есть подсказка, кружки или панель — держим их «приклеенными» к тексту:
   // на каждый скролл (в т.ч. внутренний скролл редактора — отсюда capture: true)
   // и ресайз форсим перерасчёт позиций из сохранённых Range.
-  const explainAnchored = explainSel !== null || explainItems.length > 0;
+  const explainAnchored = explainSel !== null || explainHint || explainItems.length > 0;
   useEffect(() => {
     if (!explainAnchored) return;
     const onMove = () => bumpExplainTick();
@@ -707,9 +720,16 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
               >
                 Используйте панель инструментов для форматирования текста
               </p>
+              {draftSaved && (
+                <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#22c55e' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 13 }}>check_circle</span>
+                  Черновик сохранён
+                </p>
+              )}
             </div>
             <button
               onClick={() => setShowEditorHelp(true)}
+              aria-label="Помощь по редактору"
               className="ml-4 p-2 rounded-full hover:bg-hover transition-all duration-300 flex-shrink-0"
               style={{
                 color: 'var(--text-secondary)',
@@ -740,6 +760,33 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
               onModeChange={setEditorMode}
               isProcessing={isProcessing}
             />
+          </div>
+
+          {/* Счётчик символов + управление объяснениями */}
+          <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
+            {(() => {
+              const charCount = editorInstance ? editorInstance.getText().length : 0;
+              const limit = 70000;
+              const ratio = charCount / limit;
+              const color = ratio >= 1 ? '#ef4444' : ratio >= 0.9 ? '#d97706' : 'var(--text-secondary)';
+              return (
+                <span className="text-xs" style={{ color, fontVariantNumeric: 'tabular-nums' }}>
+                  {charCount.toLocaleString('ru-RU')} / {limit.toLocaleString('ru-RU')} символов
+                </span>
+              );
+            })()}
+            {explainItems.length > 0 && (
+              <button
+                onClick={() => { setExplainItems([]); setActiveExplainId(null); }}
+                aria-label="Удалить все объяснения"
+                className="text-xs flex items-center gap-1 px-2 py-1 rounded-md transition-colors"
+                style={{ color: 'var(--text-secondary)', background: 'var(--hover-bg)' }}
+                title="Удалить все объяснения"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>delete_sweep</span>
+                Очистить объяснения ({explainItems.length})
+              </button>
+            )}
           </div>
 
           {/* Предупреждение о превышении лимита */}
@@ -1374,6 +1421,38 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
         );
       })()}
 
+      {/* ── Хинт при слишком коротком выделении ── */}
+      {explainHint && (() => {
+        const r = explainSelRangeRef.current;
+        if (!r) return null;
+        const rect = r.getBoundingClientRect();
+        const ed = editorWrapperRef.current?.getBoundingClientRect();
+        if (ed && !(rect.bottom > ed.top + 4 && rect.top < ed.bottom - 4)) return null;
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              left: Math.min(rect.right, window.innerWidth - 16),
+              top: rect.bottom + 8,
+              transform: 'translateX(-100%)',
+              zIndex: 1000,
+              padding: '5px 12px',
+              borderRadius: 999,
+              fontSize: 11,
+              fontFamily: 'Georgia, serif',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+              background: isLightTheme ? '#fffdf5' : '#1f1516',
+              color: 'var(--text-secondary)',
+              outline: '1px solid rgba(181,132,136,0.35)',
+              userSelect: 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Выделите фразу целиком, чтобы объяснить
+          </div>
+        );
+      })()}
+
       {/* ── Постоянные кружки-якори у объяснённых фрагментов ── */}
       {explainItems.map(item => {
         const rect = item.range.getBoundingClientRect();
@@ -1385,6 +1464,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
             key={item.id}
             onMouseDown={e => e.stopPropagation()}
             onClick={() => setActiveExplainId(item.id)}
+            aria-label={`Объяснение фрагмента: ${item.text.slice(0, 40)}`}
             title={item.loading ? 'Объясняю…' : 'Показать объяснение'}
             style={{
               position: 'fixed',
@@ -1423,7 +1503,11 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
         const item = explainItems.find(it => it.id === activeExplainId);
         if (!item) return null;
         const panelW = Math.min(360, window.innerWidth - 24);
-        const panelH = Math.min(420, window.innerHeight - 24);
+        // На ПК делаем окно заметно выше по вертикали; на мобиле — компактнее.
+        const isPC = window.innerWidth >= 768;
+        const panelH = isPC
+          ? Math.min(640, window.innerHeight - 48)
+          : Math.min(420, window.innerHeight - 24);
         const ed = editorWrapperRef.current?.getBoundingClientRect();
         let left = ed ? ed.right + 16 : window.innerWidth - panelW - 16;
         if (left + panelW > window.innerWidth - 8) left = window.innerWidth - panelW - 8;
@@ -1463,13 +1547,15 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
               </span>
               <button
                 onClick={() => removeExplainItem(item.id)}
+                aria-label="Удалить объяснение"
                 title="Удалить объяснение"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0, marginRight: 14 }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
               </button>
               <button
                 onClick={closeExplainPanel}
+                aria-label="Скрыть панель"
                 title="Скрыть панель (кружок останется)"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0 }}
               >
@@ -1500,6 +1586,51 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
           </div>
         );
       })()}
+
+      {/* ── Липкий статус ИИ-обработки ── */}
+      {isProcessing && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 14px',
+            borderRadius: 999,
+            boxShadow: '0 6px 24px rgba(0,0,0,0.22)',
+            background: isLightTheme ? '#fffdf5' : '#1f1516',
+            outline: '1px solid rgba(181,132,136,0.35)',
+            fontFamily: 'Georgia, serif',
+            maxWidth: 'calc(100vw - 24px)',
+          }}
+        >
+          <svg style={{ width: 15, height: 15, animation: 'spin 1s linear infinite', flexShrink: 0, color: '#B58488' }} viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25"/>
+            <path fill="currentColor" opacity="0.85" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          <span style={{ fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            ИИ обрабатывает текст…
+          </span>
+          <button
+            onClick={cancelProcessing}
+            aria-label="Отменить обработку"
+            title="Отменить обработку"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              border: 'none', cursor: 'pointer', flexShrink: 0,
+              padding: '3px 10px', borderRadius: 999, fontSize: 12,
+              background: 'rgba(181,132,136,0.18)', color: '#B58488', fontFamily: 'Georgia, serif',
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 15 }}>close</span>
+            Отменить
+          </button>
+        </div>
+      )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>

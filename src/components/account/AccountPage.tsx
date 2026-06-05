@@ -78,8 +78,12 @@ const AccountPage: React.FC<AccountPageProps> = ({ onToggleTheme, isLightTheme }
   const [isBoardCanvas, setIsBoardCanvas] = useState(false);
 
   // Editor state (shared between transcriber -> text-processing)
-  const [showTextEditor, setShowTextEditor] = useState(false);
-  const [editorContent, setEditorContent] = useState('');
+  // Восстанавливаем черновик редактора после перезагрузки страницы (sessionStorage).
+  const savedEditorDraft = (() => {
+    try { return sessionStorage.getItem('mindesync_editor_draft') || ''; } catch { return ''; }
+  })();
+  const [showTextEditor, setShowTextEditor] = useState(!!savedEditorDraft);
+  const [editorContent, setEditorContent] = useState(savedEditorDraft);
   const [editorInstance, setEditorInstance] = useState<any>(null);
   const [editorMode, setEditorMode] = useState<'original' | 'processed'>('original');
   const [originalText, setOriginalText] = useState<string>('');
