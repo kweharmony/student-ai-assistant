@@ -176,6 +176,8 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   const [explainResult, setExplainResult] = useState<string | null>(null);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
+  // Свёрнуто ли окно результата в кружок-иконку у выделенного текста.
+  const [explainCollapsed, setExplainCollapsed] = useState(false);
   const editorWrapperRef = useRef<HTMLDivElement>(null);
   const explainPanelRef = useRef<HTMLDivElement>(null);
   // Клонированный Range выделения — чтобы пересчитывать позицию при скролле,
@@ -237,6 +239,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     setExplainTooltip({ text, x, y, rectTop: rect.top, visible: true });
     setExplainResult(null);
     setExplainError(null);
+    setExplainCollapsed(false);
   };
 
   // Пока активна подсказка/окно — держим их «приклеенными» к выделенному тексту:
@@ -1406,14 +1409,42 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
         );
       })()}
 
+      {/* ── Explain result: свёрнутый кружок у текста ── */}
+      {explainTooltip && explainTooltip.visible && explainCollapsed && (explainResult !== null || explainError) && (
+        <button
+          onMouseDown={e => e.stopPropagation()}
+          onClick={() => setExplainCollapsed(false)}
+          title="Развернуть объяснение"
+          style={{
+            position: 'fixed',
+            left: explainTooltip.x,
+            top: explainTooltip.rectTop - 14,
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            width: 28,
+            height: 28,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 999,
+            border: '2px solid #fff7ec',
+            boxShadow: '0 3px 12px rgba(0,0,0,0.32)',
+            background: '#44292b',
+            color: '#fff7ec',
+            cursor: 'pointer',
+            padding: 0,
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 15 }}>auto_awesome</span>
+        </button>
+      )}
+
       {/* ── Explain result panel ── */}
-      {explainTooltip && (explainResult !== null || explainError) && (() => {
+      {explainTooltip && !explainCollapsed && (explainResult !== null || explainError) && (() => {
         const panelW = 340;
+        const panelH = Math.min(320, window.innerHeight - 32);
         const spaceBelow = window.innerHeight - explainTooltip.y - 16;
-        const showBelow = spaceBelow >= 160;
-        const maxH = showBelow
-          ? Math.max(spaceBelow - 8, 160)
-          : Math.max(explainTooltip.rectTop - 24, 160);
+        const showBelow = spaceBelow >= panelH;
         const posStyle: React.CSSProperties = showBelow
           ? { top: explainTooltip.y + 8 }
           : { bottom: window.innerHeight - explainTooltip.rectTop + 8 };
@@ -1429,7 +1460,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
               transform: 'translateX(-100%)',
               zIndex: 1000,
               width: panelW,
-              maxHeight: maxH,
+              height: panelH,
               display: 'flex',
               flexDirection: 'column',
               borderRadius: 14,
@@ -1446,12 +1477,19 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
               borderBottom: '1px solid var(--border-color)',
               flexShrink: 0,
             }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 15, color: '#B58488' }}>auto_awesome</span>
+              <button
+                onClick={() => setExplainCollapsed(true)}
+                title="Свернуть в кружок"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B58488', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0 }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>auto_awesome</span>
+              </button>
               <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>
                 «{explainTooltip.text.slice(0, 60)}{explainTooltip.text.length > 60 ? '…' : ''}»
               </span>
               <button
-                onClick={() => { setExplainTooltip(null); setExplainResult(null); setExplainError(null); }}
+                onClick={() => { setExplainTooltip(null); setExplainResult(null); setExplainError(null); setExplainCollapsed(false); }}
+                title="Закрыть"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 2, display: 'flex', borderRadius: 4, flexShrink: 0 }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
