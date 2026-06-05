@@ -172,12 +172,15 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
   const [mlResults, setMlResults] = useState<Record<string, { html: string; rawMd: string }>>({});
 
   // ── Inline explain on selection ────────────────────────────────────────────
-  const [explainTooltip, setExplainTooltip] = useState<{ text: string; x: number; y: number; rectTop: number } | null>(null);
+  const [explainTooltip, setExplainTooltip] = useState<{ text: string; x: number; y: number; rectTop: number; visible: boolean } | null>(null);
   const [explainResult, setExplainResult] = useState<string | null>(null);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
   const editorWrapperRef = useRef<HTMLDivElement>(null);
   const explainPanelRef = useRef<HTMLDivElement>(null);
+  // Клонированный Range выделения — чтобы пересчитывать позицию при скролле,
+  // даже если живое выделение уже снято.
+  const explainRangeRef = useRef<Range | null>(null);
 
   // При смене режима — восстанавливаем сохранённый результат (Q3)
   const isMlModeFirstRender = useRef(true);
@@ -206,32 +209,60 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     }
   }, [editorContent]);
 
-  // Close explain panel when clicking outside editor+panel
+  // Клик снаружи убирает только «голую» кнопку-подсказку. Если открыто окно
+  // с результатом/ошибкой или идёт загрузка — оно закрывается только крестиком.
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (editorWrapperRef.current?.contains(t) || explainPanelRef.current?.contains(t)) return;
+      if (explainResult !== null || explainError || explainLoading) return;
       setExplainTooltip(null);
-      setExplainResult(null);
-      setExplainError(null);
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, []);
+  }, [explainResult, explainError, explainLoading]);
 
   const handleEditorSelect = () => {
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed) { setExplainTooltip(null); return; }
+    // Пустой клик не должен закрывать уже открытое окно с результатом — только крестик.
+    const keepOpen = explainResult !== null || explainError !== null || explainLoading;
+    if (!sel || sel.isCollapsed) { if (!keepOpen) setExplainTooltip(null); return; }
     const text = sel.toString().trim();
-    if (text.length < 5) { setExplainTooltip(null); return; }
-    const range = sel.getRangeAt(0);
+    if (text.length < 5) { if (!keepOpen) setExplainTooltip(null); return; }
+    const range = sel.getRangeAt(0).cloneRange();
+    explainRangeRef.current = range;
     const rect = range.getBoundingClientRect();
     const x = Math.min(rect.right, window.innerWidth - 16);
     const y = rect.bottom;
-    setExplainTooltip({ text, x, y, rectTop: rect.top });
+    setExplainTooltip({ text, x, y, rectTop: rect.top, visible: true });
     setExplainResult(null);
     setExplainError(null);
   };
+
+  // Пока активна подсказка/окно — держим их «приклеенными» к выделенному тексту:
+  // пересчитываем координаты из сохранённого Range на каждый скролл (в т.ч.
+  // внутренний скролл редактора — отсюда capture: true) и ресайз.
+  const explainActive = explainTooltip !== null;
+  useEffect(() => {
+    if (!explainActive) return;
+    const recompute = () => {
+      const r = explainRangeRef.current;
+      if (!r) return;
+      const rect = r.getBoundingClientRect();
+      const ed = editorWrapperRef.current?.getBoundingClientRect();
+      // Видно, пока фрагмент пересекается с видимой областью редактора.
+      const visible = !ed || (rect.bottom > ed.top + 4 && rect.top < ed.bottom - 4);
+      setExplainTooltip(prev => prev
+        ? { ...prev, x: Math.min(rect.right, window.innerWidth - 16), y: rect.bottom, rectTop: rect.top, visible }
+        : prev);
+    };
+    window.addEventListener('scroll', recompute, true);
+    window.addEventListener('resize', recompute);
+    return () => {
+      window.removeEventListener('scroll', recompute, true);
+      window.removeEventListener('resize', recompute);
+    };
+  }, [explainActive]);
 
   const handleExplainClick = async () => {
     if (!explainTooltip) return;
@@ -1297,7 +1328,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
         </div>
       )}
       {/* ── Explain tooltip ── */}
-      {explainTooltip && !explainResult && !explainLoading && (() => {
+      {explainTooltip && explainTooltip.visible && !explainResult && !explainLoading && (() => {
         const spaceBelow = window.innerHeight - explainTooltip.y - 16;
         const showBelow = spaceBelow >= 48;
         const posStyle: React.CSSProperties = showBelow
@@ -1337,7 +1368,7 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
       })()}
 
       {/* ── Explain loading pill ── */}
-      {explainTooltip && explainLoading && (() => {
+      {explainTooltip && explainTooltip.visible && explainLoading && (() => {
         const spaceBelow = window.innerHeight - explainTooltip.y - 16;
         const showBelow = spaceBelow >= 40;
         const posStyle: React.CSSProperties = showBelow
