@@ -153,14 +153,18 @@ const PublicBoardPage: React.FC = () => {
     const safeAppState = {
       viewBackgroundColor: nextAppState?.viewBackgroundColor ?? localState.viewBackgroundColor,
     };
+    // Сначала регистрируем файлы (картинки), иначе элемент-изображение
+    // отрисуется силуэтом без бинаря. addFiles ждёт массив, а serializeAsJSON
+    // отдаёт files словарём { fileId: BinaryFileData } — конвертируем.
+    if (nextFiles && api.addFiles) {
+      const filesArray = Array.isArray(nextFiles) ? nextFiles : Object.values(nextFiles);
+      if (filesArray.length) api.addFiles(filesArray);
+    }
     // Сливаем по версиям, чтобы не затирать параллельные правки (п.4).
     const merged = Array.isArray(nextElements)
       ? mergeExcalidrawElements(api.getSceneElements(), nextElements)
       : api.getSceneElements();
     api.updateScene({ elements: merged, appState: safeAppState });
-    if (nextFiles && api.addFiles) {
-      api.addFiles(nextFiles);
-    }
   }, []);
 
   // ── manual save (persists to DB + send real-time) ───────────────────────────
