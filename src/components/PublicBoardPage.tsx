@@ -380,7 +380,16 @@ const PublicBoardPage: React.FC = () => {
       <style>{excalidrawStyles}</style>
       {initialData !== null && (
         <Excalidraw
-          excalidrawAPI={(api) => { excalidrawAPI.current = api; }}
+          excalidrawAPI={(api) => {
+            excalidrawAPI.current = api;
+            // Явно регистрируем файлы из сохранённого снапшота: гарантирует
+            // отрисовку картинок после перезагрузки (не только силуэт).
+            const f = initialData?.files;
+            if (f && api.addFiles) {
+              const arr = Array.isArray(f) ? f : Object.values(f);
+              if (arr.length) api.addFiles(arr);
+            }
+          }}
           initialData={initialData}
           onChange={viewMode ? undefined : handleChange}
           onPointerUpdate={handlePointerUpdate}

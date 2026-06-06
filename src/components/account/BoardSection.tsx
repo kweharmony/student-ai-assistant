@@ -337,6 +337,13 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const safeAppState = {
       viewBackgroundColor: nextAppState?.viewBackgroundColor ?? localState.viewBackgroundColor,
     };
+    // Сначала регистрируем файлы (картинки), иначе элемент-изображение
+    // отрисуется силуэтом без бинаря. addFiles ждёт массив, а serializeAsJSON
+    // отдаёт files словарём { fileId: BinaryFileData } — конвертируем.
+    if (nextFiles && api.addFiles) {
+      const filesArray = Array.isArray(nextFiles) ? nextFiles : Object.values(nextFiles);
+      if (filesArray.length) api.addFiles(filesArray);
+    }
     // Сливаем по версиям, чтобы не затирать параллельные правки соавторов (п.4).
     const merged = Array.isArray(nextElements)
       ? mergeExcalidrawElements(api.getSceneElements(), nextElements)
@@ -345,9 +352,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       elements: merged,
       appState: safeAppState,
     });
-    if (nextFiles && excalidrawAPI.current.addFiles) {
-      excalidrawAPI.current.addFiles(nextFiles);
-    }
   }, []);
 
   // ── save to profile (manual: persists title to DB) ───────────────────────────
@@ -917,7 +921,16 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         {/* Excalidraw fills entire viewport */}
         {initialData !== null && (
           <Excalidraw
-            excalidrawAPI={(api) => { excalidrawAPI.current = api; }}
+            excalidrawAPI={(api) => {
+              excalidrawAPI.current = api;
+              // Явно регистрируем файлы из сохранённого снапшота: гарантирует
+              // отрисовку картинок после перезагрузки (не только силуэт).
+              const f = initialData?.files;
+              if (f && api.addFiles) {
+                const arr = Array.isArray(f) ? f : Object.values(f);
+                if (arr.length) api.addFiles(arr);
+              }
+            }}
             initialData={initialData}
             onChange={(elements) => {
               setCanvasEmpty((elements?.filter(el => !el.isDeleted).length ?? 0) === 0);
