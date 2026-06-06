@@ -10,6 +10,7 @@ import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types
 import { useAuth } from '../../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import excalidrawStyles from '../excalidrawStyles';
+import { mergeExcalidrawElements } from '../../utils/boardSync';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -39,6 +40,7 @@ interface BoardMeta {
   is_public: boolean;
   share_token: string | null;
   share_mode: 'view' | 'edit';
+  show_cursors?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -109,11 +111,19 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const lastSentData = useRef<string | null>(null);
+  // Presence-курсоры соавторов (п.9) и троттлинг отправки курсора.
+  const collaboratorsRef = useRef<Map<string, any>>(new Map());
+  const lastPointerSent = useRef<number>(0);
+  // Показ курсоров соавторов — настройка доски, меняет только владелец.
+  const [showCursors, setShowCursors] = useState(true);
+  const showCursorsRef = useRef(true);
 
   // ── save panel ───────────────────────────────────────────────────────────────
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  // Признак пустого холста — для подсказки-плейсхолдера (п.2).
+  const [canvasEmpty, setCanvasEmpty] = useState(true);
 
   // ── share panel ──────────────────────────────────────────────────────────────
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
@@ -144,10 +154,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   // ── lecture search ────────────────────────────────────────────────────────
   const [lectureSearch, setLectureSearch] = useState('');
 
-  // ── text block placement ──────────────────────────────────────────────────
-  const [textBlockPlacing, setTextBlockPlacing] = useState(false);
-  const [textBlockCursor, setTextBlockCursor] = useState<{ x: number; y: number } | null>(null);
-
   // ── mobile detection ─────────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   useEffect(() => {
@@ -155,18 +161,6 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
-
-  useEffect(() => {
-    if (!textBlockPlacing) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setTextBlockPlacing(false);
-        setTextBlockCursor(null);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [textBlockPlacing]);
 
   const authHeaders = useCallback(
     () => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }),
@@ -224,6 +218,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setBoardCanEdit(detail.can_edit);
     setBoardIsOwner(!!detail.owner && detail.owner.id === user?.id);
     setShareModeDraft(detail.share_mode);
+    { const sc = detail.show_cursors !== false; setShowCursors(sc); showCursorsRef.current = sc; }
     setCanvasBg(parsed?.appState?.viewBackgroundColor || 'transparent');
     setMode('canvas');
     onCanvasMode?.(true);
@@ -250,6 +245,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setBoardCanEdit(detail.can_edit);
     setBoardIsOwner(!!detail.owner && detail.owner.id === user?.id);
     setShareModeDraft(detail.share_mode);
+    { const sc = detail.show_cursors !== false; setShowCursors(sc); showCursorsRef.current = sc; }
     setMode('canvas');
     onCanvasMode?.(true);
     setSearchParams({ board: detail.id });
@@ -304,12 +300,8 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       if (lastSentData.current === data) return;
       lastSentData.current = data;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'update',
-          elements: api.getSceneElements(),
-          appState: api.getAppState(),
-          data,
-        }));
+        // Шлём только сериализованный снапшот (п.5) — приёмник распарсит элементы.
+        wsRef.current.send(JSON.stringify({ type: 'update', data }));
       } else {
         persistBoardData(data);
       }
@@ -345,8 +337,12 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const safeAppState = {
       viewBackgroundColor: nextAppState?.viewBackgroundColor ?? localState.viewBackgroundColor,
     };
+    // Сливаем по версиям, чтобы не затирать параллельные правки соавторов (п.4).
+    const merged = Array.isArray(nextElements)
+      ? mergeExcalidrawElements(api.getSceneElements(), nextElements)
+      : api.getSceneElements();
     api.updateScene({
-      elements: nextElements,
+      elements: merged,
       appState: safeAppState,
     });
     if (nextFiles && excalidrawAPI.current.addFiles) {
@@ -367,7 +363,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     );
     // send real-time update immediately
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'update', elements: api.getSceneElements(), appState: api.getAppState(), data }));
+      wsRef.current.send(JSON.stringify({ type: 'update', data }));
     }
     // persist title
     const res = await fetch(`${API_BASE}/api/boards/${activeBoardId}`, {
@@ -383,34 +379,97 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
   };
 
   // ── WebSocket real-time subscription ────────────────────────────────────────
+  const applyCollaborators = useCallback(() => {
+    excalidrawAPI.current?.updateScene({ collaborators: new Map(collaboratorsRef.current) } as any);
+  }, []);
+
   useEffect(() => {
     if (!activeBoardId || !token) return;
-    const ws = new WebSocket(`${WS_BASE}/api/boards/${activeBoardId}/ws?token=${token}`);
-    wsRef.current = ws;
+    let closedByCleanup = false;
+    let reconnectDelay = 1000;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-    ws.onopen = () => {};
-    ws.onmessage = (event) => {
+    const connect = async () => {
+      if (closedByCleanup) return;
+      // Короткоживущий тикет вместо JWT в URL (п.10); при сбое — фоллбэк на token.
+      let auth = `token=${token}`;
       try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'update' && excalidrawAPI.current) {
-          if (isUserInteracting()) {
-            pendingRemoteUpdate.current = msg;
-            return;
-          }
-          applyRemoteUpdate(msg);
+        const res = await fetch(`${API_BASE}/api/boards/${activeBoardId}/ws-ticket`, {
+          method: 'POST', headers: authHeaders(),
+        });
+        if (res.ok) {
+          const { ticket } = await res.json();
+          if (ticket) auth = `ticket=${ticket}`;
         }
-      } catch {
-        // ignore
-      }
+      } catch { /* fallback to token */ }
+      if (closedByCleanup) return;
+
+      const ws = new WebSocket(`${WS_BASE}/api/boards/${activeBoardId}/ws?${auth}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => { reconnectDelay = 1000; };
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'update' && excalidrawAPI.current) {
+            if (isUserInteracting()) { pendingRemoteUpdate.current = msg; return; }
+            applyRemoteUpdate(msg);
+          } else if (msg.type === 'pointer' && msg.sender_id) {
+            if (!showCursorsRef.current) return;
+            collaboratorsRef.current.set(msg.sender_id, {
+              pointer: (typeof msg.x === 'number' && typeof msg.y === 'number') ? { x: msg.x, y: msg.y } : undefined,
+              username: msg.username,
+              color: { background: msg.color || '#888', stroke: msg.color || '#888' },
+            });
+            applyCollaborators();
+          } else if (msg.type === 'leave' && msg.sender_id) {
+            collaboratorsRef.current.delete(msg.sender_id);
+            applyCollaborators();
+          } else if (msg.type === 'settings') {
+            const sc = msg.show_cursors !== false;
+            setShowCursors(sc);
+            showCursorsRef.current = sc;
+            if (!sc) { collaboratorsRef.current.clear(); applyCollaborators(); }
+            setActiveBoard(prev => (prev ? { ...prev, show_cursors: sc } : prev));
+          }
+        } catch {
+          // ignore
+        }
+      };
+      ws.onerror = () => {};
+      ws.onclose = () => {
+        wsRef.current = null;
+        collaboratorsRef.current.clear();
+        applyCollaborators();
+        if (closedByCleanup) return;
+        // Авто-reconnect с экспоненциальным backoff (п.8).
+        reconnectTimer = setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+      };
     };
-    ws.onerror = () => {};
-    ws.onclose = () => { wsRef.current = null; };
+
+    connect();
 
     return () => {
-      ws.close();
-      wsRef.current = null;
+      closedByCleanup = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      collaboratorsRef.current.clear();
+      if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     };
-  }, [activeBoardId, token, applyRemoteUpdate, isUserInteracting]);
+  }, [activeBoardId, token, applyRemoteUpdate, isUserInteracting, applyCollaborators, authHeaders, WS_BASE]);
+
+  // Отправка позиции курсора соавторам (throttled) для presence (п.9).
+  const handlePointerUpdate = useCallback((payload: any) => {
+    if (!showCursorsRef.current) return;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const now = Date.now();
+    if (now - lastPointerSent.current < 60) return;
+    lastPointerSent.current = now;
+    const p = payload?.pointer;
+    if (!p) return;
+    ws.send(JSON.stringify({ type: 'pointer', x: p.x, y: p.y }));
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -507,6 +566,45 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     setTimeout(() => setSaveMsg(''), 2000);
   };
 
+  // Включить/выключить показ курсоров соавторов — настройка доски (только владелец).
+  const toggleCursors = async () => {
+    if (!activeBoardId || !boardIsOwner) return;
+    const next = !showCursorsRef.current;
+    setShowCursors(next);
+    showCursorsRef.current = next;
+    if (!next) {
+      collaboratorsRef.current.clear();
+      excalidrawAPI.current?.updateScene({ collaborators: new Map() } as any);
+    }
+    // Живое применение у всех подключённых.
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'settings', show_cursors: next }));
+    }
+    // Сохранение настройки на сервере.
+    try {
+      await fetch(`${API_BASE}/api/boards/${activeBoardId}`, {
+        method: 'PUT', headers: authHeaders(), body: JSON.stringify({ show_cursors: next }),
+      });
+    } catch { /* ignore */ }
+    setActiveBoard(prev => (prev ? { ...prev, show_cursors: next } : prev));
+  };
+
+  // Сгенерировать новую ссылку — старая сразу перестаёт работать (п.2).
+  const rotateShare = async () => {
+    if (!activeBoardId || !boardCanEdit || !boardIsOwner) return;
+    if (!window.confirm('Сгенерировать новую ссылку? Старая перестанет работать.')) return;
+    const res = await fetch(`${API_BASE}/api/boards/${activeBoardId}/share/rotate`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    if (res.ok) {
+      const updated: BoardDetail = await res.json();
+      setActiveBoard(updated);
+      setSaveMsg('Ссылка обновлена');
+      setTimeout(() => setSaveMsg(''), 2000);
+    }
+  };
+
   // ── canvas background ─────────────────────────────────────────────────────────
   const changeBg = (color: string) => {
     setCanvasBg(color);
@@ -599,6 +697,38 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     await loadLectures('my');
   };
 
+  // Координаты левого-верхнего угла блока так, чтобы он оказался по центру
+  // текущего вьюпорта пользователя (без изменения его зума/прокрутки).
+  // Формула Excalidraw: sceneX = localX / zoom - scrollX; центр → localX = width/2.
+  const sceneCenterForBox = (api: any, boxWidth: number, boxHeight: number) => {
+    const appState = api.getAppState();
+    const z = appState.zoom?.value || 1;
+    const vw = appState.width || window.innerWidth;
+    const vh = appState.height || window.innerHeight;
+    const centerX = (vw / 2) / z - appState.scrollX;
+    const centerY = (vh / 2) / z - appState.scrollY;
+    return { x: centerX - boxWidth / 2, y: centerY - boxHeight / 2 };
+  };
+
+  // Оценка высоты блока под объём текста, чтобы он не обрезался (п.4).
+  const estimateTextBoxHeight = (text: string, width: number, fontSize = 16) => {
+    const charsPerLine = Math.max(10, Math.floor(width / (fontSize * 0.55)));
+    const lineHeight = fontSize * 1.25;
+    const lines = text.split('\n').reduce(
+      (acc, ln) => acc + Math.max(1, Math.ceil(ln.length / charsPerLine)), 0,
+    );
+    return Math.min(4000, Math.max(120, Math.round(lines * lineHeight + 32)));
+  };
+
+  // Вернуть вид ко всем элементам холста (п.6).
+  const fitToContent = () => {
+    const api = excalidrawAPI.current;
+    if (!api) return;
+    const els = api.getSceneElements();
+    if (!els.length) return;
+    api.scrollToContent?.(els, { fitToViewport: true, viewportZoomFactor: 0.9 });
+  };
+
   const quickInsertLecture = async (item: LectureMeta) => {
     const api = excalidrawAPI.current;
     if (!api || !boardCanEdit) return;
@@ -612,19 +742,16 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       const text = best ? (best.processed_text || best.raw_text) : '';
       if (!text.trim()) return;
 
-      const appState = api.getAppState();
-      const zoom = appState.zoom.value;
-      const x = (-appState.scrollX + window.innerWidth / 2) / zoom - 300;
-      const y = (-appState.scrollY + window.innerHeight / 2) / zoom - 100;
+      const boxHeight = estimateTextBoxHeight(text, 560);
+      const { x, y } = sceneCenterForBox(api, 560, boxHeight);
       const newElements = convertToExcalidrawElements([{
-        type: 'rectangle', x, y, width: 560, height: 260,
+        type: 'rectangle', x, y, width: 560, height: boxHeight,
         backgroundColor: 'transparent', fillStyle: 'solid',
         strokeColor: isLightTheme ? '#44292b' : '#fffff0',
         strokeWidth: 1, strokeStyle: 'dashed',
         label: { text, textAlign: 'left', verticalAlign: 'top', fontSize: 16, strokeColor: isLightTheme ? '#44292b' : '#fffff0' },
       }]);
       api.updateScene({ elements: [...api.getSceneElements(), ...newElements] });
-      api.scrollToContent?.(newElements[0], { fitToViewport: true });
     } finally {
       setLecturePickerOpen(false);
       setSelectedLecture(null);
@@ -652,12 +779,9 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const api = excalidrawAPI.current;
     if (!api || !boardCanEdit || !insertText.trim()) return;
 
-    const appState = api.getAppState();
-    const zoom = appState.zoom.value;
-    const x = (-appState.scrollX + window.innerWidth / 2) / zoom - 300;
-    const y = (-appState.scrollY + window.innerHeight / 2) / zoom - 100;
     const boxWidth = 560;
-    const boxHeight = 260;
+    const boxHeight = estimateTextBoxHeight(insertText, boxWidth);
+    const { x, y } = sceneCenterForBox(api, boxWidth, boxHeight);
 
     const newElements = convertToExcalidrawElements([
       {
@@ -684,41 +808,19 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     api.updateScene({
       elements: [...api.getSceneElements(), ...newElements],
     });
-    api.scrollToContent?.(newElements[0], { fitToViewport: true });
     setLecturePickerOpen(false);
     setSelectedLecture(null);
     setInsertText('');
   };
 
 
+  // Текст-блок добавляется сразу в центр текущего экрана (п.5) — без режима клика.
   const insertBoundedTextBlock = () => {
     const api = excalidrawAPI.current;
     if (!api || !boardCanEdit) return;
-    setTextBlockCursor(null);
-    setTextBlockPlacing(true);
-    setDesktopPanelOpen(false);
-  };
-
-  const placeTextBlockAt = (clientX: number, clientY: number) => {
-    const api = excalidrawAPI.current;
-    if (!api || !boardCanEdit) return;
-
-    const appState = api.getAppState();
-    const zoom = appState.zoom.value;
-    const viewportWidth = appState.width || window.innerWidth;
-    const viewportHeight = appState.height || window.innerHeight;
-    const container = document.querySelector('.excalidraw') as HTMLElement | null;
-    const rect = container?.getBoundingClientRect();
-    const offsetLeft = rect?.left ?? (appState as any).offsetLeft ?? 0;
-    const offsetTop = rect?.top ?? (appState as any).offsetTop ?? 0;
-    const localX = clientX - offsetLeft;
-    const localY = clientY - offsetTop;
-    const sceneX = (localX - viewportWidth / 2) / zoom - appState.scrollX;
-    const sceneY = (localY - viewportHeight / 2) / zoom - appState.scrollY;
     const boxWidth = 440;
     const boxHeight = 180;
-    const x = sceneX - boxWidth / 2;
-    const y = sceneY - boxHeight / 2;
+    const { x, y } = sceneCenterForBox(api, boxWidth, boxHeight);
 
     const newElements = convertToExcalidrawElements([
       {
@@ -745,8 +847,7 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     api.updateScene({
       elements: [...api.getSceneElements(), ...newElements],
     });
-    setTextBlockPlacing(false);
-    setTextBlockCursor(null);
+    setDesktopPanelOpen(false);
   };
 
   // ── exit ──────────────────────────────────────────────────────────────────────
@@ -818,7 +919,12 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
           <Excalidraw
             excalidrawAPI={(api) => { excalidrawAPI.current = api; }}
             initialData={initialData}
-            onChange={handleChange}
+            onChange={(elements) => {
+              setCanvasEmpty((elements?.filter(el => !el.isDeleted).length ?? 0) === 0);
+              handleChange();
+            }}
+            onPointerUpdate={handlePointerUpdate}
+            isCollaborating
             viewModeEnabled={!boardCanEdit}
             theme="light"
             langCode="ru-RU"
@@ -836,65 +942,29 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
           />
         )}
 
-        {textBlockPlacing && (
+        {/* ── Подсказка на пустом холсте ── */}
+        {canvasEmpty && boardCanEdit && (
           <div
             style={{
               position: 'fixed',
               inset: 0,
-              zIndex: 320,
-              cursor: 'crosshair',
-              background: 'rgba(0,0,0,0.02)',
+              zIndex: 210,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              textAlign: 'center',
+              padding: 24,
             }}
-            onPointerMove={(event) => setTextBlockCursor({ x: event.clientX, y: event.clientY })}
-            onPointerDown={(event) => placeTextBlockAt(event.clientX, event.clientY)}
           >
-            <style>{`
-              @keyframes textBlockPulse {
-                0% { transform: translate(-50%, -50%) scale(0.7); opacity: 0.55; }
-                70% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.2; }
-                100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
-              }
-            `}</style>
-            <div
-              style={{
-                position: 'absolute',
-                top: 16,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: isLightTheme ? 'rgba(255,253,245,0.95)' : 'rgba(24,18,19,0.92)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 12,
-                padding: '8px 14px',
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                fontFamily: 'Georgia, serif',
-                boxShadow: '0 10px 24px rgba(0,0,0,0.2)',
-              }}
-            >
-              Кликните по холсту, чтобы вставить текстовый блок. Esc — отмена.
+            <span className="material-symbols-outlined" style={{ fontSize: 44, color: 'var(--text-secondary)', opacity: 0.45 }}>gesture</span>
+            <div style={{ marginTop: 10, fontFamily: 'Georgia, serif', fontSize: 16, color: 'var(--text-secondary)', opacity: 0.7 }}>
+              Полотно пока пустое
             </div>
-            {textBlockCursor && (
-              <div style={{ position: 'absolute', left: textBlockCursor.x, top: textBlockCursor.y, pointerEvents: 'none' }}>
-                <div style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: '50%',
-                  background: isLightTheme ? 'rgba(68,41,43,0.5)' : 'rgba(255,255,240,0.6)',
-                  border: `1px solid ${isLightTheme ? 'rgba(68,41,43,0.6)' : 'rgba(255,255,240,0.8)'}`,
-                  transform: 'translate(-50%, -50%)',
-                }} />
-                <div style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: '50%',
-                  border: `2px solid ${isLightTheme ? 'rgba(68,41,43,0.35)' : 'rgba(255,255,240,0.45)'}`,
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  animation: 'textBlockPulse 1.4s ease-out infinite',
-                }} />
-              </div>
-            )}
+            <div style={{ marginTop: 4, fontFamily: 'Georgia, serif', fontSize: 13, color: 'var(--text-secondary)', opacity: 0.5, maxWidth: 320 }}>
+              Добавьте текст из лекции, поставьте текст-блок или начните рисовать
+            </div>
           </div>
         )}
 
@@ -1006,6 +1076,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                           </button>
                         </div>
 
+                        {shareModeDraft === 'edit' && (
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 12, padding: '7px 9px', borderRadius: 8, background: 'rgba(217,164,65,0.12)', border: '1px solid rgba(217,164,65,0.35)' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#d9a441', marginTop: 1 }}>warning</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                              Любой, у кого есть ссылка и аккаунт, сможет редактировать полотно.
+                            </span>
+                          </div>
+                        )}
+
                         {activeBoard?.is_public ? (
                           <>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
@@ -1017,10 +1096,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                             <div style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 10, color: 'var(--text-primary)', opacity: 0.6, background: 'var(--hover-bg)', borderRadius: 8, padding: '6px 10px', fontFamily: 'monospace' }}>
                               {`${window.location.origin}/board/${activeBoard.share_token}`}
                             </div>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
-                              <button style={{ ...btnSecondary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={() => enableShare(shareModeDraft)}>Сохранить режим</button>
-                              <button style={{ ...btnSecondary, fontSize: 12, padding: '7px 12px' }} onClick={disableShare}>Отключить</button>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
+                                <button style={{ ...btnSecondary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={() => enableShare(shareModeDraft)}>Сохранить режим</button>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button style={{ ...btnSecondary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={rotateShare}>Новая ссылка</button>
+                                <button style={{ ...btnSecondary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={disableShare}>Отключить</button>
+                              </div>
                             </div>
                           </>
                         ) : (
@@ -1038,6 +1122,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
             {activeBoardId && boardCanEdit && <MobileIconButton icon="article" label="Лекция" onClick={openLecturePicker} />}
             {activeBoardId && boardCanEdit && <MobileIconButton icon="text_fields" label="Текст-блок" onClick={insertBoundedTextBlock} />}
+            {activeBoardId && <MobileIconButton icon="fit_screen" label="Показать всё" onClick={fitToContent} />}
+            {activeBoardId && boardIsOwner && (
+              <MobileIconButton
+                icon={showCursors ? 'visibility' : 'visibility_off'}
+                label="Курсоры"
+                onClick={toggleCursors}
+                active={showCursors}
+              />
+            )}
 
             {/* Download menu for view-only visitors */}
             {activeBoardId && !boardCanEdit && (
@@ -1134,7 +1227,26 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
 
         {/* ── Desktop panel — hamburger style top-left ── */}
         {!isMobile && (
-          <div style={{ position: 'fixed', right: 12, top: 12, zIndex: 300 }}>
+          <div style={{ position: 'fixed', right: 12, top: 12, zIndex: 300, display: 'flex', gap: 8 }}>
+            {/* Всегда видимая кнопка выхода с холста (п.7) */}
+            <button
+              onClick={handleExitRequest}
+              title="Выйти с полотна"
+              aria-label="Выйти с полотна"
+              style={{
+                width: 40, height: 40,
+                background: isLightTheme ? 'rgba(255,253,245,0.97)' : 'rgba(20,15,17,0.97)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 10,
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                backdropFilter: 'blur(16px)',
+                color: '#c2756f',
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>logout</span>
+            </button>
             <button
               onClick={() => setDesktopPanelOpen(o => !o)}
               title="Меню полотна"
@@ -1279,6 +1391,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                           </button>
                         </div>
 
+                        {shareModeDraft === 'edit' && (
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 12, padding: '7px 9px', borderRadius: 8, background: 'rgba(217,164,65,0.12)', border: '1px solid rgba(217,164,65,0.35)' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#d9a441', marginTop: 1 }}>warning</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                              Любой, у кого есть ссылка и аккаунт, сможет редактировать полотно.
+                            </span>
+                          </div>
+                        )}
+
                         {activeBoard?.is_public ? (
                           <>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
@@ -1290,10 +1411,15 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                             <div style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 10, color: 'var(--text-primary)', opacity: 0.6, background: 'var(--hover-bg)', borderRadius: 8, padding: '6px 10px', fontFamily: 'monospace' }}>
                               {`${window.location.origin}/board/${activeBoard.share_token}`}
                             </div>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
-                              <button style={{ ...btnSecondary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={() => enableShare(shareModeDraft)}>Сохранить режим</button>
-                              <button style={{ ...btnSecondary, fontSize: 12, padding: '7px 12px' }} onClick={disableShare}>Отключить</button>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button style={{ ...btnPrimary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={copyShareLink}>Скопировать</button>
+                                <button style={{ ...btnSecondary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={() => enableShare(shareModeDraft)}>Сохранить режим</button>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button style={{ ...btnSecondary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={rotateShare}>Новая ссылка</button>
+                                <button style={{ ...btnSecondary, flex: 1, fontSize: 12, padding: '7px 0' }} onClick={disableShare}>Отключить</button>
+                              </div>
                             </div>
                           </>
                         ) : (
@@ -1310,6 +1436,16 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
                 {/* Lecture + text */}
                 {activeBoardId && boardCanEdit && <PanelButton icon="article" label="Из лекции" onClick={openLecturePicker} isLightTheme={isLightTheme} />}
                 {activeBoardId && boardCanEdit && <PanelButton icon="text_fields" label="Текст-блок" onClick={insertBoundedTextBlock} isLightTheme={isLightTheme} />}
+                {activeBoardId && <PanelButton icon="fit_screen" label="Показать всё" onClick={fitToContent} isLightTheme={isLightTheme} />}
+                {activeBoardId && boardIsOwner && (
+                  <PanelButton
+                    icon={showCursors ? 'visibility' : 'visibility_off'}
+                    label={showCursors ? 'Курсоры: вкл' : 'Курсоры: выкл'}
+                    onClick={toggleCursors}
+                    isLightTheme={isLightTheme}
+                    active={showCursors}
+                  />
+                )}
 
                 {/* Download for view-only visitors */}
                 {activeBoardId && !boardCanEdit && (
@@ -1421,20 +1557,13 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
               </div>
               <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.6 }}>
                 {boardCanEdit
-                  ? 'Несохранённые изменения будут потеряны.'
+                  ? 'Изменения будут сохранены автоматически.'
                   : 'Вы просматривали полотно в режиме только для чтения.'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {activeBoardId && boardCanEdit && (
-                  <button style={{ ...btnPrimary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(true)}>
-                    Сохранить и выйти
-                  </button>
-                )}
-                {activeBoardId && boardCanEdit && (
-                  <button style={{ ...btnSecondary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(false)}>
-                    Выйти
-                  </button>
-                )}
+                <button style={{ ...btnPrimary, width: '100%', textAlign: 'center' }} onClick={() => confirmExit(true)}>
+                  Выйти
+                </button>
                 <button style={{ ...btnSecondary, width: '100%', textAlign: 'center', opacity: 0.7 }} onClick={() => setExitPrompt(false)}>
                   Отмена
                 </button>

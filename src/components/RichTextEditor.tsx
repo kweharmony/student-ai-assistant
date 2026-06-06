@@ -404,100 +404,119 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
           isActive={activeFormats.heading1}
-          title="Заголовок 1"
+          title="Заголовок 1 (Ctrl+Alt+1)"
         >
           H1
         </ToolbarButton>
-        
+
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
           isActive={activeFormats.heading2}
-          title="Заголовок 2"
+          title="Заголовок 2 (Ctrl+Alt+2)"
         >
           H2
         </ToolbarButton>
-        
+
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
           isActive={activeFormats.heading3}
-          title="Заголовок 3"
+          title="Заголовок 3 (Ctrl+Alt+3)"
         >
           H3
         </ToolbarButton>
-        
+
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
           isActive={activeFormats.bold}
-          title="Жирный текст"
+          title="Жирный текст (Ctrl+B)"
         >
           <strong>B</strong>
         </ToolbarButton>
-        
+
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleItalic().run()}
           isActive={activeFormats.italic}
-          title="Курсив"
+          title="Курсив (Ctrl+I)"
         >
           <em>I</em>
         </ToolbarButton>
-        
+
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           isActive={activeFormats.bulletList}
-          title="Маркированный список"
+          title="Маркированный список (Ctrl+Shift+8)"
         >
           <span>•</span>
         </ToolbarButton>
-        
+
          <ToolbarButton
            onClick={() => editor.chain().focus().toggleOrderedList().run()}
            isActive={activeFormats.orderedList}
-           title="Нумерованный список"
+           title="Нумерованный список (Ctrl+Shift+7)"
          >
            <span>1.</span>
          </ToolbarButton>
-         
+
          <ToolbarButton
            onClick={() => editor.chain().focus().toggleCode().run()}
            isActive={activeFormats.code}
-           title="Инлайн код"
+           title="Инлайн код (Ctrl+E)"
          >
            <span>&lt;/&gt;</span>
          </ToolbarButton>
-         
+
          <ToolbarButton
            onClick={() => editor.chain().focus().toggleCodeBlock().run()}
            isActive={activeFormats.codeBlock}
-           title="Блок кода"
+           title="Блок кода (Ctrl+Alt+C)"
          >
            <span>```</span>
          </ToolbarButton>
-         
+
          <ToolbarButton
            onClick={() => editor.chain().focus().toggleBlockquote().run()}
            isActive={activeFormats.blockquote}
-           title="Цитата"
+           title="Цитата (Ctrl+Shift+B)"
          >
            <span>"</span>
          </ToolbarButton>
-         
+
+         <ToolbarButton
+           onClick={() => (editor.chain().focus() as any).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+           title="Вставить таблицу 3×3"
+         >
+           <span className="material-symbols-outlined" style={{ fontSize: 18 }}>grid_on</span>
+         </ToolbarButton>
+
+         <ToolbarButton
+           onClick={() => {
+             const latex = window.prompt('Введите формулу в формате LaTeX (например: x^2 + y^2 = r^2):');
+             if (latex && latex.trim()) {
+               editor.chain().focus().insertContent({ type: 'inlineMath', attrs: { latex: latex.trim() } }).run();
+             }
+           }}
+           title="Вставить формулу (или наберите $формула$)"
+         >
+           <span className="material-symbols-outlined" style={{ fontSize: 18 }}>functions</span>
+         </ToolbarButton>
+
          <ToolbarButton
            onClick={() => editor.chain().focus().setHorizontalRule().run()}
            title="Горизонтальная линия"
          >
            <span>—</span>
          </ToolbarButton>
-         
+
          <ToolbarButton
            onClick={() => editor.chain().focus().undo().run()}
-           title="Отменить"
+           title="Отменить (Ctrl+Z)"
          >
            ↶
          </ToolbarButton>
-         
+
          <ToolbarButton
            onClick={() => editor.chain().focus().redo().run()}
-           title="Повторить"
+           title="Повторить (Ctrl+Shift+Z)"
          >
            ↷
          </ToolbarButton>

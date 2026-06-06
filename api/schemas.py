@@ -638,6 +638,7 @@ class BoardUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=255)
     data: Optional[str] = None
     is_public: Optional[bool] = None
+    show_cursors: Optional[bool] = None
 
 
 class BoardShareRequest(BaseModel):
@@ -659,6 +660,7 @@ class BoardOut(BaseModel):
     is_public: bool
     share_token: Optional[str] = None
     share_mode: str = "view"
+    show_cursors: bool = True
     created_at: datetime
     updated_at: datetime
 

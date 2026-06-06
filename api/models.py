@@ -286,6 +286,7 @@ class Board(Base):
     share_token = Column(String(64), nullable=True, unique=True)
     is_public = Column(Boolean, default=False, nullable=False)
     share_mode = Column(String(10), default="view", nullable=False)
+    show_cursors = Column(Boolean, default=True, nullable=False)  # показывать курсоры соавторов
     data = Column(Text, nullable=True)  # Excalidraw JSON state
     created_at = Column(DateTime, default=_now, nullable=False)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
