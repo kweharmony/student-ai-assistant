@@ -10,16 +10,49 @@
 
 import logging
 import os
+import socket
 import tempfile
 import threading
 import time
 from pathlib import Path
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from transcriber import transcribe as do_transcribe
 
 logger = logging.getLogger(__name__)
+
+
+def _build_keepalive_options() -> list[tuple[int, int, int]]:
+    """Опции сокета для включения TCP keepalive (переносимо между ОС).
+
+    ОС сама шлёт keepalive-пробы по простаивающему соединению, поэтому
+    мёртвый сокет (закрытый сервером/NAT во время простоя) обнаруживается
+    заранее, а не зависанием до read-таймаута. Параметры идля/интервала/
+    числа проб называются по-разному на разных платформах — добавляем те,
+    что доступны.
+    """
+    options = [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]
+    # Простой 60с до первой пробы
+    if hasattr(socket, "TCP_KEEPIDLE"):          # Linux, и Windows на Python 3.7+
+        options.append((socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60))
+    # Интервал между пробами 15с
+    if hasattr(socket, "TCP_KEEPINTVL"):
+        options.append((socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 15))
+    # Сколько неотвеченных проб до признания соединения мёртвым
+    if hasattr(socket, "TCP_KEEPCNT"):
+        options.append((socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 4))
+    return options
+
+
+class _KeepAliveHTTPAdapter(HTTPAdapter):
+    """HTTPAdapter, включающий TCP keepalive на всех создаваемых сокетах."""
+
+    def init_poolmanager(self, *args, **kwargs):
+        kwargs["socket_options"] = _build_keepalive_options()
+        super().init_poolmanager(*args, **kwargs)
 
 
 class TranscriptionWorker:
@@ -30,12 +63,37 @@ class TranscriptionWorker:
         self.current_task_id: str | None = None
         self.device_used: str | None = None  # для отображения в трее
 
-        self._session = requests.Session()
-        self._session.headers.update({
-            "X-Worker-Key": config["API_KEY"],
+        self._base_url = config["SERVER_URL"].rstrip("/")
+        self._session = self._build_session()
+
+    def _build_session(self) -> requests.Session:
+        """Создать новую HTTP-сессию со свежим пулом соединений.
+
+        Пул соединений настроен на авто-ретраи (на свежем сокете) и на то,
+        чтобы не переиспользовать протухшие keep-alive соединения, которые
+        тихо закрывает сервер/NAT во время простоя.
+        """
+        session = requests.Session()
+        session.headers.update({
+            "X-Worker-Key": self.config["API_KEY"],
             "Content-Type": "application/json",
         })
-        self._base_url = config["SERVER_URL"].rstrip("/")
+        # Ретраим только GET (идемпотентные опросы/скачивание). POST НЕ ретраим:
+        # /result и /error не идемпотентны — повтор после уже принятого сервером
+        # запроса задвоил бы транскрипт или счётчик попыток. Для POST хватает
+        # обработки ошибок в _process_task и серверного recovery-цикла.
+        retry = Retry(
+            total=2,
+            connect=2,
+            read=2,
+            backoff_factor=1,
+            status_forcelist=(502, 503, 504),
+            allowed_methods=("GET",),
+        )
+        adapter = _KeepAliveHTTPAdapter(max_retries=retry)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return session
 
     def run(self):
         """Главный цикл. Запускается в отдельном потоке."""
@@ -49,6 +107,10 @@ class TranscriptionWorker:
                 task = self._get_next_task()
             except Exception as e:
                 logger.error(f"Ошибка при получении задачи: {e}")
+                # Сбрасываем пул соединений: протухший keep-alive сокет
+                # больше не будет переиспользован — следующий опрос пойдёт
+                # по свежему соединению (как при перезапуске воркера).
+                self._reset_session()
                 time.sleep(self.config["POLL_INTERVAL"])
                 continue
 
@@ -59,6 +121,24 @@ class TranscriptionWorker:
             self._process_task(task)
 
     # ---------- Private ----------
+
+    def _reset_session(self):
+        """Закрыть текущую сессию и создать новую со свежим пулом соединений."""
+        try:
+            self._session.close()
+        except Exception:
+            pass
+        self._session = self._build_session()
+
+    def reload_config(self, new_config: dict):
+        """Применить новые настройки (из окна трея).
+
+        Обновляет адрес сервера и пересоздаёт сессию, чтобы новый API-ключ
+        и адрес гарантированно вступили в силу — без ручного перезапуска.
+        """
+        self.config.update(new_config)
+        self._base_url = self.config["SERVER_URL"].rstrip("/")
+        self._reset_session()
 
     def _get_next_task(self) -> dict | None:
         r = self._session.get(f"{self._base_url}/api/worker/next", timeout=15)
@@ -88,9 +168,9 @@ class TranscriptionWorker:
             )
             r.raise_for_status()
 
-            # Сохранить во временный файл
-            suffix = Path(task.get("audio_file_id", "audio")).suffix or ".audio"
-            fd, tmp_path_str = tempfile.mkstemp(suffix=suffix)
+            # Сохранить во временный файл. Расширение не важно: Whisper/ffmpeg
+            # определяют формат по содержимому, а не по имени.
+            fd, tmp_path_str = tempfile.mkstemp(suffix=".audio")
             tmp_path = Path(tmp_path_str)
             with os.fdopen(fd, "wb") as f:
                 for chunk in r.iter_content(chunk_size=65536):

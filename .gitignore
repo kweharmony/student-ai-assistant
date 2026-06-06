@@ -13,6 +13,9 @@
 # Python virtual environment
 .venv/
 
+# Сборка отчёта (venv + скрипт-генератор), сам .docx коммитим отдельно
+docs/_report_build/
+
 # Python cache
 __pycache__/
 *.pyc

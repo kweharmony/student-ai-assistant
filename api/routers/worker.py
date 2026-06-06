@@ -120,6 +120,11 @@ async def submit_result(
     if task.worker_name != worker_name:
         raise HTTPException(status_code=403, detail="Эта задача принадлежит другому воркеру")
 
+    # Идемпотентность: если результат уже принят (повторная отправка из-за
+    # потерянного ответа/ретрая), не создаём дубль транскрипта.
+    if task.status == TranscriptionTaskStatus.completed:
+        return {"status": "ok"}
+
     audio_result = await db.execute(
         select(AudioFile).where(AudioFile.id == task.audio_file_id)
     )
