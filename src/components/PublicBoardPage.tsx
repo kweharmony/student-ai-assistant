@@ -42,7 +42,10 @@ const PublicBoardPage: React.FC = () => {
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const lastSentData = useRef<string | null>(null);
+  // Каждая запись: метаданные + target (последняя пришедшая точка) и display
+  // (текущая отрисованная). rAF плавно двигает display к target — Вариант 1.
   const collaboratorsRef = useRef<Map<string, any>>(new Map());
+  const animationFrame = useRef<number | null>(null);
   const lastPointerSent = useRef<number>(0);
   // Показ курсоров — настройка доски (меняет только владелец в своей панели).
   const showCursorsRef = useRef(true);
@@ -186,9 +189,50 @@ const PublicBoardPage: React.FC = () => {
   };
 
   // ── WebSocket subscription ──────────────────────────────────────────────────
+  // Отрисовывает соавторов по их display-позициям (сглаженным).
   const applyCollaborators = useCallback(() => {
-    excalidrawAPI.current?.updateScene({ collaborators: new Map(collaboratorsRef.current) } as any);
+    const map = new Map<string, any>();
+    collaboratorsRef.current.forEach((c, id) => {
+      map.set(id, {
+        pointer: c.display ?? c.target,
+        username: c.username,
+        color: c.color,
+      });
+    });
+    excalidrawAPI.current?.updateScene({ collaborators: map } as any);
   }, []);
+
+  // rAF-цикл: на каждом кадре подтягиваем display к target (lerp). Когда все
+  // курсоры «доехали», цикл останавливается — нагрузки в покое нет.
+  const stepAnimation = useCallback(() => {
+    const LERP = 0.25;
+    const EPS = 0.5; // px в координатах сцены — считаем «доехавшим»
+    let moving = false;
+    collaboratorsRef.current.forEach((c) => {
+      if (!c.target) return;
+      if (!c.display) { c.display = { ...c.target }; return; }
+      const dx = c.target.x - c.display.x;
+      const dy = c.target.y - c.display.y;
+      if (Math.abs(dx) < EPS && Math.abs(dy) < EPS) {
+        c.display = { ...c.target };
+        return;
+      }
+      c.display = { x: c.display.x + dx * LERP, y: c.display.y + dy * LERP };
+      moving = true;
+    });
+    applyCollaborators();
+    if (moving) {
+      animationFrame.current = requestAnimationFrame(stepAnimation);
+    } else {
+      animationFrame.current = null;
+    }
+  }, [applyCollaborators]);
+
+  const ensureAnimating = useCallback(() => {
+    if (animationFrame.current == null) {
+      animationFrame.current = requestAnimationFrame(stepAnimation);
+    }
+  }, [stepAnimation]);
 
   useEffect(() => {
     if (!boardDetail?.id) return;
@@ -228,12 +272,15 @@ const PublicBoardPage: React.FC = () => {
             applyRemoteUpdate(msg);
           } else if (msg.type === 'pointer' && msg.sender_id) {
             if (!showCursorsRef.current) return;
+            const hasPos = typeof msg.x === 'number' && typeof msg.y === 'number';
+            const existing = collaboratorsRef.current.get(msg.sender_id);
             collaboratorsRef.current.set(msg.sender_id, {
-              pointer: (typeof msg.x === 'number' && typeof msg.y === 'number') ? { x: msg.x, y: msg.y } : undefined,
+              ...existing,
+              target: hasPos ? { x: msg.x, y: msg.y } : undefined,
               username: msg.username,
               color: { background: msg.color || '#888', stroke: msg.color || '#888' },
             });
-            applyCollaborators();
+            ensureAnimating();
           } else if (msg.type === 'leave' && msg.sender_id) {
             collaboratorsRef.current.delete(msg.sender_id);
             applyCollaborators();
@@ -261,10 +308,11 @@ const PublicBoardPage: React.FC = () => {
     return () => {
       closedByCleanup = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (animationFrame.current != null) { cancelAnimationFrame(animationFrame.current); animationFrame.current = null; }
       collaboratorsRef.current.clear();
       if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     };
-  }, [boardDetail?.id, authToken, applyRemoteUpdate, isUserInteracting, applyCollaborators]);
+  }, [boardDetail?.id, authToken, applyRemoteUpdate, isUserInteracting, applyCollaborators, ensureAnimating]);
 
   // Отправка позиции курсора соавторам (throttled) для presence (п.9).
   const handlePointerUpdate = useCallback((payload: any) => {
