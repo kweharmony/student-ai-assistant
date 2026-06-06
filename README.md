@@ -7,8 +7,11 @@
 - транскрибация аудио в текст локально, без отправки аудио во внешние сервисы
 - AI-фильтрация транскрипта от ошибок распознавания и мусора
 - генерация конспектов, терминов, вопросов, шпаргалок и расширенных объяснений
+- объяснение отдельных фрагментов текста и построение диаграмм через LLM
 - экспорт в PDF, DOCX, TXT и Markdown
-- работа с курсами, семестрами, досками и каталогом дисциплин
+- каталог дисциплин с иерархией факультет → направление → поток → семестр и модерацией публикаций старостами и администраторами
+- совместные доски (Excalidraw) с режимами просмотра и редактирования
+- тарифы free/pro и лимиты генераций со скользящим окном (квоты)
 - личные кабинеты студентов, преподавателей и администраторов
 - отдельный воркер транскрибации с системным треем и heartbeat
 
@@ -16,7 +19,7 @@
 
 - Frontend: React 18, TypeScript, TipTap, Tailwind CSS, Framer Motion
 - Backend: FastAPI, Uvicorn, SQLAlchemy, Alembic, Pydantic
-- ML: Whisper, DeepSeek v3.2 через VseLLM, локальные фильтры текста
+- ML: Whisper, DeepSeek через VseLLM (генерация материалов) и отдельный LLM-провайдер для объяснений и диаграмм, локальные фильтры текста
 - Infra: PostgreSQL, Redis, Nginx, PDF service на Node.js + Playwright
 
 ## Структура проекта
@@ -274,7 +277,7 @@ python -m venv .venv
 .\.venv\Scripts\python -m pip install --index-url https://download.pytorch.org/whl/cu118 torch torchvision torchaudio
 ```
 
-Полная инструкция: [worker/WORKER_RUN.md](worker/WORKER_RUN.md).
+Полная инструкция: [docs/WORKER_RUN.md](docs/WORKER_RUN.md).
 
 ## Worker config
 
@@ -363,11 +366,10 @@ python -m venv .venv
 
 ## Документация
 
-- [docs/FEATURES.md](docs/FEATURES.md)
-- [docs/PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md)
-- [docs/TECHNICAL_SUMMARY.md](docs/TECHNICAL_SUMMARY.md)
-- [docs/WORKER_GUIDE.md](docs/WORKER_GUIDE.md)
-- [worker/WORKER_RUN.md](worker/WORKER_RUN.md)
+- [docs/AI_CONTEXT.md](docs/AI_CONTEXT.md) — полная техническая карта проекта (структура кода, API, модели данных)
+- [docs/BUSINESS_LOGIC.md](docs/BUSINESS_LOGIC.md) — бизнес-логика: роли, права, жизненные циклы, модерация, квоты
+- [docs/WORKER_GUIDE.md](docs/WORKER_GUIDE.md) — как устроен и как подключается воркер транскрибации
+- [docs/WORKER_RUN.md](docs/WORKER_RUN.md) — запуск воркера на Windows
 
 ## Кратко по запуску
 
