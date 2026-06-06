@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Excalidraw, serializeAsJSON } from '@excalidraw/excalidraw';
+import { Excalidraw } from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import excalidrawStyles from './excalidrawStyles';
-import { mergeExcalidrawElements } from '../utils/boardSync';
+import { mergeExcalidrawElements, serializeSceneForSync } from '../utils/boardSync';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http(s?):\/\//, (_, secure) => (secure ? 'wss://' : 'ws://'));
@@ -112,7 +112,8 @@ const PublicBoardPage: React.FC = () => {
     autoSaveTimer.current = setTimeout(() => {
       const api = excalidrawAPI.current;
       if (!api) return;
-      const data = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'local');
+      // Включаем удалённые элементы, иначе удаление не дойдёт до соавторов.
+      const data = serializeSceneForSync(api.getSceneElementsIncludingDeleted(), api.getAppState(), api.getFiles());
       if (lastSentData.current === data) return;
       lastSentData.current = data;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -161,9 +162,10 @@ const PublicBoardPage: React.FC = () => {
       if (filesArray.length) api.addFiles(filesArray);
     }
     // Сливаем по версиям, чтобы не затирать параллельные правки (п.4).
+    // База — включая удалённые, чтобы локальные удаления не воскресали.
     const merged = Array.isArray(nextElements)
-      ? mergeExcalidrawElements(api.getSceneElements(), nextElements)
-      : api.getSceneElements();
+      ? mergeExcalidrawElements(api.getSceneElementsIncludingDeleted(), nextElements)
+      : api.getSceneElementsIncludingDeleted();
     api.updateScene({ elements: merged, appState: safeAppState });
   }, []);
 
@@ -171,7 +173,7 @@ const PublicBoardPage: React.FC = () => {
   const handleManualSave = async () => {
     if (!boardDetail?.can_edit || !excalidrawAPI.current) return;
     const api = excalidrawAPI.current;
-    const data = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'local');
+    const data = serializeSceneForSync(api.getSceneElementsIncludingDeleted(), api.getAppState(), api.getFiles());
     setSaveMsg('Сохранение…');
     // real-time push
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

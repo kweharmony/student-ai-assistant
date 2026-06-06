@@ -10,7 +10,7 @@ import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types
 import { useAuth } from '../../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import excalidrawStyles from '../excalidrawStyles';
-import { mergeExcalidrawElements } from '../../utils/boardSync';
+import { mergeExcalidrawElements, serializeSceneForSync } from '../../utils/boardSync';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -291,11 +291,11 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     autoSaveTimer.current = setTimeout(() => {
       const api = excalidrawAPI.current;
       if (!api) return;
-      const data = serializeAsJSON(
-        api.getSceneElements(),
+      // Включаем удалённые элементы, иначе удаление не дойдёт до соавторов.
+      const data = serializeSceneForSync(
+        api.getSceneElementsIncludingDeleted(),
         api.getAppState(),
         api.getFiles(),
-        'local',
       );
       if (lastSentData.current === data) return;
       lastSentData.current = data;
@@ -345,9 +345,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
       if (filesArray.length) api.addFiles(filesArray);
     }
     // Сливаем по версиям, чтобы не затирать параллельные правки соавторов (п.4).
+    // База — включая удалённые, чтобы локальные удаления не воскресали.
     const merged = Array.isArray(nextElements)
-      ? mergeExcalidrawElements(api.getSceneElements(), nextElements)
-      : api.getSceneElements();
+      ? mergeExcalidrawElements(api.getSceneElementsIncludingDeleted(), nextElements)
+      : api.getSceneElementsIncludingDeleted();
     api.updateScene({
       elements: merged,
       appState: safeAppState,
@@ -359,11 +360,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     if (!activeBoardId || !boardCanEdit || !excalidrawAPI.current) return;
     setSaving(true);
     const api = excalidrawAPI.current;
-    const data = serializeAsJSON(
-      api.getSceneElements(),
+    const data = serializeSceneForSync(
+      api.getSceneElementsIncludingDeleted(),
       api.getAppState(),
       api.getFiles(),
-      'local',
     );
     // send real-time update immediately
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
