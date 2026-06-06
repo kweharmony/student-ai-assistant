@@ -14,6 +14,41 @@ import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/typ
  * удаление + правка одного и того же элемента — пограничный случай; для типового
  * сценария (каждый добавляет/правит свои объекты) правки больше не теряются.
  */
+/**
+ * Сериализация сцены для синхронизации/персиста.
+ *
+ * В отличие от serializeAsJSON (он вырезает удалённые элементы для экспорта),
+ * здесь мы СОХРАНЯЕМ удалённые элементы (isDeleted с возросшей version). Без
+ * этого удаление объекта не доходит до соавторов: их merge не узнаёт об
+ * удалении и возвращает объект обратно. Передаётся вместе с files (картинки).
+ */
+export function serializeSceneForSync(
+  elements: readonly ExcalidrawElement[],
+  appState: { viewBackgroundColor?: string } | null | undefined,
+  files: unknown,
+): string {
+  // Удалённые элементы храним (для распространения удаления), но бинари в files
+  // оставляем только для активных элементов — иначе base64 удалённых картинок
+  // копился бы в данных доски навсегда.
+  const activeFileIds = new Set<string>();
+  for (const el of elements) {
+    const fid = (el as { fileId?: string }).fileId;
+    if (!el.isDeleted && fid) activeFileIds.add(fid);
+  }
+  const prunedFiles: Record<string, unknown> = {};
+  if (files && typeof files === 'object') {
+    for (const [id, f] of Object.entries(files as Record<string, unknown>)) {
+      if (activeFileIds.has(id)) prunedFiles[id] = f;
+    }
+  }
+  return JSON.stringify({
+    type: 'excalidraw-sync',
+    elements,
+    appState: { viewBackgroundColor: appState?.viewBackgroundColor },
+    files: prunedFiles,
+  });
+}
+
 export function mergeExcalidrawElements(
   local: readonly ExcalidrawElement[],
   remote: readonly ExcalidrawElement[],

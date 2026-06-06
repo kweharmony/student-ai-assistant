@@ -10,7 +10,7 @@ import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types
 import { useAuth } from '../../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import excalidrawStyles from '../excalidrawStyles';
-import { mergeExcalidrawElements } from '../../utils/boardSync';
+import { mergeExcalidrawElements, serializeSceneForSync } from '../../utils/boardSync';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -291,11 +291,11 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     autoSaveTimer.current = setTimeout(() => {
       const api = excalidrawAPI.current;
       if (!api) return;
-      const data = serializeAsJSON(
-        api.getSceneElements(),
+      // Включаем удалённые элементы, иначе удаление не дойдёт до соавторов.
+      const data = serializeSceneForSync(
+        api.getSceneElementsIncludingDeleted(),
         api.getAppState(),
         api.getFiles(),
-        'local',
       );
       if (lastSentData.current === data) return;
       lastSentData.current = data;
@@ -337,17 +337,22 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     const safeAppState = {
       viewBackgroundColor: nextAppState?.viewBackgroundColor ?? localState.viewBackgroundColor,
     };
+    // Сначала регистрируем файлы (картинки), иначе элемент-изображение
+    // отрисуется силуэтом без бинаря. addFiles ждёт массив, а serializeAsJSON
+    // отдаёт files словарём { fileId: BinaryFileData } — конвертируем.
+    if (nextFiles && api.addFiles) {
+      const filesArray = Array.isArray(nextFiles) ? nextFiles : Object.values(nextFiles);
+      if (filesArray.length) api.addFiles(filesArray);
+    }
     // Сливаем по версиям, чтобы не затирать параллельные правки соавторов (п.4).
+    // База — включая удалённые, чтобы локальные удаления не воскресали.
     const merged = Array.isArray(nextElements)
-      ? mergeExcalidrawElements(api.getSceneElements(), nextElements)
-      : api.getSceneElements();
+      ? mergeExcalidrawElements(api.getSceneElementsIncludingDeleted(), nextElements)
+      : api.getSceneElementsIncludingDeleted();
     api.updateScene({
       elements: merged,
       appState: safeAppState,
     });
-    if (nextFiles && excalidrawAPI.current.addFiles) {
-      excalidrawAPI.current.addFiles(nextFiles);
-    }
   }, []);
 
   // ── save to profile (manual: persists title to DB) ───────────────────────────
@@ -355,11 +360,10 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
     if (!activeBoardId || !boardCanEdit || !excalidrawAPI.current) return;
     setSaving(true);
     const api = excalidrawAPI.current;
-    const data = serializeAsJSON(
-      api.getSceneElements(),
+    const data = serializeSceneForSync(
+      api.getSceneElementsIncludingDeleted(),
       api.getAppState(),
       api.getFiles(),
-      'local',
     );
     // send real-time update immediately
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -917,7 +921,16 @@ const BoardSection: React.FC<BoardSectionProps> = ({ isLightTheme, onCanvasMode,
         {/* Excalidraw fills entire viewport */}
         {initialData !== null && (
           <Excalidraw
-            excalidrawAPI={(api) => { excalidrawAPI.current = api; }}
+            excalidrawAPI={(api) => {
+              excalidrawAPI.current = api;
+              // Явно регистрируем файлы из сохранённого снапшота: гарантирует
+              // отрисовку картинок после перезагрузки (не только силуэт).
+              const f = initialData?.files;
+              if (f && api.addFiles) {
+                const arr = Array.isArray(f) ? f : Object.values(f);
+                if (arr.length) api.addFiles(arr);
+              }
+            }}
             initialData={initialData}
             onChange={(elements) => {
               setCanvasEmpty((elements?.filter(el => !el.isDeleted).length ?? 0) === 0);
