@@ -19,7 +19,7 @@
 
 - Frontend: React 18, TypeScript, TipTap, Tailwind CSS, Framer Motion
 - Backend: FastAPI, Uvicorn, SQLAlchemy, Alembic, Pydantic
-- ML: Whisper, DeepSeek через VseLLM (генерация материалов) и отдельный LLM-провайдер для объяснений и диаграмм, локальные фильтры текста
+- ML: Whisper, Qwen через VseLLM (генерация материалов) и отдельный LLM-провайдер PolzaAI для объяснений и диаграмм, локальные фильтры текста
 - Infra: PostgreSQL, Redis, Nginx, PDF service на Node.js + Playwright
 
 ## Структура проекта
