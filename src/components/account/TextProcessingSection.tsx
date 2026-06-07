@@ -656,20 +656,6 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
             <label className="btn-upload inline-block cursor-pointer">
               <input
                 type="file"
-                accept=".txt,.md,.doc,.docx"
-                style={{ display: 'none' }}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  await handleFileUpload(file, false);
-                  e.target.value = '';
-                }}
-              />
-              <span>Загрузить файл лекции</span>
-            </label>
-            <label className="btn-upload inline-block cursor-pointer">
-              <input
-                type="file"
                 accept=".txt,.md,.pdf,.doc,.docx"
                 style={{ display: 'none' }}
                 onChange={async (e) => {
