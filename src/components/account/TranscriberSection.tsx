@@ -19,6 +19,7 @@ const TranscriberSection: React.FC<TranscriberSectionProps> = ({ handleAudioTran
   const [showModal, setShowModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [meta, setMeta] = useState<LectureMeta>({
     title: '',
@@ -28,16 +29,23 @@ const TranscriberSection: React.FC<TranscriberSectionProps> = ({ handleAudioTran
     is_public: false,
   });
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processFile = (file: File): boolean => {
     const MAX_SIZE_MB = 100;
     const MB = 1024 * 1024;
 
+    const isAudioOrVideo =
+      file.type.startsWith('audio/') ||
+      file.type.startsWith('video/') ||
+      /\.(mp3|wav|m4a|flac|ogg|opus|mp4|mov|avi|mkv|webm)$/i.test(file.name);
+
+    if (!isAudioOrVideo) {
+      alert('Поддерживаются только аудио- и видеофайлы.');
+      return false;
+    }
+
     if (file.size > MAX_SIZE_MB * MB) {
       alert(`Файл слишком большой. Максимальный размер: ${MAX_SIZE_MB} МБ.`);
-      return;
+      return false;
     }
 
     setSelectedFile(file);
@@ -50,7 +58,34 @@ const TranscriberSection: React.FC<TranscriberSectionProps> = ({ handleAudioTran
     }));
 
     setShowModal(true);
+    return true;
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processFile(file);
     e.target.value = '';
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    // Игнорируем переходы между дочерними элементами области
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    processFile(file);
   };
 
   const handleSubmit = async () => {
@@ -115,7 +150,17 @@ const TranscriberSection: React.FC<TranscriberSectionProps> = ({ handleAudioTran
       </div>
 
       {/* Секция транскрибатора */}
-      <div className="bg-transparent border rounded-2xl p-4 md:p-8 lg:p-12 xl:p-16 mb-8 md:mb-16" style={{ borderColor: 'var(--border-color)' }}>
+      <div
+        className="border rounded-2xl p-4 md:p-8 lg:p-12 xl:p-16 mb-8 md:mb-16 transition-all duration-300"
+        style={{
+          borderColor: isDragging ? 'var(--text-secondary)' : 'var(--border-color)',
+          borderStyle: isDragging ? 'dashed' : 'solid',
+          background: isDragging ? 'var(--hover-bg)' : 'transparent',
+        }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <div className="text-center">
           <div className="mb-8">
             <svg
@@ -143,7 +188,7 @@ const TranscriberSection: React.FC<TranscriberSectionProps> = ({ handleAudioTran
               className="text-base opacity-80 mb-6"
               style={{ color: 'var(--text-secondary)' }}
             >
-              Выберите аудиофайл до 100 МБ — после загрузки укажите информацию о лекции
+              Перетащите аудиофайл сюда или выберите его — до 100 МБ, после загрузки укажите информацию о лекции
             </p>
           </div>
 

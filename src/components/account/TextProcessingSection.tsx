@@ -226,6 +226,25 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
     }
   }, [editorContent]);
 
+  // Надёжное сохранение черновика прямо перед перезагрузкой/закрытием вкладки.
+  // editorInstance — источник правды: ловит и текст из транскрибации/открытия
+  // лекции, который попадает в редактор минуя editorContent (через setContent),
+  // поэтому обычный автосейв по editorContent его не фиксирует.
+  useEffect(() => {
+    const persist = () => {
+      if (!editorInstance) return;
+      try {
+        if (editorInstance.getText().trim()) {
+          sessionStorage.setItem('mindesync_editor_draft', editorInstance.getHTML());
+        }
+      } catch {
+        // ignore storage errors
+      }
+    };
+    window.addEventListener('beforeunload', persist);
+    return () => window.removeEventListener('beforeunload', persist);
+  }, [editorInstance]);
+
   // Клик снаружи убирает только «голую» кнопку-подсказку. Постоянные кружки и
   // панель справа так не закрываются — только своими кнопками.
   useEffect(() => {
