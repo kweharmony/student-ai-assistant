@@ -1,8 +1,0 @@
-{
-  "SERVER_URL": "https://mindesync.ru",
-  "API_KEY": "sol2033",
-  "WORKER_NAME": "dmitry_pc",
-  "WHISPER_MODEL": "medium",
-  "DEVICE": "auto",
-  "POLL_INTERVAL": 30
-}

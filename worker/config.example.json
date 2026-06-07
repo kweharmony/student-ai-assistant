@@ -1,0 +1,8 @@
+{
+  "SERVER_URL": "http://localhost:8000",
+  "API_KEY": "",
+  "WORKER_NAME": "my_worker",
+  "WHISPER_MODEL": "base",
+  "DEVICE": "auto",
+  "POLL_INTERVAL": 30
+}

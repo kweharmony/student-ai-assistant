@@ -70,7 +70,7 @@ python tray_app.py
 Сначала проверьте регистрацию воркера:
 
 ```powershell
-curl -X POST -H "X-Worker-Key: del2077" https://mindesync.ru/api/worker/register
+curl -X POST -H "X-Worker-Key: ВАШ_КЛЮЧ_ВОРКЕРА" https://mindesync.ru/api/worker/register
 ```
 
 Если ключ корректный, сервер вернёт что-то вроде:
@@ -82,7 +82,7 @@ curl -X POST -H "X-Worker-Key: del2077" https://mindesync.ru/api/worker/register
 Потом проверьте статус очереди:
 
 ```powershell
-curl -H "X-Worker-Key: del2077" https://mindesync.ru/api/worker/status
+curl -H "X-Worker-Key: ВАШ_КЛЮЧ_ВОРКЕРА" https://mindesync.ru/api/worker/status
 ```
 
 Если `pending` и `processing` равны `0`, воркер работает, но просто сейчас нет задач, поэтому в админке он может не отображаться как активный.
