@@ -610,22 +610,6 @@ const TextProcessingSection: React.FC<TextProcessingSectionProps> = ({
         >
           Обработка текста с помощью ИИ
         </h1>
-        <p
-          className="text-sm md:text-base lg:text-lg xl:text-lg opacity-70 max-w-3xl mx-auto leading-relaxed"
-          style={{ color: 'var(--text-secondary)' }}
-        >
-          Используйте AI для создания конспектов, терминов, вопросов и многого другого
-        </p>
-
-        {/* Счетчик символов */}
-        {editorInstance && (
-          <div className="mt-4 text-xs opacity-60 text-center" style={{ color: 'var(--text-secondary)' }}>
-            Символов в редакторе: {editorInstance.getText().length.toLocaleString()} / 70,000
-            {editorInstance.getText().length > 70000 && (
-              <span className="text-red-500 ml-2 flex items-center gap-1"><span className="material-symbols-outlined text-sm">warning</span> Превышен лимит!</span>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Секция загрузки файлов */}
