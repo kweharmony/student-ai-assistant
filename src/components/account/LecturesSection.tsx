@@ -998,14 +998,18 @@ const LecturesSection: React.FC<LecturesSectionProps> = ({ isLightTheme, onOpenI
 
   // ── Theme helpers ──────────────────────────────────────────────────────────
 
-  const headingColor = isLightTheme ? '#2a1918' : '#fff7ec';
-  const mutedColor   = isLightTheme ? '#7a5a5c' : '#c6b7a7';
-  const cardBg       = isLightTheme ? 'rgba(255,255,255,.7)' : 'rgba(255,255,255,.04)';
-  const cardBorder   = isLightTheme ? '1px solid rgba(68,41,43,.12)' : '1px solid rgba(255,255,240,.08)';
-  const dividerColor = isLightTheme ? 'rgba(68,41,43,.1)' : 'rgba(255,255,240,.07)';
-  const btnBg        = isLightTheme ? 'rgba(68,41,43,.08)' : 'rgba(255,255,240,.06)';
-  const btnColor     = isLightTheme ? '#44292b' : '#f0e6d8';
-  const dropdownBg   = isLightTheme ? '#fff9f1' : '#1f1516';
+  // Палитра проводника и списка лекций завязана на дизайн-токены сайта
+  // (см. :root / [data-theme] в index.css), чтобы блок совпадал с остальными
+  // разделами в обеих темах. Семантические цвета статусов и акцент #B58488
+  // остаются отдельно — они общие для всего приложения.
+  const headingColor = 'var(--text-primary)';
+  const mutedColor   = 'var(--text-secondary)';
+  const cardBg       = 'var(--hover-bg)';
+  const cardBorder   = '1px solid var(--border-color)';
+  const dividerColor = 'var(--border-color)';
+  const btnBg        = 'var(--hover-bg)';
+  const btnColor     = 'var(--text-primary)';
+  const dropdownBg   = 'var(--bg-primary)';
 
   const CatalogSelect: React.FC<{
     id: string;
