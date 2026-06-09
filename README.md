@@ -366,6 +366,8 @@ python -m venv .venv
 
 ## Документация
 
+- [docs/GUIDE.md](docs/GUIDE.md) — обзор продукта: что умеет, как пользоваться, как устроено в общих чертах
+- [docs/DEVELOPING.md](docs/DEVELOPING.md) — гайд разработчика: как читать код, сквозные потоки, куда вносить изменения
 - [docs/AI_CONTEXT.md](docs/AI_CONTEXT.md) — полная техническая карта проекта (структура кода, API, модели данных)
 - [docs/BUSINESS_LOGIC.md](docs/BUSINESS_LOGIC.md) — бизнес-логика: роли, права, жизненные циклы, модерация, квоты
 - [docs/WORKER_GUIDE.md](docs/WORKER_GUIDE.md) — как устроен и как подключается воркер транскрибации
