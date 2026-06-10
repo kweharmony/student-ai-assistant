@@ -131,19 +131,28 @@ class DeepSeekProcessor:
         if not self.api_key:
             raise ValueError("DEEPSEEK_API_KEY не найден в переменных окружения!")
         
+        # qwen3.5-plus — reasoning-модель: без отключения thinking тратит токены на
+        # скрытые рассуждения и упирается в таймаут провайдера 300с (408/504).
+        self.extra_body: dict = {}
+        if os.getenv("LLM_DISABLE_THINKING", "true").lower() in ("1", "true", "yes", "on"):
+            self.extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
+
+        # max_retries=0 — есть своя обработка ошибок; встроенные ретраи SDK на
+        # таймаутах множат запросы. timeout — чтобы не висеть все 300с.
+        try:
+            client_timeout = float(os.getenv("LLM_TIMEOUT", "180"))
+        except (TypeError, ValueError):
+            client_timeout = 180.0
+        client_kwargs = dict(api_key=self.api_key, base_url=self.base_url,
+                             max_retries=0, timeout=client_timeout)
+
         # Синхронный клиент для простых запросов
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url
-        )
-        
+        self.client = OpenAI(**client_kwargs)
+
         # Асинхронный клиент для параллельных запросов
-        self.async_client = AsyncOpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url
-        )
-        
-        logger.info(f"✅ DeepSeek клиент инициализирован")
+        self.async_client = AsyncOpenAI(**client_kwargs)
+
+        logger.info(f"✅ DeepSeek клиент инициализирован (thinking={'off' if self.extra_body else 'on'}, timeout={client_timeout}s)")
         logger.info(f"📡 Base URL: {self.base_url}")
         logger.info(f"🤖 Модель: {self.model_name}")
     
@@ -168,7 +177,8 @@ class DeepSeekProcessor:
                 ],
                 temperature=config.get('temperature', 0.3),
                 max_tokens=config.get('max_tokens', 6500),
-                top_p=config.get('top_p', 0.9)
+                top_p=config.get('top_p', 0.9),
+                extra_body=self.extra_body,
             )
 
             msg = response.choices[0].message
@@ -206,7 +216,8 @@ class DeepSeekProcessor:
                 ],
                 temperature=config.get('temperature', 0.3),
                 max_tokens=config.get('max_tokens', 6500),
-                top_p=config.get('top_p', 0.9)
+                top_p=config.get('top_p', 0.9),
+                extra_body=self.extra_body,
             )
 
             msg = response.choices[0].message

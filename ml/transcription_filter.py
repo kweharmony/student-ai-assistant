@@ -60,17 +60,27 @@ class TranscriptionFilter:
         except (TypeError, ValueError):
             self.max_tokens = TRANSCRIPTION_FILTER_CONFIG["max_tokens"]
 
-        # Инициализируем OpenAI-compatible клиент
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url
-        )
-        self.async_client = AsyncOpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url
-        )
+        # qwen3.5-plus — reasoning-модель: по умолчанию тратит токены на скрытые
+        # «рассуждения» (reasoning_tokens) и упирается в таймаут провайдера 300с
+        # (408/504). Отключаем thinking, иначе фильтрация не укладывается во время.
+        # Управляется env LLM_DISABLE_THINKING (по умолчанию включено отключение).
+        self.extra_body: dict = {}
+        if os.getenv("LLM_DISABLE_THINKING", "true").lower() in ("1", "true", "yes", "on"):
+            self.extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
 
-        logger.info(f"✅ TranscriptionFilter инициализирован через DeepSeek API (max_tokens={self.max_tokens})")
+        # max_retries=0 — у нас собственная retry-логика; встроенные ретраи SDK
+        # на таймаутах множат запросы (шторм). timeout — чтобы не висеть все 300с.
+        try:
+            client_timeout = float(os.getenv("LLM_TIMEOUT", "180"))
+        except (TypeError, ValueError):
+            client_timeout = 180.0
+        client_kwargs = dict(api_key=self.api_key, base_url=self.base_url,
+                             max_retries=0, timeout=client_timeout)
+        self.client = OpenAI(**client_kwargs)
+        self.async_client = AsyncOpenAI(**client_kwargs)
+
+        logger.info(f"✅ TranscriptionFilter инициализирован (max_tokens={self.max_tokens}, "
+                    f"thinking={'off' if self.extra_body else 'on'}, timeout={client_timeout}s)")
 
     @staticmethod
     def _extract_text(response) -> str:
@@ -130,6 +140,7 @@ class TranscriptionFilter:
                     temperature=TRANSCRIPTION_FILTER_CONFIG["temperature"],
                     max_tokens=self.max_tokens,
                     top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"],
+                    extra_body=self.extra_body,
                 )
 
                 filtered_text = self._extract_text(response)
@@ -211,6 +222,7 @@ class TranscriptionFilter:
                     temperature=TRANSCRIPTION_FILTER_CONFIG["temperature"],
                     max_tokens=self.max_tokens,
                     top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"],
+                    extra_body=self.extra_body,
                 )
 
                 result = self._extract_text(response)
