@@ -517,9 +517,14 @@ TRANSCRIPTION_FILTER_PROMPT = """Ты — эксперт по обработке
 Исправленный текст:"""
 
 
+# ВНИМАНИЕ: max_tokens резервирует место под ответ и определяет, сколько модель
+# будет генерировать. У провайдера (VseLLM/litellm) жёсткий таймаут 300с — при
+# больших max_tokens модель не успевает закончить и запрос падает с 408 Request
+# Timeout. Поэтому значение должно быть умеренным, а длинный текст — чанкиться
+# (см. filter_text_async). Переопределяется через env FILTER_MAX_TOKENS.
 TRANSCRIPTION_FILTER_CONFIG = {
     "temperature": 0.4,
-    "max_tokens": 50000,
+    "max_tokens": 8000,
     "top_p": 0.9,
 }
 

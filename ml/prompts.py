@@ -614,22 +614,31 @@ PROMPTS = {
     "cheat_sheet": CHEAT_SHEET_PROMPT
 }
 
-# Настройки для разных типов обработки
+# Настройки для разных типов обработки.
+#
+# ВАЖНО про max_tokens и таймаут провайдера.
+# У VseLLM/litellm жёсткий лимит 300с на запрос. Модель qwen генерирует не мгновенно,
+# поэтому большой max_tokens в ОДНОМ запросе не успевает закончиться → 408 Request
+# Timeout (и пустой результат). Правило:
+#   - один запрос (needs_chunking=False): max_tokens ≤ ~8000, чтобы уложиться в 300с;
+#   - нужен длинный вывод (detailed_notes): needs_chunking=True — Multi-Step бьёт
+#     задачу на 3-5 параллельных запросов, каждому достаётся ~total/тем*1.3 токенов
+#     (см. _chunked_generation), то есть бюджет на запрос остаётся в безопасной зоне.
 PROCESSING_CONFIGS = {
     "summarize": {
-        "max_tokens": 16000,
+        "max_tokens": 8000,
         "temperature": 0.3,
         "top_p": 0.9,
         "needs_chunking": False
     },
     "extract_terms": {
-        "max_tokens": 10000,
+        "max_tokens": 8000,
         "temperature": 0.2,
         "top_p": 0.85,
         "needs_chunking": False
     },
     "expand_topic": {
-        "max_tokens": 10000,
+        "max_tokens": 8000,
         "temperature": 0.6,
         "top_p": 0.9,
         "needs_chunking": False
@@ -641,10 +650,12 @@ PROCESSING_CONFIGS = {
         "needs_chunking": False
     },
     "detailed_notes": {
-        "max_tokens": 40000,
+        # Длинный конспект: общий бюджет делится между темами в Multi-Step,
+        # поэтому на отдельный запрос приходится ~6000 токенов (укладывается в 300с).
+        "max_tokens": 24000,
         "temperature": 0.4,
         "top_p": 0.9,
-        "needs_chunking": False
+        "needs_chunking": True
     },
     "cheat_sheet": {
         "max_tokens": 6500,  # Шпаргалка (без chunking)

@@ -170,11 +170,16 @@ class DeepSeekProcessor:
                 max_tokens=config.get('max_tokens', 6500),
                 top_p=config.get('top_p', 0.9)
             )
-            
-            result = response.choices[0].message.content
-            logger.info(f"✅ Успешный запрос к DeepSeek. Токенов: ~{len(result.split())}")
+
+            msg = response.choices[0].message
+            result = (msg.content or getattr(msg, "reasoning_content", None) or "")
+            finish_reason = response.choices[0].finish_reason
+            logger.info(f"✅ Запрос к DeepSeek. finish_reason={finish_reason}, символов: {len(result)}")
+            if not result.strip():
+                logger.error(f"❌ Пустой ответ модели (finish_reason={finish_reason}, usage={getattr(response, 'usage', None)})")
+                raise Exception(f"Пустой ответ модели (finish_reason={finish_reason})")
             return result
-            
+
         except Exception as e:
             logger.error(f"❌ Ошибка запроса к DeepSeek API: {str(e)}")
             raise Exception(f"Ошибка DeepSeek API: {str(e)}")
@@ -203,11 +208,16 @@ class DeepSeekProcessor:
                 max_tokens=config.get('max_tokens', 6500),
                 top_p=config.get('top_p', 0.9)
             )
-            
-            result = response.choices[0].message.content
-            logger.info(f"✅ Асинхронный запрос выполнен. Токенов: ~{len(result.split())}")
+
+            msg = response.choices[0].message
+            result = (msg.content or getattr(msg, "reasoning_content", None) or "")
+            finish_reason = response.choices[0].finish_reason
+            logger.info(f"✅ Асинхронный запрос. finish_reason={finish_reason}, символов: {len(result)}")
+            if not result.strip():
+                logger.error(f"❌ Пустой ответ модели (finish_reason={finish_reason}, usage={getattr(response, 'usage', None)})")
+                raise Exception(f"Пустой ответ модели (finish_reason={finish_reason})")
             return result
-            
+
         except Exception as e:
             logger.error(f"❌ Ошибка асинхронного запроса: {str(e)}")
             raise Exception(f"Ошибка DeepSeek API: {str(e)}")
@@ -371,10 +381,19 @@ class DeepSeekProcessor:
             )
             for theme in themes
         ]
-        chunks = await asyncio.gather(*tasks)
-        
+        chunks = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Отсеиваем упавшие темы: пустой ответ/ошибка ОДНОГО запроса не должны
+        # ронять весь конспект. Если упали все — честно поднимаем ошибку.
+        ok_chunks = [c for c in chunks if isinstance(c, str) and c.strip()]
+        if not ok_chunks:
+            errors = [repr(c) for c in chunks if isinstance(c, Exception)]
+            raise Exception(f"Multi-Step: не сгенерировалась ни одна тема: {errors}")
+        if len(ok_chunks) < len(chunks):
+            logger.warning(f"⚠️ {len(chunks) - len(ok_chunks)} из {len(chunks)} тем не сгенерировались — пропускаем")
+
         # Шаг 4: Объединяем результаты
-        final_result = self._merge_chunks(chunks, mode)
+        final_result = self._merge_chunks(ok_chunks, mode)
         
         logger.info(f"✅ Multi-Step Generation завершен")
         logger.info(f"📏 Итоговая длина: {len(final_result)} символов (~{len(final_result.split())} слов)")
@@ -400,7 +419,12 @@ class DeepSeekProcessor:
             raise ValueError(f"Неизвестный режим: {mode}")
         
         config = PROCESSING_CONFIGS.get(mode, PROCESSING_CONFIGS['summarize'])
-        
+        # Один запрос ОБЯЗАН укладываться в таймаут провайдера (300с). Жёстко
+        # ограничиваем бюджет, даже если в конфиге больше — это страхует и fallback
+        # из _chunked_generation (там detailed_notes=24000), чтобы он не упёрся в 408.
+        safe_max = min(config.get('max_tokens', 6500), 8000)
+        config = {**config, 'max_tokens': safe_max}
+
         # Форматируем промпт
         formatted_prompt = _fmt(
             prompt_template,

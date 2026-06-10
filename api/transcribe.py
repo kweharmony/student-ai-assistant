@@ -172,9 +172,10 @@ async def filter_transcription(body: FilterRequest):
     try:
         from ml.transcription_filter import TranscriptionFilter
         fltr = TranscriptionFilter()
-        filtered = await asyncio.get_event_loop().run_in_executor(
-            None, fltr.filter_text, body.text
-        )
+        # Чанковый асинхронный путь: длинный текст бьётся на куски, каждый чистится
+        # отдельным быстрым запросом параллельно. Это укладывается в таймаут
+        # провайдера (300с) и не вешает один гигантский запрос (см. filter_text_async).
+        filtered = await fltr.filter_text_async(body.text)
         return FilterResponse(success=True, filtered_text=filtered)
     except Exception as e:
         logger.error(f"Ошибка фильтрации: {e}")

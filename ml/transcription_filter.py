@@ -51,6 +51,15 @@ class TranscriptionFilter:
         if not self.api_key:
             raise ValueError("DEEPSEEK_API_KEY не найден в переменных окружения!")
         
+        # Лимит выходных токенов. ВАЖНО: max_tokens резервирует место под ответ
+        # в контекстном окне модели. Слишком большое значение (напр. 50000) может
+        # превышать окно и приводить к пустым/ошибочным ответам. Настраивается через
+        # env FILTER_MAX_TOKENS; дефолт консервативный.
+        try:
+            self.max_tokens = int(os.getenv("FILTER_MAX_TOKENS", str(TRANSCRIPTION_FILTER_CONFIG["max_tokens"])))
+        except (TypeError, ValueError):
+            self.max_tokens = TRANSCRIPTION_FILTER_CONFIG["max_tokens"]
+
         # Инициализируем OpenAI-compatible клиент
         self.client = OpenAI(
             api_key=self.api_key,
@@ -60,8 +69,34 @@ class TranscriptionFilter:
             api_key=self.api_key,
             base_url=self.base_url
         )
-        
-        logger.info(f"✅ TranscriptionFilter инициализирован через DeepSeek API")
+
+        logger.info(f"✅ TranscriptionFilter инициализирован через DeepSeek API (max_tokens={self.max_tokens})")
+
+    @staticmethod
+    def _extract_text(response) -> str:
+        """
+        Достаёт текст ответа модели и логирует диагностику (finish_reason, usage).
+
+        Обрабатывает два случая, из-за которых раньше прилетал пустой результат:
+        - content == None (reasoning-модели кладут ответ в reasoning_content);
+        - усечение по длине (finish_reason == "length") — видно в логах.
+        Возвращает пустую строку, если ответа реально нет (вызывающий решает, что делать).
+        """
+        choice = response.choices[0] if response.choices else None
+        message = getattr(choice, "message", None) if choice else None
+        content = (getattr(message, "content", None) or "") if message else ""
+
+        # Fallback на reasoning_content для «думающих» моделей
+        if not content.strip() and message is not None:
+            content = getattr(message, "reasoning_content", None) or ""
+
+        finish_reason = getattr(choice, "finish_reason", None) if choice else None
+        usage = getattr(response, "usage", None)
+        logger.info(f"🧾 finish_reason={finish_reason} usage={usage}")
+        if finish_reason == "length":
+            logger.warning("⚠️ Ответ усечён по длине (finish_reason=length) — увеличьте FILTER_MAX_TOKENS или уменьшите чанк")
+
+        return content.strip()
     
     def filter_text(self, transcribed_text: str, max_retries: int = 3) -> str:
         """
@@ -78,19 +113,14 @@ class TranscriptionFilter:
             logger.warning("Текст слишком короткий для фильтрации")
             return transcribed_text
         
-        # Retry логика для обработки перегрузки API
+        prompt = TRANSCRIPTION_FILTER_PROMPT.format(text=transcribed_text)
+        logger.info(f"🔄 Начинаем фильтрацию текста ({len(transcribed_text)} символов, max_tokens={self.max_tokens})")
+
+        last_error: Optional[str] = None
         for attempt in range(max_retries):
+            if attempt > 0:
+                logger.info(f"🔄 Попытка {attempt + 1}/{max_retries}")
             try:
-                # Формируем промпт
-                prompt = TRANSCRIPTION_FILTER_PROMPT.format(text=transcribed_text)
-                
-                if attempt > 0:
-                    logger.info(f"🔄 Попытка {attempt + 1}/{max_retries}")
-                
-                logger.info(f"🔄 Начинаем фильтрацию текста ({len(transcribed_text)} символов)")
-                logger.info(f"📝 Первые 150 символов ДО фильтрации: {transcribed_text[:150]}")
-                
-                # Генерация с настройками из конфига
                 response = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=[
@@ -98,52 +128,43 @@ class TranscriptionFilter:
                         {"role": "user", "content": prompt}
                     ],
                     temperature=TRANSCRIPTION_FILTER_CONFIG["temperature"],
-                    max_tokens=TRANSCRIPTION_FILTER_CONFIG["max_tokens"],
-                    top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"]
+                    max_tokens=self.max_tokens,
+                    top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"],
                 )
-                
-                # Получаем отфильтрованный текст
-                filtered_text = response.choices[0].message.content.strip()
-                
-                logger.info(f"✅ Фильтрация завершена. Результат: {len(filtered_text)} символов")
-                logger.info(f"📊 Изменение размера: {len(transcribed_text)} → {len(filtered_text)} ({len(filtered_text) - len(transcribed_text):+d})")
-                logger.info(f"📝 Первые 150 символов ПОСЛЕ фильтрации: {filtered_text[:150]}")
-                
-                # Проверяем, изменился ли текст
+
+                filtered_text = self._extract_text(response)
+
+                # Пустой ответ модели — это сбой (а не повод молча отдать оригинал).
+                # Чаще всего: упёрлись в таймаут провайдера (408) или в лимит токенов.
+                # Считаем повторяемым: ждём и пробуем ещё раз.
+                if not filtered_text:
+                    last_error = "пустой ответ модели (0 токенов)"
+                    logger.warning(f"⚠️ Пустой ответ модели (попытка {attempt + 1}/{max_retries})")
+                    if attempt < max_retries - 1:
+                        time.sleep((attempt + 1) * 3)
+                        continue
+                    break
+
+                logger.info(f"✅ Фильтрация завершена: {len(transcribed_text)} → {len(filtered_text)} символов")
                 if transcribed_text.strip() == filtered_text.strip():
-                    logger.warning("⚠️ ПРЕДУПРЕЖДЕНИЕ: Текст не изменился после фильтрации! Возможно, текст уже был чистым.")
-                
+                    logger.warning("⚠️ Текст не изменился после фильтрации (возможно, уже был чистым)")
                 return filtered_text
-                
+
             except Exception as e:
-                error_message = str(e)
-                
-                # Проверяем тип ошибки
-                if "503" in error_message or "overloaded" in error_message.lower() or "rate_limit" in error_message.lower():
-                    if attempt < max_retries - 1:
-                        wait_time = (attempt + 1) * 5  # Увеличивающаяся задержка: 5, 10, 15 секунд
-                        logger.warning(f"⚠️ API перегружен или rate limit. Ждем {wait_time}с перед повторной попыткой...")
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        logger.error(f"❌ API недоступен после {max_retries} попыток")
-                elif "timeout" in error_message.lower():
-                    logger.error(f"❌ Таймаут запроса к API (попытка {attempt + 1}/{max_retries})")
-                    if attempt < max_retries - 1:
-                        logger.info("⏳ Повторная попытка через 3 секунды...")
-                        time.sleep(3)
-                        continue
-                else:
-                    logger.error(f"❌ Ошибка фильтрации: {error_message}")
-                
-                # Если это последняя попытка
-                if attempt == max_retries - 1:
-                    logger.warning("⚠️ Возвращаем оригинальный текст без фильтрации")
-                    return transcribed_text
-        
-        # Если все попытки исчерпаны
-        logger.warning("⚠️ Все попытки исчерпаны. Возвращаем оригинальный текст")
-        return transcribed_text
+                last_error = str(e)
+                low = last_error.lower()
+                # 408/timeout/перегрузка/rate limit — повторяемые ошибки, ждём с backoff.
+                retryable = any(s in low for s in ("timeout", "timed out", "408", "503", "overloaded", "rate_limit", "429"))
+                logger.error(f"❌ Ошибка фильтрации (попытка {attempt + 1}/{max_retries}): {last_error}")
+                if retryable and attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 5
+                    logger.warning(f"⏳ Повторяемая ошибка, ждём {wait_time}с...")
+                    time.sleep(wait_time)
+                    continue
+                break
+
+        # Все попытки исчерпаны — честно сообщаем об ошибке, НЕ подменяем оригиналом.
+        raise RuntimeError(f"AI-фильтрация не удалась после {max_retries} попыток: {last_error}")
 
     def _chunk_text(self, text: str, chunk_size: int = 4000) -> List[str]:
         """Разделяет текст на логические части по символам перевода строки, точкам или пробелам"""
@@ -176,11 +197,11 @@ class TranscriptionFilter:
         if len(chunk) < 10:
             return chunk
             
+        prompt = TRANSCRIPTION_FILTER_PROMPT.format(text=chunk)
         for attempt in range(max_retries):
             try:
-                prompt = TRANSCRIPTION_FILTER_PROMPT.format(text=chunk)
                 logger.info(f"🔄 Чанк {index+1}/{total} | Размер: {len(chunk)} | Попытка {attempt + 1}")
-                
+
                 response = await self.async_client.chat.completions.create(
                     model=self.model_name,
                     messages=[
@@ -188,33 +209,51 @@ class TranscriptionFilter:
                         {"role": "user", "content": prompt}
                     ],
                     temperature=TRANSCRIPTION_FILTER_CONFIG["temperature"],
-                    max_tokens=TRANSCRIPTION_FILTER_CONFIG["max_tokens"],
-                    top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"]
+                    max_tokens=self.max_tokens,
+                    top_p=TRANSCRIPTION_FILTER_CONFIG["top_p"],
                 )
-                
-                result = response.choices[0].message.content.strip()
+
+                result = self._extract_text(response)
+                if not result:
+                    logger.warning(f"⚠️ Чанк {index+1}/{total}: пустой ответ модели (попытка {attempt + 1})")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep((attempt + 1) * 3)
+                        continue
+                    break
+
                 logger.info(f"✅ Чанк {index+1}/{total} готов.")
                 return result
-                
+
             except Exception as e:
-                error_message = str(e)
-                if "503" in error_message or "overloaded" in error_message.lower() or "rate_limit" in error_message.lower():
-                    wait_time = (attempt + 1) * 3
-                    logger.warning(f"⚠️ API перегружен (Чанк {index+1}/{total}). Ждем {wait_time}с...")
-                    await asyncio.sleep(wait_time)
-                else:
-                    logger.error(f"❌ Ошибка (Чанк {index+1}/{total}): {error_message}")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(2)
-        
-        logger.warning(f"⚠️ Чанк {index+1}/{total} не отфильтровался из-за ошибок. Оставляем оригинал.")
+                low = str(e).lower()
+                retryable = any(s in low for s in ("timeout", "timed out", "408", "503", "overloaded", "rate_limit", "429"))
+                logger.error(f"❌ Ошибка (Чанк {index+1}/{total}, попытка {attempt + 1}): {e}")
+                if retryable and attempt < max_retries - 1:
+                    await asyncio.sleep((attempt + 1) * 3)
+                    continue
+                break
+
+        # Чанк не отфильтровался — оставляем оригинал, чтобы не терять кусок лекции.
+        # (В отличие от filter_text: здесь частичный результат лучше полного провала.)
+        logger.warning(f"⚠️ Чанк {index+1}/{total} не отфильтровался — оставляем оригинал")
         return chunk
 
-    async def filter_text_async(self, transcribed_text: str, max_retries: int = 3, chunk_size: int = 150000) -> str:
+    async def filter_text_async(self, transcribed_text: str, max_retries: int = 3, chunk_size: int = 6000) -> str:
         """
         Асинхронная фильтрация длинного текста с разбиением на чанки.
-        Позволяет обрабатывать транскрибацию параллельно, ускоряя процесс в разы.
+
+        ВАЖНО: размер чанка должен быть таким, чтобы один запрос успевал
+        сгенерироваться за таймаут провайдера (300с). ~6000 символов (~1500-2000
+        токенов на вход, столько же на выход) — безопасно. Большой chunk_size
+        (раньше стоял 150000 = вся лекция в одном запросе) приводит к 408 Timeout.
+        Чанки обрабатываются параллельно, поэтому это ещё и быстрее.
+
+        Настраивается через env FILTER_CHUNK_SIZE.
         """
+        try:
+            chunk_size = int(os.getenv("FILTER_CHUNK_SIZE", str(chunk_size)))
+        except (TypeError, ValueError):
+            pass
         if not transcribed_text or len(transcribed_text.strip()) < 10:
             return transcribed_text
             
